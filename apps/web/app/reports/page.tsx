@@ -1,0 +1,4 @@
+"use client";
+import {useState} from "react";import {api} from "@/lib/api";
+export default function Reports(){const [id,setId]=useState("");const [report,setReport]=useState<Record<string,unknown>|null>(null);const [error,setError]=useState("");async function load(){try{setReport(await api(`/api/v1/reports/${id}.json`))}catch(e){setError(e instanceof Error?e.message:"Failed")}}
+return <><h1>Reports</h1><p>Tamper-evident evidence packages contain measured timestamps, observations and SLO results—not a synthetic security score.</p><div className="row section"><input value={id} onChange={e=>setId(e.target.value)} placeholder="Run ID"/><button className="btn primary" onClick={load}>Load JSON evidence</button></div>{error&&<p className="error">{error}</p>}{report&&<pre className="code">{JSON.stringify(report,null,2)}</pre>}</>}

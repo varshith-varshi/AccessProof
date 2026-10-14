@@ -1,0 +1,47 @@
+name: AccessProof permission regression gate
+description: Run an AccessProof suite against a staged release and fail CI on permission regressions.
+inputs:
+  api-url:
+    required: true
+    description: AccessProof control-plane URL
+  api-token:
+    required: true
+    description: AccessProof API token
+  organization-id:
+    required: true
+    description: AccessProof organization ID
+  project-id:
+    required: true
+    description: Project ID
+  suite-id:
+    required: true
+    description: Test suite ID
+  source-connection-id:
+    required: false
+    description: Source connection ID
+  ai-target-id:
+    required: false
+    description: AI target ID
+  release:
+    required: true
+    description: Release name/version
+  inconclusive-blocks:
+    required: false
+    default: "true"
+    description: Whether INCONCLUSIVE blocks the workflow
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AP_API_URL: ${{ inputs.api-url }}
+        AP_API_TOKEN: ${{ inputs.api-token }}
+        AP_ORG_ID: ${{ inputs.organization-id }}
+        AP_PROJECT_ID: ${{ inputs.project-id }}
+        AP_SUITE_ID: ${{ inputs.suite-id }}
+        AP_SOURCE_ID: ${{ inputs.source-connection-id }}
+        AP_TARGET_ID: ${{ inputs.ai-target-id }}
+        AP_RELEASE: ${{ inputs.release }}
+        AP_INCONCLUSIVE_BLOCKS: ${{ inputs.inconclusive-blocks }}
+        AP_GIT_SHA: ${{ github.sha }}
+      run: python "${{ github.action_path }}/action_client.py"

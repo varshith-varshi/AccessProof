@@ -1,0 +1,85 @@
+# Production runtime: managed PostgreSQL/Redis and an external TLS reverse proxy are required.
+# This file deliberately publishes no ports. Put the reverse proxy and web service on the
+# same Docker network, then proxy HTTPS traffic to http://web:3000.
+services:
+  api:
+    image: ${ACCESSPROOF_API_IMAGE:?set ACCESSPROOF_API_IMAGE}
+    environment:
+      ACCESSPROOF_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS}
+      ACCESSPROOF_PUBLIC_APP_URL: ${ACCESSPROOF_PUBLIC_APP_URL:?set ACCESSPROOF_PUBLIC_APP_URL}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:?set API_PUBLIC_URL}
+      ACCESSPROOF_ALLOWED_HOSTS: ${ACCESSPROOF_ALLOWED_HOSTS:?set ACCESSPROOF_ALLOWED_HOSTS}
+      ACCESSPROOF_FORWARDED_ALLOW_IPS: ${ACCESSPROOF_FORWARDED_ALLOW_IPS:?set ACCESSPROOF_FORWARDED_ALLOW_IPS}
+      SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:?set SESSION_HMAC_KEY}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY}
+      REPORT_SIGNING_KEY: ${REPORT_SIGNING_KEY:?set REPORT_SIGNING_KEY}
+      ACCESSPROOF_SECRET_BACKEND: ${ACCESSPROOF_SECRET_BACKEND:-local}
+      ACCESSPROOF_AWS_KMS_KEY_ID: ${ACCESSPROOF_AWS_KMS_KEY_ID:-}
+      AWS_REGION: ${AWS_REGION:-}
+      ACCESSPROOF_EMAIL_MODE: smtp
+      ACCESSPROOF_EMAIL_FROM: ${ACCESSPROOF_EMAIL_FROM:?set ACCESSPROOF_EMAIL_FROM}
+      ACCESSPROOF_SMTP_HOST: ${ACCESSPROOF_SMTP_HOST:?set ACCESSPROOF_SMTP_HOST}
+      ACCESSPROOF_SMTP_PORT: ${ACCESSPROOF_SMTP_PORT:-587}
+      ACCESSPROOF_SMTP_USERNAME: ${ACCESSPROOF_SMTP_USERNAME:?set ACCESSPROOF_SMTP_USERNAME}
+      ACCESSPROOF_SMTP_PASSWORD: ${ACCESSPROOF_SMTP_PASSWORD:?set ACCESSPROOF_SMTP_PASSWORD}
+      ACCESSPROOF_SMTP_STARTTLS: ${ACCESSPROOF_SMTP_STARTTLS:-1}
+    command: ["sh", "-c", "alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$${ACCESSPROOF_FORWARDED_ALLOW_IPS}\""]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: ${ACCESSPROOF_WORKER_IMAGE:?set ACCESSPROOF_WORKER_IMAGE}
+    environment:
+      ACCESSPROOF_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY}
+      REPORT_SIGNING_KEY: ${REPORT_SIGNING_KEY:?set REPORT_SIGNING_KEY}
+      ACCESSPROOF_SECRET_BACKEND: ${ACCESSPROOF_SECRET_BACKEND:-local}
+      ACCESSPROOF_AWS_KMS_KEY_ID: ${ACCESSPROOF_AWS_KMS_KEY_ID:-}
+      AWS_REGION: ${AWS_REGION:-}
+      ACCESSPROOF_EMAIL_MODE: smtp
+      ACCESSPROOF_EMAIL_FROM: ${ACCESSPROOF_EMAIL_FROM:?set ACCESSPROOF_EMAIL_FROM}
+      ACCESSPROOF_SMTP_HOST: ${ACCESSPROOF_SMTP_HOST:?set ACCESSPROOF_SMTP_HOST}
+      ACCESSPROOF_SMTP_PORT: ${ACCESSPROOF_SMTP_PORT:-587}
+      ACCESSPROOF_SMTP_USERNAME: ${ACCESSPROOF_SMTP_USERNAME:?set ACCESSPROOF_SMTP_USERNAME}
+      ACCESSPROOF_SMTP_PASSWORD: ${ACCESSPROOF_SMTP_PASSWORD:?set ACCESSPROOF_SMTP_PASSWORD}
+      ACCESSPROOF_SMTP_STARTTLS: ${ACCESSPROOF_SMTP_STARTTLS:-1}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  web:
+    image: ${ACCESSPROOF_WEB_IMAGE:?set ACCESSPROOF_WEB_IMAGE}
+    environment:
+      NODE_ENV: production
+      API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]

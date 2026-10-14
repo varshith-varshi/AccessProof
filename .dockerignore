@@ -1,0 +1,15 @@
+.venv
+.git
+.env
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+*.db
+*.egg-info
+build
+.pytest_cache
+.mypy_cache
+.ruff_cache
+apps/web/test-results
+apps/web/playwright-report

@@ -1,0 +1,24 @@
+[Unit]
+Description=AccessProof private runner
+Documentation=https://docs.accessproof.ai/runner
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/accessproof-runner/credentials.json
+
+[Service]
+Type=simple
+User=accessproof
+Group=accessproof
+WorkingDirectory=/var/lib/accessproof-runner
+Environment=ACCESSPROOF_RUNNER_STATE_DIR=/var/lib/accessproof-runner
+ExecStart=/opt/accessproof-runner/venv/bin/accessproof-runner service
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/accessproof-runner /var/log/accessproof-runner
+
+[Install]
+WantedBy=multi-user.target
