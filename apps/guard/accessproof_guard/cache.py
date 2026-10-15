@@ -16,11 +16,25 @@ class PolicyCache:
         self.db.execute("CREATE TABLE IF NOT EXISTS decisions (subject_id TEXT NOT NULL, source_id TEXT NOT NULL, resource_id TEXT NOT NULL, scope TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(subject_id, source_id, resource_id, scope))")
         self.db.commit()
 
-    def install(self, version: int, decisions: list[dict[str, object]]) -> None:
+    def install(self, version: int, decisions: list[dict[str, object]], *, full_snapshot: bool = False) -> bool:
+        """Atomically install a newer policy; returns False for an idempotent retry.
+
+        SQLite's transaction guarantees that a malformed payload leaves the
+        prior committed policy intact.  A version rollback is rejected before
+        any decision rows are touched.
+        """
+        current = self.version()
+        if version < current:
+            raise ValueError("STALE_POLICY")
+        if version == current:
+            return False
         with self.db:
+            if full_snapshot:
+                self.db.execute("DELETE FROM decisions")
             for row in decisions:
                 self.db.execute("INSERT INTO decisions VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(subject_id, source_id, resource_id, scope) DO UPDATE SET decision=excluded.decision, reason=excluded.reason, version=excluded.version", (str(row["subject_id"]), str(row["source_id"]), str(row["resource_id"]), str(row.get("scope", "read")), str(row["decision"]), str(row.get("reason", "effective_access")), version))
             self.db.execute("INSERT INTO metadata VALUES ('version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(version),))
+        return True
 
     def version(self) -> int:
         row = self.db.execute("SELECT value FROM metadata WHERE key='version'").fetchone()
