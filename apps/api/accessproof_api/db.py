@@ -709,6 +709,10 @@ class GuardPermissionEvent(Base):
     change_type: Mapped[str] = mapped_column(String(30))
     dedupe_key: Mapped[str] = mapped_column(String(128))
     processing_status: Mapped[str] = mapped_column(String(30), default="received")
+    mutation_json: Mapped[str] = mapped_column(Text, default="{}")
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    policy_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -725,7 +729,22 @@ class GuardPolicy(Base):
     subject_id: Mapped[str] = mapped_column(String(36), index=True)
     resource_id: Mapped[str] = mapped_column(String(36), index=True)
     reason: Mapped[str] = mapped_column(String(255), default="effective_access")
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    scope: Mapped[str] = mapped_column(String(100), default="read")
+    source_revision: Mapped[int] = mapped_column(default=0)
+    effective_state_version: Mapped[int] = mapped_column(default=0)
+    supersedes_policy_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     committed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GuardPolicySequence(Base):
+    """One durable, tenant-scoped allocator for immutable Guard policy versions."""
+    __tablename__ = "guard_policy_sequences"
+    __table_args__ = (UniqueConstraint("organization_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    next_version: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class GuardEffectiveAccess(Base):
@@ -772,6 +791,79 @@ class GuardRegistration(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     credential_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GuardGroup(Base):
+    __tablename__ = "guard_groups"
+    __table_args__ = (UniqueConstraint("organization_id", "provider", "provider_group_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(50))
+    provider_group_id: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class GuardGroupMembership(Base):
+    __tablename__ = "guard_group_memberships"
+    __table_args__ = (UniqueConstraint("organization_id", "group_id", "subject_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("guard_groups.id", ondelete="CASCADE"), index=True)
+    subject_id: Mapped[str] = mapped_column(ForeignKey("guard_subjects.id", ondelete="CASCADE"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    provider_revision: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class GuardPermissionGrant(Base):
+    __tablename__ = "guard_permission_grants"
+    __table_args__ = (UniqueConstraint("organization_id", "source_id", "grant_key"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(String(36), index=True)
+    resource_id: Mapped[str] = mapped_column(ForeignKey("guard_resources.id", ondelete="CASCADE"), index=True)
+    grant_key: Mapped[str] = mapped_column(String(255))
+    principal_type: Mapped[str] = mapped_column(String(30))
+    principal_id: Mapped[str] = mapped_column(String(36), index=True)
+    effect: Mapped[str] = mapped_column(String(10), default="allow")
+    scope: Mapped[str] = mapped_column(String(100), default="read")
+    inherited_from_resource_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    access_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    provider_revision: Mapped[int] = mapped_column(default=0)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GuardPermissionSnapshot(Base):
+    __tablename__ = "guard_permission_snapshots"
+    __table_args__ = (UniqueConstraint("effective_access_id", "state_version"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    effective_access_id: Mapped[str] = mapped_column(ForeignKey("guard_effective_access.id", ondelete="CASCADE"), index=True)
+    permission_event_id: Mapped[str] = mapped_column(ForeignKey("guard_permission_events.id", ondelete="CASCADE"), index=True)
+    state_version: Mapped[int] = mapped_column(default=1)
+    source_revision: Mapped[int] = mapped_column(default=0)
+    decision: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(String(255))
+    grant_keys_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GuardPolicyDistribution(Base):
+    __tablename__ = "guard_policy_distributions"
+    __table_args__ = (UniqueConstraint("policy_id", "guard_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    policy_id: Mapped[str] = mapped_column(ForeignKey("guard_policies.id", ondelete="CASCADE"), index=True)
+    guard_id: Mapped[str | None] = mapped_column(ForeignKey("guard_registrations.id", ondelete="CASCADE"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

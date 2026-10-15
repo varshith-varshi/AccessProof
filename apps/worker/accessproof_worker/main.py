@@ -13,12 +13,14 @@ from apps.api.accessproof_api.db import (
     EmailOutbox,
     RetentionPolicy,
     Runner,
+    GuardPermissionEvent,
     SessionLocal,
     SourceConnection,
     TestRun,
     WebhookDelivery,
     WebhookEndpoint,
 )
+from apps.api.accessproof_api.guard_pipeline import process_guard_event
 from connectors.factory import create_source_adapter
 from integrations.webhooks.delivery import deliver
 from integrations.email.delivery import EmailDeliveryConfig, deliver_email
@@ -333,6 +335,35 @@ async def process_cleanup_task(task_id: str) -> None:
             db.commit()
 
 
+def claim_one_guard_event() -> str | None:
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(GuardPermissionEvent)
+            .where(GuardPermissionEvent.processing_status.in_(["received", "queued"]))
+            .order_by(GuardPermissionEvent.received_at.asc())
+            .limit(1)
+        )
+        if row is None:
+            return None
+        row.processing_status = "processing"
+        db.commit()
+        return row.id
+
+
+def process_claimed_guard_event(event_id: str) -> None:
+    with SessionLocal() as db:
+        try:
+            process_guard_event(db, event_id)
+        except Exception as exc:
+            event = db.get(GuardPermissionEvent, event_id)
+            if event is not None:
+                event.processing_status = "error"
+                event.error_code = type(exc).__name__[:100]
+                event.completed_at = datetime.now(timezone.utc)
+                db.commit()
+            logger.exception("guard_permission_event_processing_failed event_id=%s", event_id)
+
+
 async def main() -> None:
     configure_tracing("accessproof-worker")
     last_retention = datetime.min.replace(tzinfo=timezone.utc)
@@ -356,6 +387,10 @@ async def main() -> None:
         if delivery_id:
             did_work = True
             await process_delivery(delivery_id)
+        guard_event_id = claim_one_guard_event()
+        if guard_event_id:
+            did_work = True
+            await asyncio.to_thread(process_claimed_guard_event, guard_event_id)
         if not did_work:
             await asyncio.sleep(POLL_SECONDS)
 

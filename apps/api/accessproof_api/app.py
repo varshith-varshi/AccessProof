@@ -65,8 +65,6 @@ from apps.api.accessproof_api.db import (
     GuardSubject,
     GuardResource,
     GuardPermissionEvent,
-    GuardPolicy,
-    GuardRegistration,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
@@ -601,13 +599,63 @@ def branding() -> dict[str, Any]:
 
 @app.post("/api/v1/guard/permission-events", status_code=201)
 def guard_permission_event(payload: GuardEventCreate, actor: Actor = Depends(current_actor), db: OrmSession = Depends(get_db)) -> dict[str, Any]:
-    """Persist one normalized provider event idempotently for the caller's tenant."""
+    """Queue one normalized provider event; resolution happens in the worker."""
     organization_id = actor.membership.organization_id
     set_tenant_context(db, organization_id)
     existing = db.scalar(select(GuardPermissionEvent).where(GuardPermissionEvent.organization_id == organization_id, GuardPermissionEvent.dedupe_key == payload.dedupe_key))
     if existing:
         return {"id": existing.id, "deduplicated": True, "status": existing.processing_status}
-    row = GuardPermissionEvent(organization_id=organization_id, source_id=payload.source_id, provider=payload.provider, provider_revision=payload.provider_revision, subject_id=payload.subject_id, resource_id=payload.resource_id, change_type=payload.change_type, dedupe_key=payload.dedupe_key)
+    subject = db.scalar(select(GuardSubject).where(
+        GuardSubject.organization_id == organization_id,
+        GuardSubject.provider == payload.provider,
+        GuardSubject.provider_subject_id == payload.subject_id,
+    ))
+    if subject is None:
+        subject = GuardSubject(
+            organization_id=organization_id,
+            provider=payload.provider,
+            provider_subject_id=payload.subject_id,
+            last_synced_at=datetime.now(timezone.utc),
+        )
+        db.add(subject)
+        db.flush()
+    resource = db.scalar(select(GuardResource).where(
+        GuardResource.organization_id == organization_id,
+        GuardResource.source_id == payload.source_id,
+        GuardResource.provider_resource_id == payload.resource_id,
+    ))
+    if resource is None:
+        resource = GuardResource(
+            organization_id=organization_id,
+            source_id=payload.source_id,
+            provider_resource_id=payload.resource_id,
+            scope=payload.scope,
+            last_synced_at=datetime.now(timezone.utc),
+        )
+        db.add(resource)
+        db.flush()
+    mutation = {
+        "grant_key": payload.grant_key,
+        "grant_effect": payload.grant_effect,
+        "principal_type": payload.principal_type,
+        "principal_id": payload.principal_id,
+        "group_id": payload.group_id,
+        "scope": payload.scope,
+        "access_path": payload.access_path,
+        "snapshot_complete": payload.snapshot_complete,
+    }
+    row = GuardPermissionEvent(
+        organization_id=organization_id,
+        source_id=payload.source_id,
+        provider=payload.provider,
+        provider_revision=payload.provider_revision,
+        subject_id=subject.id,
+        resource_id=resource.id,
+        change_type="grant_revoke" if payload.change_type == "revoke" else payload.change_type,
+        dedupe_key=payload.dedupe_key,
+        processing_status="queued",
+        mutation_json=json.dumps(mutation, sort_keys=True),
+    )
     db.add(row)
     db.commit()
     return {"id": row.id, "deduplicated": False, "status": row.processing_status}
@@ -618,7 +666,7 @@ def guard_permission_events(actor: Actor = Depends(current_actor), db: OrmSessio
     organization_id = actor.membership.organization_id
     set_tenant_context(db, organization_id)
     rows = db.scalars(select(GuardPermissionEvent).where(GuardPermissionEvent.organization_id == organization_id).order_by(GuardPermissionEvent.received_at.desc()).limit(100)).all()
-    return [{"id": r.id, "source_id": r.source_id, "provider": r.provider, "subject_id": r.subject_id, "resource_id": r.resource_id, "change_type": r.change_type, "provider_revision": r.provider_revision, "status": r.processing_status, "dedupe_key": r.dedupe_key} for r in rows]
+    return [{"id": r.id, "source_id": r.source_id, "provider": r.provider, "subject_id": r.subject_id, "resource_id": r.resource_id, "change_type": r.change_type, "provider_revision": r.provider_revision, "status": r.processing_status, "dedupe_key": r.dedupe_key, "error_code": r.error_code, "policy_id": r.policy_id} for r in rows]
 
 
 @app.post("/api/v1/auth/signup", status_code=201)

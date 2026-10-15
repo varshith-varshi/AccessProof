@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -162,8 +162,16 @@ class GuardEventCreate(BaseModel):
     provider_revision: int = 0
     subject_id: str
     resource_id: str
-    change_type: str
+    change_type: Literal["grant_upsert", "grant_revoke", "membership_upsert", "membership_revoke", "sync_incomplete", "revoke"]
     dedupe_key: str
+    grant_key: str | None = Field(default=None, max_length=255)
+    grant_effect: Literal["allow", "deny"] = "allow"
+    principal_type: Literal["subject", "group", "organization"] = "subject"
+    principal_id: str | None = Field(default=None, max_length=255)
+    group_id: str | None = Field(default=None, max_length=255)
+    scope: str = Field(default="read", max_length=100)
+    access_path: str | None = Field(default=None, max_length=255)
+    snapshot_complete: bool = True
 
 
 class GuardResourceInput(BaseModel):
