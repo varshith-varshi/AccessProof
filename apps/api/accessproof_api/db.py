@@ -789,7 +789,22 @@ class GuardRegistration(Base):
     version: Mapped[str] = mapped_column(String(50), default="0.1.0")
     active_policy_version: Mapped[int] = mapped_column(default=0)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_policy_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    health: Mapped[str] = mapped_column(String(30), default="not_enrolled")
     credential_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GuardEnrollment(Base):
+    __tablename__ = "guard_enrollments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    guard_id: Mapped[str] = mapped_column(ForeignKey("guard_registrations.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

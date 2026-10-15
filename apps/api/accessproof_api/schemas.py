@@ -187,6 +187,29 @@ class GuardFilterRequest(BaseModel):
     resources: list[GuardResourceInput]
 
 
+class GuardCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    environment: str = Field(default="production", max_length=50)
+    version: str = Field(default="1.0.0", max_length=50)
+
+
+class GuardEnrollmentCreate(BaseModel):
+    expires_in_minutes: int = Field(default=15, ge=1, le=60)
+
+
+class GuardExchange(BaseModel):
+    enrollment_token: str = Field(min_length=24, max_length=512)
+    version: str = Field(min_length=1, max_length=50)
+
+
+class GuardHeartbeat(BaseModel):
+    guard_id: str
+    version: str = Field(min_length=1, max_length=50)
+    active_policy_version: int = Field(default=0, ge=0)
+    cache_status: str = Field(default="healthy", max_length=30)
+    degraded_conditions: list[str] = Field(default_factory=list, max_length=20)
+
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=12, max_length=256)

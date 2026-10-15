@@ -65,6 +65,8 @@ from apps.api.accessproof_api.db import (
     GuardSubject,
     GuardResource,
     GuardPermissionEvent,
+    GuardEnrollment,
+    GuardRegistration,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
@@ -98,6 +100,10 @@ from apps.api.accessproof_api.schemas import (
     ResendVerificationRequest as ResendVerificationRequest,
     GuardEventCreate as GuardEventCreate,
     GuardFilterRequest as GuardFilterRequest,
+    GuardCreate as GuardCreate,
+    GuardEnrollmentCreate as GuardEnrollmentCreate,
+    GuardExchange as GuardExchange,
+    GuardHeartbeat as GuardHeartbeat,
     ResetPasswordRequest as ResetPasswordRequest,
     ChangePasswordRequest as ChangePasswordRequest,
     MfaEnableRequest as MfaEnableRequest,
@@ -667,6 +673,142 @@ def guard_permission_events(actor: Actor = Depends(current_actor), db: OrmSessio
     set_tenant_context(db, organization_id)
     rows = db.scalars(select(GuardPermissionEvent).where(GuardPermissionEvent.organization_id == organization_id).order_by(GuardPermissionEvent.received_at.desc()).limit(100)).all()
     return [{"id": r.id, "source_id": r.source_id, "provider": r.provider, "subject_id": r.subject_id, "resource_id": r.resource_id, "change_type": r.change_type, "provider_revision": r.provider_revision, "status": r.processing_status, "dedupe_key": r.dedupe_key, "error_code": r.error_code, "policy_id": r.policy_id} for r in rows]
+
+
+@app.post("/api/v1/guards", status_code=201)
+def create_guard(
+    payload: GuardCreate,
+    actor: Actor = Depends(require(Permission.RUNNER_WRITE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a customer-side Guard record; enrollment is deliberately separate."""
+    row = GuardRegistration(
+        organization_id=actor.membership.organization_id,
+        name=payload.name,
+        environment=payload.environment,
+        version=payload.version,
+        status="not_enrolled",
+        health="not_enrolled",
+    )
+    db.add(row)
+    db.flush()
+    _audit(db, actor, row.organization_id, "guard.created", "guard", row.id)
+    db.commit()
+    return {"id": row.id, "name": row.name, "status": row.status, "environment": row.environment}
+
+
+@app.get("/api/v1/guards")
+def list_guards(
+    actor: Actor = Depends(require(Permission.RUNNER_WRITE)), db: OrmSession = Depends(get_db)
+) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    rows = db.scalars(select(GuardRegistration).where(
+        GuardRegistration.organization_id == actor.membership.organization_id
+    ).order_by(GuardRegistration.created_at.desc())).all()
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        heartbeat = row.last_heartbeat_at
+        if heartbeat and heartbeat.tzinfo is None:
+            heartbeat = heartbeat.replace(tzinfo=timezone.utc)
+        online = bool(heartbeat and (now - heartbeat).total_seconds() <= settings.runner_offline_seconds)
+        health = "revoked" if row.revoked_at else ("online" if online else row.health)
+        result.append({
+            "id": row.id, "name": row.name, "environment": row.environment,
+            "version": row.version, "status": row.status, "health": health,
+            "active_policy_version": row.active_policy_version,
+            "last_heartbeat_at": heartbeat.isoformat() if heartbeat else None,
+            "last_policy_sync_at": row.last_policy_sync_at.isoformat() if row.last_policy_sync_at else None,
+            "enrolled_at": row.enrolled_at.isoformat() if row.enrolled_at else None,
+            "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+        })
+    return result
+
+
+@app.post("/api/v1/guards/{guard_id}/enrollments", status_code=201)
+def create_guard_enrollment(
+    guard_id: str,
+    payload: GuardEnrollmentCreate,
+    actor: Actor = Depends(require(Permission.RUNNER_WRITE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    guard = db.scalar(select(GuardRegistration).where(
+        GuardRegistration.id == guard_id,
+        GuardRegistration.organization_id == actor.membership.organization_id,
+    ))
+    if guard is None:
+        raise HTTPException(404, "Guard not found")
+    if guard.revoked_at:
+        raise HTTPException(409, "Revoked Guard cannot be enrolled")
+    token = f"AP-GUARD-{secrets.token_urlsafe(36)}"
+    row = GuardEnrollment(
+        organization_id=guard.organization_id,
+        guard_id=guard.id,
+        token_hash=hash_token(token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=payload.expires_in_minutes),
+    )
+    db.add(row)
+    _audit(db, actor, guard.organization_id, "guard.enrollment_created", "guard", guard.id)
+    db.commit()
+    # The bootstrap token is returned once, and is never persisted in plaintext.
+    return {"enrollment_token": token, "expires_in_seconds": payload.expires_in_minutes * 60, "guard_id": guard.id}
+
+
+@app.post("/api/v1/guards/exchange", status_code=201)
+def exchange_guard(payload: GuardExchange, db: OrmSession = Depends(get_db)) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    enrollment = db.scalar(select(GuardEnrollment).where(
+        GuardEnrollment.token_hash == hash_token(payload.enrollment_token)
+    ))
+    if enrollment is None or enrollment.used_at or enrollment.revoked_at:
+        raise HTTPException(401, "Invalid enrollment token")
+    expires_at = enrollment.expires_at if enrollment.expires_at.tzinfo else enrollment.expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= now:
+        raise HTTPException(401, "Expired enrollment token")
+    guard = db.get(GuardRegistration, enrollment.guard_id)
+    if guard is None or guard.organization_id != enrollment.organization_id or guard.revoked_at:
+        raise HTTPException(401, "Invalid enrollment token")
+    credential = secrets.token_urlsafe(48)
+    guard.credential_hash = hash_token(credential)
+    guard.version = payload.version
+    guard.status = "enrolled"
+    guard.health = "offline"
+    guard.enrolled_at = now
+    enrollment.used_at = now
+    db.add(AuditEvent(
+        organization_id=guard.organization_id,
+        action="guard.enrolled",
+        target_type="guard",
+        target_id=guard.id,
+        metadata_json=json.dumps({"version": payload.version}),
+    ))
+    db.commit()
+    return {"guard_id": guard.id, "guard_credential": credential}
+
+
+def _authenticate_guard(db: OrmSession, guard_id: str, authorization: str | None) -> GuardRegistration:
+    scheme, _, credential = (authorization or "").partition(" ")
+    guard = db.get(GuardRegistration, guard_id)
+    if (scheme.lower() != "bearer" or not credential or guard is None or guard.revoked_at
+            or not guard.credential_hash or guard.credential_hash != hash_token(credential)):
+        raise HTTPException(401, "Invalid Guard credential")
+    set_tenant_context(db, guard.organization_id)
+    return guard
+
+
+@app.post("/api/v1/guards/heartbeat")
+def guard_heartbeat(
+    payload: GuardHeartbeat,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    guard = _authenticate_guard(db, payload.guard_id, authorization)
+    guard.last_heartbeat_at = datetime.now(timezone.utc)
+    guard.last_policy_sync_at = guard.last_heartbeat_at
+    guard.version = payload.version
+    guard.active_policy_version = payload.active_policy_version
+    guard.health = "degraded" if payload.degraded_conditions else payload.cache_status
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/v1/auth/signup", status_code=201)
