@@ -12,6 +12,8 @@ def upgrade() -> None:
     op.add_column("guard_registrations", sa.Column("last_policy_sync_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("guard_registrations", sa.Column("enrolled_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("guard_registrations", sa.Column("health", sa.String(30), nullable=False, server_default="not_enrolled"))
+    op.add_column("guard_policy_distributions", sa.Column("guard_received_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("guard_policy_distributions", sa.Column("guard_installed_at", sa.DateTime(timezone=True), nullable=True))
     op.create_table(
         "guard_enrollments",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -29,6 +31,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("guard_enrollments")
+    op.drop_column("guard_policy_distributions", "guard_installed_at")
+    op.drop_column("guard_policy_distributions", "guard_received_at")
     op.drop_column("guard_registrations", "health")
     op.drop_column("guard_registrations", "enrolled_at")
     op.drop_column("guard_registrations", "last_policy_sync_at")

@@ -67,6 +67,9 @@ from apps.api.accessproof_api.db import (
     GuardPermissionEvent,
     GuardEnrollment,
     GuardRegistration,
+    GuardPolicy,
+    GuardPolicyDistribution,
+    GuardEffectiveAccess,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
@@ -104,6 +107,7 @@ from apps.api.accessproof_api.schemas import (
     GuardEnrollmentCreate as GuardEnrollmentCreate,
     GuardExchange as GuardExchange,
     GuardHeartbeat as GuardHeartbeat,
+    GuardPolicyAck as GuardPolicyAck,
     ResetPasswordRequest as ResetPasswordRequest,
     ChangePasswordRequest as ChangePasswordRequest,
     MfaEnableRequest as MfaEnableRequest,
@@ -809,6 +813,78 @@ def guard_heartbeat(
     guard.health = "degraded" if payload.degraded_conditions else payload.cache_status
     db.commit()
     return {"ok": True}
+
+
+@app.get("/api/v1/guards/{guard_id}/policies")
+def guard_policies(
+    guard_id: str,
+    after_version: int = 0,
+    full_snapshot: bool = False,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Machine-only policy synchronization; no human credential is accepted."""
+    guard = _authenticate_guard(db, guard_id, authorization)
+    latest = int(db.scalar(select(func.max(GuardPolicy.version)).where(
+        GuardPolicy.organization_id == guard.organization_id
+    )) or 0)
+    if full_snapshot:
+        states = db.scalars(select(GuardEffectiveAccess).where(
+            GuardEffectiveAccess.organization_id == guard.organization_id
+        )).all()
+        return {"kind": "full", "version": latest, "decisions": [
+            {"subject_id": row.subject_id, "source_id": row.source_id, "resource_id": row.resource_id,
+             "scope": row.scope, "decision": row.decision, "reason": row.reason}
+            for row in states
+        ]}
+    rows = db.scalars(select(GuardPolicy).where(
+        GuardPolicy.organization_id == guard.organization_id,
+        GuardPolicy.version > after_version,
+    ).order_by(GuardPolicy.version.asc())).all()
+    return {"kind": "incremental", "version": latest, "policies": [
+        {"version": row.version, "subject_id": row.subject_id, "source_id": row.source_id,
+         "resource_id": row.resource_id, "scope": row.scope, "decision": row.decision,
+         "reason": row.reason}
+        for row in rows
+    ]}
+
+
+@app.post("/api/v1/guards/policies/ack")
+def guard_policy_ack(
+    payload: GuardPolicyAck,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    guard = _authenticate_guard(db, payload.guard_id, authorization)
+    policy = db.scalar(select(GuardPolicy).where(
+        GuardPolicy.organization_id == guard.organization_id,
+        GuardPolicy.version == payload.policy_version,
+    ))
+    if policy is None:
+        raise HTTPException(404, "Policy not found")
+    distribution = db.scalar(select(GuardPolicyDistribution).where(
+        GuardPolicyDistribution.organization_id == guard.organization_id,
+        GuardPolicyDistribution.policy_id == policy.id,
+        GuardPolicyDistribution.guard_id == guard.id,
+    ))
+    if distribution is None:
+        distribution = GuardPolicyDistribution(
+            organization_id=guard.organization_id, policy_id=policy.id, guard_id=guard.id, status="pending"
+        )
+        db.add(distribution)
+        db.flush()
+    now = datetime.now(timezone.utc)
+    if payload.status == "received":
+        distribution.guard_received_at = distribution.guard_received_at or now
+        distribution.status = "received"
+    else:
+        distribution.guard_received_at = distribution.guard_received_at or now
+        distribution.guard_installed_at = distribution.guard_installed_at or now
+        distribution.status = "installed"
+        guard.active_policy_version = max(guard.active_policy_version, payload.policy_version)
+        guard.last_policy_sync_at = now
+    db.commit()
+    return {"ok": True, "status": distribution.status}
 
 
 @app.post("/api/v1/auth/signup", status_code=201)

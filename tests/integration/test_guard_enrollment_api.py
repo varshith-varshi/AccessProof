@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from apps.api.accessproof_api.app import app
-from apps.api.accessproof_api.db import Base, engine
+from apps.api.accessproof_api.db import Base, GuardPolicy, SessionLocal, engine
 
 
 def _signup(client, email):
@@ -44,3 +44,22 @@ def test_guard_enrollment_is_single_use_and_machine_credentials_are_separate():
         listed = client.get("/api/v1/guards", headers=_headers(account)).json()
         assert listed[0]["status"] == "enrolled"
         assert listed[0]["active_policy_version"] == 7
+
+
+def test_guard_policy_sync_and_ack_are_machine_and_tenant_bound():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        account = _signup(client, "sync-admin@example.com")
+        guard_id = client.post("/api/v1/guards", headers=_headers(account), json={"name": "g"}).json()["id"]
+        token = client.post(f"/api/v1/guards/{guard_id}/enrollments", headers=_headers(account), json={}).json()["enrollment_token"]
+        credential = client.post("/api/v1/guards/exchange", json={"enrollment_token": token, "version": "1"}).json()["guard_credential"]
+        with SessionLocal() as db:
+            db.add(GuardPolicy(organization_id=account["organization_id"], policy_key="k", version=1, decision="deny", subject_id="alice", resource_id="finance", source_id="drive", scope="read", reason="DENY"))
+            db.commit()
+        headers = {"Authorization": f"Bearer {credential}"}
+        sync = client.get(f"/api/v1/guards/{guard_id}/policies", headers=headers)
+        assert sync.status_code == 200 and sync.json()["policies"][0]["decision"] == "deny"
+        assert client.post("/api/v1/guards/policies/ack", headers=headers, json={"guard_id": guard_id, "policy_version": 1, "status": "received"}).status_code == 200
+        assert client.post("/api/v1/guards/policies/ack", headers=headers, json={"guard_id": guard_id, "policy_version": 1, "status": "installed"}).status_code == 200
+        assert client.get(f"/api/v1/guards/{guard_id}/policies", headers={"Authorization": f"Bearer {account['session_token']}"}).status_code == 401

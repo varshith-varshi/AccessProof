@@ -210,6 +210,12 @@ class GuardHeartbeat(BaseModel):
     degraded_conditions: list[str] = Field(default_factory=list, max_length=20)
 
 
+class GuardPolicyAck(BaseModel):
+    guard_id: str
+    policy_version: int = Field(ge=1)
+    status: Literal["received", "installed"]
+
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=12, max_length=256)
