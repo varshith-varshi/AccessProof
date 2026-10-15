@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -14,6 +16,7 @@ class PolicyCache:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS decisions (subject_id TEXT NOT NULL, source_id TEXT NOT NULL, resource_id TEXT NOT NULL, scope TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(subject_id, source_id, resource_id, scope))")
+        self.db.execute("CREATE TABLE IF NOT EXISTS request_contexts (decision_id TEXT PRIMARY KEY, application_id TEXT NOT NULL, subject_id TEXT NOT NULL, resources_json TEXT NOT NULL, expires_at TEXT NOT NULL)")
         self.db.commit()
 
     def install(self, version: int, decisions: list[dict[str, object]], *, full_snapshot: bool = False) -> bool:
@@ -43,3 +46,15 @@ class PolicyCache:
     def decide(self, subject_id: str, source_id: str, resource_id: str, scope: str) -> tuple[str, str]:
         row = self.db.execute("SELECT decision, reason FROM decisions WHERE subject_id=? AND source_id=? AND resource_id=? AND scope=?", (subject_id, source_id, resource_id, scope)).fetchone()
         return (str(row[0]), str(row[1])) if row else ("unknown", "POLICY_MISSING")
+
+    def save_context(self, decision_id: str, application_id: str, subject_id: str, resource_ids: list[str], *, ttl_seconds: int = 300) -> None:
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+        with self.db:
+            self.db.execute("DELETE FROM request_contexts WHERE expires_at < ?", (datetime.now(timezone.utc).isoformat(),))
+            self.db.execute("INSERT INTO request_contexts VALUES (?, ?, ?, ?, ?)", (decision_id, application_id, subject_id, json.dumps(sorted(set(resource_ids))), expires_at))
+
+    def load_context(self, decision_id: str, application_id: str, subject_id: str) -> set[str] | None:
+        row = self.db.execute("SELECT resources_json, expires_at FROM request_contexts WHERE decision_id=? AND application_id=? AND subject_id=?", (decision_id, application_id, subject_id)).fetchone()
+        if not row or str(row[1]) < datetime.now(timezone.utc).isoformat():
+            return None
+        return set(json.loads(str(row[0])))

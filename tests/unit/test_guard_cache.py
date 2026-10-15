@@ -31,3 +31,11 @@ def test_install_rejects_rollback_and_preserves_previous_policy_on_failure(tmp_p
         assert str(exc) == "STALE_POLICY"
     else:
         raise AssertionError("rollback accepted")
+
+
+def test_decision_context_is_bound_to_application_and_subject(tmp_path):
+    cache = PolicyCache(str(tmp_path / "guard.db"))
+    cache.save_context("decision", "rag", "alice", ["finance"])
+    assert cache.load_context("decision", "rag", "alice") == {"finance"}
+    assert cache.load_context("decision", "other-app", "alice") is None
+    assert cache.load_context("decision", "rag", "bob") is None

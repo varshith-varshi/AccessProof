@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from uuid import uuid4
 from collections import defaultdict
 from typing import Any
 
@@ -30,6 +31,13 @@ class FilterRequest(BaseModel):
     application_id: str
     request_id: str
     resources: list[Resource]
+
+
+class OutputRequest(BaseModel):
+    decision_id: str
+    application_id: str
+    used_resource_ids: list[str] = Field(default_factory=list)
+    trusted_provenance: bool = False
 
 
 def _subject(authorization: str | None) -> str:
@@ -73,4 +81,21 @@ def filter_resources(payload: FilterRequest, authorization: str | None = Header(
         result = "would_block" if denied or (unknown and fail_mode == "fail_closed") else "would_allow"
     else:
         result = "block" if denied or (unknown and fail_mode == "fail_closed") else "allow"
-    return {"decision": result, "policy_version": cache.version(), "mode": mode, "allowed": allowed, "denied": denied, "unknown": unknown}
+    decision_id = str(uuid4())
+    cache.save_context(decision_id, payload.application_id, subject, [item["resource_id"] for item in allowed])
+    return {"decision_id": decision_id, "decision": result, "policy_version": cache.version(), "mode": mode, "allowed": allowed, "denied": denied, "unknown": unknown}
+
+
+@app.post("/guard/v1/check-output")
+def check_output(payload: OutputRequest, authorization: str | None = Header(default=None)) -> dict[str, str | int]:
+    """Block output whose trusted provenance escapes the Layer 1 context."""
+    subject = _subject(authorization)
+    permitted = cache.load_context(payload.decision_id, payload.application_id, subject)
+    if permitted is None:
+        return {"decision": "unknown", "reason": "DECISION_CONTEXT_INVALID", "policy_version": cache.version()}
+    if not payload.trusted_provenance:
+        return {"decision": "block" if fail_mode == "fail_closed" and mode == "protect" else "unknown", "reason": "PROVENANCE_MISSING", "policy_version": cache.version()}
+    escaped = set(payload.used_resource_ids).difference(permitted)
+    if escaped:
+        return {"decision": "block" if mode == "protect" else "would_block", "reason": "PROVENANCE_ESCAPE", "policy_version": cache.version()}
+    return {"decision": "allow" if mode == "protect" else "would_allow", "reason": "TRUSTED_PROVENANCE_VALID", "policy_version": cache.version()}
