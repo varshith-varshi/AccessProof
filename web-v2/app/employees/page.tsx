@@ -1,0 +1,3 @@
+import { PageHeader } from "../app-shell";
+import { ProtectedPage } from "../protected-page";
+export default function Employees() { return <ProtectedPage><PageHeader eyebrow="IDENTITIES" title="Employees" description="Review the people and groups whose access is evaluated by the control plane." action={<button className="button">Add employee</button>}/><section className="card empty"><span className="empty-icon">01</span><h2>Connect an identity source</h2><p className="muted">Employees appear here after your directory or HR source is connected.</p><button className="button secondary">View permission sources</button></section></ProtectedPage>; }

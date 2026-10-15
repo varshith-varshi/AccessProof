@@ -1,0 +1,14 @@
+services:
+  guard:
+    build:
+      context: .
+      dockerfile: apps/guard/Dockerfile
+    env_file: .env
+    environment:
+      ACCESSPROOF_GUARD_CREDENTIAL_FILE: /var/lib/accessproof-guard/credentials.json
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ./state:/var/lib/accessproof-guard
+    ports:
+      - "127.0.0.1:${GUARD_PORT:-8080}:8080"

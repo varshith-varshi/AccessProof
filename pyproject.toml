@@ -38,6 +38,7 @@ dev = [
 [project.scripts]
 accessproof = "packages.client_sdk.cli:app"
 accessproof-runner = "apps.runner.accessproof_runner.main:main"
+accessproof-guard = "apps.guard.accessproof_guard.cli:app"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

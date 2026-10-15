@@ -8,7 +8,8 @@ branch_labels = None
 depends_on = None
 
 def upgrade() -> None:
-    org = lambda: sa.ForeignKey("organizations.id", ondelete="CASCADE")
+    def org():
+        return sa.ForeignKey("organizations.id", ondelete="CASCADE")
     op.create_table("guard_subjects", sa.Column("id", sa.String(36), primary_key=True), sa.Column("organization_id", sa.String(36), org(), nullable=False), sa.Column("provider", sa.String(50), nullable=False), sa.Column("provider_subject_id", sa.String(255), nullable=False), sa.Column("display_name", sa.String(255)), sa.Column("primary_email", sa.String(320)), sa.Column("status", sa.String(20), nullable=False, server_default="active"), sa.Column("last_synced_at", sa.DateTime(timezone=True)), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False), sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False), sa.UniqueConstraint("organization_id", "provider", "provider_subject_id"))
     op.create_index("ix_guard_subjects_organization_id", "guard_subjects", ["organization_id"])
     op.create_table("guard_resources", sa.Column("id", sa.String(36), primary_key=True), sa.Column("organization_id", sa.String(36), org(), nullable=False), sa.Column("source_id", sa.String(36), nullable=False), sa.Column("provider_resource_id", sa.String(512), nullable=False), sa.Column("parent_resource_id", sa.String(36)), sa.Column("resource_type", sa.String(50), nullable=False), sa.Column("scope", sa.String(100), nullable=False), sa.Column("metadata_json", sa.Text, nullable=False, server_default="{}"), sa.Column("last_synced_at", sa.DateTime(timezone=True)), sa.UniqueConstraint("organization_id", "source_id", "provider_resource_id"))

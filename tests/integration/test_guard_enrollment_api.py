@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from apps.api.accessproof_api.app import app
-from apps.api.accessproof_api.db import Base, GuardPolicy, SessionLocal, engine
+from apps.api.accessproof_api.db import Base, GuardAuditEvent, GuardPolicy, GuardResource, GuardSubject, SessionLocal, engine
 
 
 def _signup(client, email):
@@ -59,11 +60,42 @@ def test_guard_policy_sync_and_ack_are_machine_and_tenant_bound():
         token = client.post(f"/api/v1/guards/{guard_id}/enrollments", headers=_headers(account), json={}).json()["enrollment_token"]
         credential = client.post("/api/v1/guards/exchange", json={"enrollment_token": token, "version": "1"}).json()["guard_credential"]
         with SessionLocal() as db:
-            db.add(GuardPolicy(organization_id=account["organization_id"], policy_key="k", version=1, decision="deny", subject_id="alice", resource_id="finance", source_id="drive", scope="read", reason="DENY"))
+            subject = GuardSubject(
+                organization_id=account["organization_id"],
+                provider="google-drive",
+                provider_subject_id="alice",
+            )
+            db.add(subject)
+            db.flush()
+            resource = GuardResource(
+                organization_id=account["organization_id"], source_id="drive", provider_resource_id="finance"
+            )
+            db.add(resource)
+            db.flush()
+            db.add(GuardPolicy(organization_id=account["organization_id"], policy_key="k", version=1, decision="deny", subject_id=subject.id, resource_id=resource.id, source_id="drive", scope="read", reason="DENY"))
             db.commit()
         headers = {"Authorization": f"Bearer {credential}"}
         sync = client.get(f"/api/v1/guards/{guard_id}/policies", headers=headers)
         assert sync.status_code == 200 and sync.json()["policies"][0]["decision"] == "deny"
+        assert sync.json()["policies"][0]["subject_id"] == "alice"
+        assert sync.json()["policies"][0]["resource_id"] == "finance"
         assert client.post("/api/v1/guards/policies/ack", headers=headers, json={"guard_id": guard_id, "policy_version": 1, "status": "received"}).status_code == 200
         assert client.post("/api/v1/guards/policies/ack", headers=headers, json={"guard_id": guard_id, "policy_version": 1, "status": "installed"}).status_code == 200
         assert client.get(f"/api/v1/guards/{guard_id}/policies", headers={"Authorization": f"Bearer {account['session_token']}"}).status_code == 401
+
+
+def test_guard_audit_upload_is_machine_only_and_idempotent():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        account = _signup(client, "guard-audit@example.com")
+        guard_id = client.post("/api/v1/guards", headers=_headers(account), json={"name": "g"}).json()["id"]
+        token = client.post(f"/api/v1/guards/{guard_id}/enrollments", headers=_headers(account), json={}).json()["enrollment_token"]
+        credential = client.post("/api/v1/guards/exchange", json={"enrollment_token": token, "version": "1"}).json()["guard_credential"]
+        payload = {"guard_id": guard_id, "events": [{"event_id": "event-1", "application_id": "app-1", "subject_id": "alice", "request_id": "request-1", "result": "block", "reason": "DENY", "policy_version": 1}]}
+        headers = {"Authorization": f"Bearer {credential}"}
+        assert client.post("/api/v1/guards/audit-events", headers=headers, json=payload).json() == {"accepted": 1}
+        assert client.post("/api/v1/guards/audit-events", headers=headers, json=payload).json() == {"accepted": 0}
+        assert client.post("/api/v1/guards/audit-events", headers={"Authorization": f"Bearer {account['session_token']}"}, json=payload).status_code == 401
+        with SessionLocal() as db:
+            assert len(list(db.scalars(select(GuardAuditEvent)))) == 1

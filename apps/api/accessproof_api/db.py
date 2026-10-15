@@ -711,6 +711,7 @@ class GuardPermissionEvent(Base):
     processing_status: Mapped[str] = mapped_column(String(30), default="received")
     mutation_json: Mapped[str] = mapped_column(Text, default="{}")
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     policy_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -776,6 +777,23 @@ class GuardProtectionDecision(Base):
     result: Mapped[str] = mapped_column(String(30))
     reason: Mapped[str] = mapped_column(String(255))
     resources_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GuardAuditEvent(Base):
+    """Idempotently uploaded metadata-only Guard decision audit record."""
+    __tablename__ = "guard_audit_events"
+    __table_args__ = (UniqueConstraint("guard_id", "event_id", name="uq_guard_audit_event"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    guard_id: Mapped[str] = mapped_column(ForeignKey("guard_registrations.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[str] = mapped_column(String(64))
+    application_id: Mapped[str] = mapped_column(String(36), index=True)
+    subject_id: Mapped[str] = mapped_column(String(255), index=True)
+    request_id: Mapped[str] = mapped_column(String(255), index=True)
+    result: Mapped[str] = mapped_column(String(30))
+    reason: Mapped[str] = mapped_column(String(255))
+    policy_version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

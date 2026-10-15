@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as OrmSession
 
 from apps.api.accessproof_api.auth import (
@@ -70,6 +71,7 @@ from apps.api.accessproof_api.db import (
     GuardPolicy,
     GuardPolicyDistribution,
     GuardEffectiveAccess,
+    GuardAuditEvent,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
@@ -108,6 +110,7 @@ from apps.api.accessproof_api.schemas import (
     GuardExchange as GuardExchange,
     GuardHeartbeat as GuardHeartbeat,
     GuardPolicyAck as GuardPolicyAck,
+    GuardAuditBatch as GuardAuditBatch,
     ResetPasswordRequest as ResetPasswordRequest,
     ChangePasswordRequest as ChangePasswordRequest,
     MfaEnableRequest as MfaEnableRequest,
@@ -820,6 +823,35 @@ def _authenticate_guard(db: OrmSession, guard_id: str, authorization: str | None
     return guard
 
 
+def _guard_subject_identifier(db: OrmSession, organization_id: str, subject_id: str) -> str:
+    """Return the provider's stable principal identifier for Guard policy checks.
+
+    Internal UUIDs are useful for relational state, but an application Guard
+    receives a verified JWT `sub`. Publishing the UUID would make every policy
+    miss and fail closed. Imported rows without a matching subject retain their
+    stored identifier for backwards-compatible remediation.
+    """
+    subject = db.scalar(select(GuardSubject).where(
+        GuardSubject.organization_id == organization_id,
+        GuardSubject.id == subject_id,
+    ))
+    return subject.provider_subject_id if subject else subject_id
+
+
+def _guard_resource_identifier(db: OrmSession, organization_id: str, resource_id: str) -> str:
+    """Return the provider resource identifier used by the application Guard.
+
+    The control plane stores normalized relational UUIDs, while the Guard sees
+    the source/provider resource identifier returned by its RAG integration.
+    Sending the UUID here would make an otherwise valid policy fail closed.
+    """
+    resource = db.scalar(select(GuardResource).where(
+        GuardResource.organization_id == organization_id,
+        GuardResource.id == resource_id,
+    ))
+    return resource.provider_resource_id if resource else resource_id
+
+
 @app.post("/api/v1/guards/heartbeat")
 def guard_heartbeat(
     payload: GuardHeartbeat,
@@ -854,7 +886,7 @@ def guard_policies(
             GuardEffectiveAccess.organization_id == guard.organization_id
         )).all()
         return {"kind": "full", "version": latest, "decisions": [
-            {"subject_id": row.subject_id, "source_id": row.source_id, "resource_id": row.resource_id,
+            {"subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id, "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id),
              "scope": row.scope, "decision": row.decision, "reason": row.reason}
             for row in states
         ]}
@@ -863,8 +895,8 @@ def guard_policies(
         GuardPolicy.version > after_version,
     ).order_by(GuardPolicy.version.asc())).all()
     return {"kind": "incremental", "version": latest, "policies": [
-        {"version": row.version, "subject_id": row.subject_id, "source_id": row.source_id,
-         "resource_id": row.resource_id, "scope": row.scope, "decision": row.decision,
+        {"version": row.version, "subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id,
+         "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id), "scope": row.scope, "decision": row.decision,
          "reason": row.reason}
         for row in rows
     ]}
@@ -906,6 +938,40 @@ def guard_policy_ack(
         guard.last_policy_sync_at = now
     db.commit()
     return {"ok": True, "status": distribution.status}
+
+
+@app.post("/api/v1/guards/audit-events", status_code=202)
+def upload_guard_audit_events(
+    payload: GuardAuditBatch,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, int]:
+    """Accept bounded, metadata-only Guard audit batches idempotently."""
+    guard = _authenticate_guard(db, payload.guard_id, authorization)
+    accepted = 0
+    for item in payload.events:
+        # The unique constraint is the authority here.  The nested savepoint
+        # makes concurrent replays harmless without discarding other items in
+        # the same batch.
+        try:
+            with db.begin_nested():
+                db.add(GuardAuditEvent(
+                    organization_id=guard.organization_id,
+                    guard_id=guard.id,
+                    event_id=item.event_id,
+                    application_id=item.application_id,
+                    subject_id=item.subject_id,
+                    request_id=item.request_id,
+                    result=item.result,
+                    reason=item.reason,
+                    policy_version=item.policy_version,
+                ))
+                db.flush()
+        except IntegrityError:
+            continue
+        accepted += 1
+    db.commit()
+    return {"accepted": accepted}
 
 
 @app.post("/api/v1/auth/signup", status_code=201)

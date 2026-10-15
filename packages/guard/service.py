@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from hashlib import sha256
 from threading import Lock
 from uuid import uuid4
 

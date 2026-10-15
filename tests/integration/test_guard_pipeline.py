@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -14,6 +15,7 @@ from apps.api.accessproof_api.db import (
     engine,
 )
 from apps.api.accessproof_api.guard_pipeline import process_guard_event
+from apps.worker.accessproof_worker.main import claim_one_guard_event
 
 
 def _event(db, org, subject, resource, revision, key, change_type, **mutation):
@@ -128,5 +130,25 @@ def test_retry_of_a_resolved_event_reuses_its_existing_policy():
         retry = process_guard_event(db, event_id)
         assert retry["policy_id"] == first["policy_id"]
         assert len(list(db.scalars(select(GuardPolicy)))) == 1
+    finally:
+        db.close()
+
+
+def test_abandoned_processing_event_is_reclaimed_and_completed():
+    db, org, subject, resource = _setup()
+    try:
+        event_id = _event(
+            db, org, subject, resource, 1, "reclaim-1", "grant_upsert",
+            grant_key="direct", principal_type="subject", grant_effect="allow",
+        )
+        event = db.get(GuardPermissionEvent, event_id)
+        event.processing_status = "processing"
+        event.processing_started_at = datetime.now(timezone.utc) - timedelta(minutes=6)
+        db.commit()
+        assert claim_one_guard_event() == event_id
+        assert process_guard_event(db, event_id)["status"] == "resolved"
+        event = db.get(GuardPermissionEvent, event_id)
+        assert event.processing_status == "resolved"
+        assert event.processing_started_at is None
     finally:
         db.close()

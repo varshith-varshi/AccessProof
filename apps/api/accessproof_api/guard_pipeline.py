@@ -212,6 +212,7 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
     if event.processing_status in {"resolved", "stale", "error"}:
         return {"status": event.processing_status, "policy_id": event.policy_id or ""}
     event.processing_status = "processing"
+    event.processing_started_at = event.processing_started_at or _now()
     db.flush()
     mutation = _event_mutation(event)
     unknown_reason = _apply_mutation(db, event, mutation)
@@ -230,6 +231,7 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
     if prior is not None and event.provider_revision < prior.source_revision:
         event.processing_status = "stale"
         event.error_code = "STALE"
+        event.processing_started_at = None
         event.completed_at = _now()
         db.commit()
         return {"status": "stale"}
@@ -319,6 +321,7 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
         ))
     event.processing_status = "resolved"
     event.error_code = None
+    event.processing_started_at = None
     event.completed_at = _now()
     db.commit()
     return {"status": "resolved", "policy_id": event.policy_id or "", "decision": decision}

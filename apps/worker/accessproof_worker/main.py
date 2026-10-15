@@ -336,16 +336,28 @@ async def process_cleanup_task(task_id: str) -> None:
 
 
 def claim_one_guard_event() -> str | None:
+    # A worker can terminate after leasing an event and before it writes a
+    # terminal result.  Reclaim only leases old enough to be abandoned so a
+    # live worker is never raced by another worker.
+    now = datetime.now(timezone.utc)
+    retry_before = now - timedelta(minutes=5)
     with SessionLocal() as db:
         row = db.scalar(
             select(GuardPermissionEvent)
-            .where(GuardPermissionEvent.processing_status.in_(["received", "queued"]))
+            .where(
+                (GuardPermissionEvent.processing_status.in_(["received", "queued"]))
+                | (
+                    (GuardPermissionEvent.processing_status == "processing")
+                    & (GuardPermissionEvent.processing_started_at < retry_before)
+                )
+            )
             .order_by(GuardPermissionEvent.received_at.asc())
             .limit(1)
         )
         if row is None:
             return None
         row.processing_status = "processing"
+        row.processing_started_at = now
         db.commit()
         return row.id
 
@@ -359,6 +371,7 @@ def process_claimed_guard_event(event_id: str) -> None:
             if event is not None:
                 event.processing_status = "error"
                 event.error_code = type(exc).__name__[:100]
+                event.processing_started_at = None
                 event.completed_at = datetime.now(timezone.utc)
                 db.commit()
             logger.exception("guard_permission_event_processing_failed event_id=%s", event_id)

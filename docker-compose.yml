@@ -23,7 +23,7 @@ services:
       timeout: 3s
       retries: 20
   api:
-    profiles: ["full"]
+    profiles: ["full", "guard"]
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -117,6 +117,28 @@ services:
     tmpfs: [/tmp]
     volumes:
       - runner_state:/app/.accessproof-runner
+  guard:
+    profiles: ["guard"]
+    build:
+      context: .
+      dockerfile: apps/guard/Dockerfile
+    environment:
+      ACCESSPROOF_GUARD_CONTROL_PLANE_URL: ${ACCESSPROOF_GUARD_CONTROL_PLANE_URL:-http://api:8000}
+      ACCESSPROOF_GUARD_ID: ${ACCESSPROOF_GUARD_ID:-}
+      ACCESSPROOF_GUARD_CREDENTIAL: ${ACCESSPROOF_GUARD_CREDENTIAL:-}
+      ACCESSPROOF_GUARD_JWT_ISSUER: ${ACCESSPROOF_GUARD_JWT_ISSUER:-}
+      ACCESSPROOF_GUARD_JWT_AUDIENCE: ${ACCESSPROOF_GUARD_JWT_AUDIENCE:-}
+      ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY: ${ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY:-}
+      ACCESSPROOF_GUARD_MODE: ${ACCESSPROOF_GUARD_MODE:-protect}
+      ACCESSPROOF_GUARD_FAIL_MODE: ${ACCESSPROOF_GUARD_FAIL_MODE:-fail_closed}
+    volumes:
+      - guard_state:/var/lib/accessproof-guard
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:${GUARD_PORT:-8080}:8080"]
+    depends_on:
+      api: {condition: service_healthy}
 volumes:
   accessproof_pg:
   runner_state:
+  guard_state:

@@ -216,6 +216,21 @@ class GuardPolicyAck(BaseModel):
     status: Literal["received", "installed"]
 
 
+class GuardAuditEventInput(BaseModel):
+    event_id: str = Field(min_length=1, max_length=64)
+    application_id: str = Field(min_length=1, max_length=36)
+    subject_id: str = Field(min_length=1, max_length=255)
+    request_id: str = Field(min_length=1, max_length=255)
+    result: str = Field(min_length=1, max_length=30)
+    reason: str = Field(min_length=1, max_length=255)
+    policy_version: int = Field(default=0, ge=0)
+
+
+class GuardAuditBatch(BaseModel):
+    guard_id: str
+    events: list[GuardAuditEventInput] = Field(min_length=1, max_length=100)
+
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=12, max_length=256)
