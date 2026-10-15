@@ -728,6 +728,27 @@ def list_guards(
     return result
 
 
+@app.post("/api/v1/guards/{guard_id}/revoke")
+def revoke_guard(
+    guard_id: str,
+    actor: Actor = Depends(require(Permission.RUNNER_WRITE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    guard = db.scalar(select(GuardRegistration).where(
+        GuardRegistration.id == guard_id,
+        GuardRegistration.organization_id == actor.membership.organization_id,
+    ))
+    if guard is None:
+        raise HTTPException(404, "Guard not found")
+    if guard.revoked_at is None:
+        guard.revoked_at = datetime.now(timezone.utc)
+        guard.status = "revoked"
+        guard.health = "revoked"
+        _audit(db, actor, guard.organization_id, "guard.revoked", "guard", guard.id)
+        db.commit()
+    return {"id": guard.id, "revoked": True}
+
+
 @app.post("/api/v1/guards/{guard_id}/enrollments", status_code=201)
 def create_guard_enrollment(
     guard_id: str,

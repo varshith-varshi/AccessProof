@@ -44,6 +44,10 @@ def test_guard_enrollment_is_single_use_and_machine_credentials_are_separate():
         listed = client.get("/api/v1/guards", headers=_headers(account)).json()
         assert listed[0]["status"] == "enrolled"
         assert listed[0]["active_policy_version"] == 7
+        other_guard = client.post("/api/v1/guards", headers=_headers(account), json={"name": "other"}).json()["id"]
+        assert client.post("/api/v1/guards/heartbeat", headers={"Authorization": f"Bearer {credential}"}, json={"guard_id": other_guard, "version": "1.0.0"}).status_code == 401
+        assert client.post(f"/api/v1/guards/{guard_id}/revoke", headers=_headers(account)).status_code == 200
+        assert client.post("/api/v1/guards/heartbeat", headers={"Authorization": f"Bearer {credential}"}, json={"guard_id": guard_id, "version": "1.0.0"}).status_code == 401
 
 
 def test_guard_policy_sync_and_ack_are_machine_and_tenant_bound():
