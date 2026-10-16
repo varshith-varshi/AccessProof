@@ -983,12 +983,15 @@ def upload_guard_audit_events(
                     organization_id=guard.organization_id,
                     guard_id=guard.id,
                     event_id=item.event_id,
+                    decision_id=item.decision_id,
                     application_id=item.application_id,
                     subject_id=item.subject_id,
                     request_id=item.request_id,
+                    layer=item.layer,
                     result=item.result,
                     reason=item.reason,
                     policy_version=item.policy_version,
+                    resources_json=json.dumps(sorted(set(item.resource_ids))),
                 ))
                 db.flush()
         except IntegrityError:
@@ -2099,13 +2102,24 @@ def current_dashboard(
     source_count = int(db.scalar(select(func.count(SourceConnection.id)).where(
         SourceConnection.organization_id == org_id
     )) or 0)
-    blocked_count = int(db.scalar(select(func.count(GuardProtectionDecision.id)).where(
+    live_blocked_count = int(db.scalar(select(func.count(GuardAuditEvent.id)).where(
+        GuardAuditEvent.organization_id == org_id,
+        GuardAuditEvent.result.in_(["block", "would_block"]),
+    )) or 0)
+    # Old installations can contain the pre-audit projection while their Guards
+    # roll forward.  Keep it visible, but new Guard uploads use GuardAuditEvent.
+    legacy_blocked_count = int(db.scalar(select(func.count(GuardProtectionDecision.id)).where(
         GuardProtectionDecision.organization_id == org_id,
         GuardProtectionDecision.result.in_(["block", "would_block"]),
     )) or 0)
-    application_count = int(db.scalar(select(func.count(func.distinct(GuardProtectionDecision.application_id))).where(
+    blocked_count = live_blocked_count + legacy_blocked_count
+    application_ids = set(db.scalars(select(GuardAuditEvent.application_id).where(
+        GuardAuditEvent.organization_id == org_id
+    )))
+    application_ids.update(db.scalars(select(GuardProtectionDecision.application_id).where(
         GuardProtectionDecision.organization_id == org_id
-    )) or 0)
+    )))
+    application_count = len(application_ids)
 
     activity: list[dict[str, Any]] = []
     for event in db.scalars(select(AuditEvent).where(
@@ -2152,6 +2166,26 @@ def current_dashboard(
         "blocked_requests": blocked_count,
         "recent_activity": activity[:25],
     }
+
+
+@app.get("/api/v1/current/protection-decisions")
+def current_protection_decisions(
+    limit: int = 100,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Tenant-scoped, metadata-only Guard decision history for web-v2."""
+    rows = db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == actor.membership.organization_id,
+    ).order_by(GuardAuditEvent.created_at.desc()).limit(max(1, min(limit, 250)))).all()
+    return [{
+        "id": row.id, "decision_id": row.decision_id, "guard_id": row.guard_id,
+        "application_id": row.application_id, "subject_id": row.subject_id,
+        "request_id": row.request_id, "layer": row.layer, "result": row.result,
+        "reason": row.reason, "policy_version": row.policy_version,
+        "resource_ids": json.loads(row.resources_json or "[]"),
+        "created_at": row.created_at.isoformat(),
+    } for row in rows]
 
 
 @app.get("/api/v1/projects")

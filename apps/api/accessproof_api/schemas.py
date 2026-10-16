@@ -227,12 +227,15 @@ class GuardPolicyAck(BaseModel):
 
 class GuardAuditEventInput(BaseModel):
     event_id: str = Field(min_length=1, max_length=64)
+    decision_id: str | None = Field(default=None, max_length=64)
     application_id: str = Field(min_length=1, max_length=36)
     subject_id: str = Field(min_length=1, max_length=255)
     request_id: str = Field(min_length=1, max_length=255)
+    layer: Literal["layer1", "layer2"] = "layer1"
     result: str = Field(min_length=1, max_length=30)
     reason: str = Field(min_length=1, max_length=255)
     policy_version: int = Field(default=0, ge=0)
+    resource_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
 class GuardAuditBatch(BaseModel):

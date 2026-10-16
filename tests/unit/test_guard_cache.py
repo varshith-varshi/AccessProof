@@ -44,6 +44,15 @@ def test_decision_context_is_bound_to_application_and_subject(tmp_path):
     assert cache.load_context("decision", "rag", "bob") is None
 
 
+def test_decision_context_is_bound_to_request_and_is_one_time_use(tmp_path):
+    cache = PolicyCache(str(tmp_path / "guard.db"))
+    cache.save_context("decision", "rag", "bob", ["handbook"], request_id="request-1")
+    assert cache.load_context("decision", "rag", "bob", "request-2") is None
+    assert cache.consume_context("decision", "rag", "bob", "request-1")
+    assert cache.load_context("decision", "rag", "bob", "request-1") is None
+    assert not cache.consume_context("decision", "rag", "bob", "request-1")
+
+
 def test_audit_buffer_is_idempotent_and_bounded_without_content(tmp_path):
     cache = PolicyCache(str(tmp_path / "guard.db"), max_audit_records=2)
     assert cache.buffer_audit("a", application_id="rag", subject_id="alice", request_id="r1", result="block", reason="DENY", policy_version=1)

@@ -20,6 +20,8 @@ cache = PolicyCache(os.getenv("ACCESSPROOF_GUARD_CACHE", "/var/lib/accessproof-g
 issuer = os.getenv("ACCESSPROOF_GUARD_JWT_ISSUER")
 audience = os.getenv("ACCESSPROOF_GUARD_JWT_AUDIENCE")
 verification_key = os.getenv("ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY")
+expected_tenant = os.getenv("ACCESSPROOF_GUARD_IDENTITY_TENANT_ID")
+subject_claim = os.getenv("ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM", "sub")
 mode = os.getenv("ACCESSPROOF_GUARD_MODE", "protect").lower()
 fail_mode = os.getenv("ACCESSPROOF_GUARD_FAIL_MODE", "fail_closed").lower()
 _credential_path = Path(os.getenv("ACCESSPROOF_GUARD_CREDENTIAL_FILE", "/var/lib/accessproof-guard/credentials.json"))
@@ -106,8 +108,16 @@ class FilterRequest(BaseModel):
 class OutputRequest(BaseModel):
     decision_id: str
     application_id: str
+    request_id: str
     used_resource_ids: list[str] = Field(default_factory=list)
-    trusted_provenance: bool = False
+    provenance: list["ProvenanceItem"] = Field(default_factory=list)
+
+
+class ProvenanceItem(BaseModel):
+    """A derived result with the stable source resources that produced it."""
+    derived_id: str | None = Field(default=None, max_length=255)
+    derived_type: str = Field(default="retrieval", max_length=64)
+    source_resource_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
 def _subject(authorization: str | None) -> str:
@@ -120,7 +130,12 @@ def _subject(authorization: str | None) -> str:
         claims = jwt.decode(token, verification_key, algorithms=["HS256"], issuer=issuer, audience=audience, options={"require": ["exp", "sub", "iss", "aud"]})
     except jwt.PyJWTError as exc:
         raise HTTPException(401, "Invalid trusted identity token") from exc
-    return str(claims["sub"])
+    if expected_tenant and claims.get("tid") != expected_tenant:
+        raise HTTPException(401, "Trusted identity token is for a different tenant")
+    stable_subject = claims.get(subject_claim)
+    if not isinstance(stable_subject, str) or not stable_subject:
+        raise HTTPException(401, "Trusted identity token has no stable subject")
+    return stable_subject
 
 
 @app.get("/health")
@@ -159,7 +174,10 @@ def filter_resources(payload: FilterRequest, authorization: str | None = Header(
     else:
         result = "block" if denied or (unknown and fail_mode == "fail_closed") else "allow"
     decision_id = str(uuid4())
-    cache.save_context(decision_id, payload.application_id, subject, [item["resource_id"] for item in allowed])
+    cache.save_context(
+        decision_id, payload.application_id, subject, [item["resource_id"] for item in allowed],
+        request_id=payload.request_id,
+    )
     cache.buffer_audit(
         decision_id,
         application_id=payload.application_id,
@@ -168,6 +186,9 @@ def filter_resources(payload: FilterRequest, authorization: str | None = Header(
         result=result,
         reason="LAYER1_EFFECTIVE_ACCESS",
         policy_version=cache.version(),
+        decision_id=decision_id,
+        layer="layer1",
+        resource_ids=[item["resource_id"] for item in allowed + denied + unknown],
     )
     return {"decision_id": decision_id, "decision": result, "policy_version": cache.version(), "mode": mode, "allowed": allowed, "denied": denied, "unknown": unknown}
 
@@ -176,22 +197,32 @@ def filter_resources(payload: FilterRequest, authorization: str | None = Header(
 def check_output(payload: OutputRequest, authorization: str | None = Header(default=None)) -> dict[str, str | int]:
     """Block output whose trusted provenance escapes the Layer 1 context."""
     subject = _subject(authorization)
-    permitted = cache.load_context(payload.decision_id, payload.application_id, subject)
+    permitted = cache.load_context(payload.decision_id, payload.application_id, subject, payload.request_id)
+    provenance_ids = {
+        resource_id
+        for item in payload.provenance
+        for resource_id in item.source_resource_ids
+    }
     if permitted is None:
         result = {"decision": "unknown", "reason": "DECISION_CONTEXT_INVALID", "policy_version": cache.version()}
-    elif not payload.trusted_provenance:
+    elif not provenance_ids or not set(payload.used_resource_ids).issubset(provenance_ids):
         result = {"decision": "block" if fail_mode == "fail_closed" and mode == "protect" else "unknown", "reason": "PROVENANCE_MISSING", "policy_version": cache.version()}
-    elif set(payload.used_resource_ids).difference(permitted):
+    elif provenance_ids.difference(permitted) or set(payload.used_resource_ids).difference(permitted):
         result = {"decision": "block" if mode == "protect" else "would_block", "reason": "PROVENANCE_ESCAPE", "policy_version": cache.version()}
     else:
         result = {"decision": "allow" if mode == "protect" else "would_allow", "reason": "TRUSTED_PROVENANCE_VALID", "policy_version": cache.version()}
+    if permitted is not None:
+        cache.consume_context(payload.decision_id, payload.application_id, subject, payload.request_id)
     cache.buffer_audit(
         f"{payload.decision_id}:layer2",
         application_id=payload.application_id,
         subject_id=subject,
-        request_id=payload.decision_id,
+        request_id=payload.request_id,
         result=str(result["decision"]),
         reason=str(result["reason"]),
         policy_version=cache.version(),
+        decision_id=payload.decision_id,
+        layer="layer2",
+        resource_ids=sorted(provenance_ids),
     )
     return result

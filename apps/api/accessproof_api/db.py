@@ -788,12 +788,15 @@ class GuardAuditEvent(Base):
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     guard_id: Mapped[str] = mapped_column(ForeignKey("guard_registrations.id", ondelete="CASCADE"), index=True)
     event_id: Mapped[str] = mapped_column(String(64))
+    decision_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     application_id: Mapped[str] = mapped_column(String(36), index=True)
     subject_id: Mapped[str] = mapped_column(String(255), index=True)
     request_id: Mapped[str] = mapped_column(String(255), index=True)
+    layer: Mapped[str] = mapped_column(String(20), default="layer1")
     result: Mapped[str] = mapped_column(String(30))
     reason: Mapped[str] = mapped_column(String(255))
     policy_version: Mapped[int] = mapped_column(default=0)
+    resources_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
