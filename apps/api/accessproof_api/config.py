@@ -15,7 +15,13 @@ class Settings:
     company_name: str = os.getenv("ACCESSPROOF_COMPANY_NAME", "AccessProof Labs")
     support_url: str = os.getenv("ACCESSPROOF_SUPPORT_URL", "https://example.invalid/support")
     support_email: str = os.getenv("ACCESSPROOF_SUPPORT_EMAIL", "support@example.invalid")
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./accessproof.db")
+    # The current Guard product can move to a clean database without deleting
+    # the legacy campaign/run database.  DATABASE_URL remains a compatible
+    # fallback for existing installations and test environments.
+    database_url: str = os.getenv(
+        "ACCESSPROOF_CURRENT_DATABASE_URL",
+        os.getenv("DATABASE_URL", "sqlite:///./accessproof.db"),
+    )
     redis_url: str | None = os.getenv("REDIS_URL")
     web_origin: str = os.getenv("WEB_ORIGIN", "http://localhost:3000")
     cors_allowed_origins: tuple[str, ...] = _csv_env("CORS_ALLOWED_ORIGINS", os.getenv("WEB_ORIGIN", "http://localhost:3000"))

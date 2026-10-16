@@ -1,13 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { EmptyState, ErrorState, Skeleton, StatusBadge } from "../../components/ui";
-import { AITarget, api, Project } from "../../lib/api";
+import { CurrentDashboard, api } from "../../lib/api";
 import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 
 export default function Applications() {
-  const [rows,setRows]=useState<AITarget[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
-  async function load(){setLoading(true);setError("");try{const projects=await api<Project[]>("/api/v1/projects");setRows(projects[0]?await api<AITarget[]>(`/api/v1/targets?project_id=${encodeURIComponent(projects[0].id)}`):[])}catch(e){setError(e instanceof Error?e.message:"Unable to load AI applications.")}finally{setLoading(false)}}
-  useEffect(()=>{queueMicrotask(()=>void load())},[]);
-  return <ProtectedPage><PageHeader eyebrow="AI SURFACES" title="AI applications" description="RAG and AI systems that AccessProof evaluates and protects." action={<button className="button compact">Add application</button>}/><section className="card table-card">{loading?<Skeleton rows={5}/>:error?<ErrorState message={error} retry={load}/>:!rows.length?<EmptyState title="Add your first AI application" description="Register an application, bind it to a Guard, then begin in Shadow mode." action={<button className="button compact">Add application</button>}/>:<table><thead><tr><th>Application</th><th>Connection</th><th>Execution</th><th>Authentication</th><th>Protect readiness</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td><b>{row.name}</b><small>{row.id}</small></td><td className="table-muted">{new URL(row.url).host}</td><td>{row.runner_mode?"Private network":"Direct"}</td><td><StatusBadge value={row.auth_configured?"Configured":"Unknown"}/></td><td><StatusBadge value="Not available"/></td></tr>)}</tbody></table>}</section></ProtectedPage>
+  const [rows, setRows] = useState<Array<{ id: string; blocked: number; latest: string | null }>>([]), [loading, setLoading] = useState(true), [error, setError] = useState("");
+  const load = useCallback(async () => { setLoading(true); setError(""); try { const dashboard = await api<CurrentDashboard>("/api/v1/current/dashboard"); const observed = new Map<string, { id: string; blocked: number; latest: string | null }>(); for (const item of dashboard.recent_activity) { if (!item.application_id) continue; const row = observed.get(item.application_id) ?? { id: item.application_id, blocked: 0, latest: item.timestamp }; row.blocked += item.type.includes("BLOCK") ? 1 : 0; if (!row.latest || item.timestamp > row.latest) row.latest = item.timestamp; observed.set(item.application_id, row); } setRows([...observed.values()].sort((left, right) => (right.latest ?? "").localeCompare(left.latest ?? ""))); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load AI applications."); } finally { setLoading(false); } }, []);
+  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  return <ProtectedPage><PageHeader eyebrow="AI SURFACES" title="AI applications" description="Applications appear automatically after a Guard records an authorization decision."/><section className="card table-card">{loading ? <Skeleton rows={5}/> : error ? <ErrorState message={error} retry={load}/> : !rows.length ? <EmptyState title="No AI applications observed" description="Enroll a Guard and route an AI application's authorization check through it. The application will appear here after its first decision."/> : <table><thead><tr><th>Application</th><th>Protection activity</th><th>Latest decision</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td><b>{row.id}</b><small>Observed by Guard</small></td><td><StatusBadge value={row.blocked ? `${row.blocked} blocked` : "Observed"}/></td><td className="table-muted">{row.latest ? new Date(row.latest).toLocaleString() : "Not available"}</td></tr>)}</tbody></table>}</section></ProtectedPage>
 }

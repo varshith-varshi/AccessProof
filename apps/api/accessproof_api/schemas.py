@@ -31,6 +31,15 @@ class SourceCreate(BaseModel):
     mutation_acknowledged: bool = False
 
 
+class CurrentSourceCreate(BaseModel):
+    """A current-product permission source without legacy project selection."""
+
+    provider: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=200)
+    boundary: str = Field(min_length=1, max_length=2000)
+    credentials: dict[str, Any] = Field(default_factory=dict)
+
+
 class TargetCreate(BaseModel):
     project_id: str
     name: str

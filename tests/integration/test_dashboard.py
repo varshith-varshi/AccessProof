@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from apps.api.accessproof_api.app import app
 from apps.api.accessproof_api.db import (
     Base,
+    GuardProtectionDecision,
     Project,
     Runner,
     SessionLocal,
@@ -99,3 +100,30 @@ def test_dashboard_uses_only_measured_run_data():
         assert body["worst_source"]["name"] == "Mock source"
         assert body["worst_scenario"]["name"] == "Group revoke"
         assert len(body["recent_runs"]) == 3
+
+
+def test_current_dashboard_is_tenant_scoped_and_does_not_render_legacy_runs():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        org, headers = _signup(client)
+        with SessionLocal() as db:
+            project = Project(organization_id=org, name="Legacy should stay hidden")
+            db.add(project)
+            db.flush()
+            suite = DbTestSuite(organization_id=org, project_id=project.id, name="Legacy", scenario_json="{}")
+            db.add(suite)
+            db.flush()
+            db.add(DbTestRun(organization_id=org, project_id=project.id, suite_id=suite.id, state="FAILED", outcome="FAIL"))
+            db.add(GuardProtectionDecision(
+                organization_id=org, guard_id=None, application_id="rag-finance", subject_id="directory-user-1",
+                request_id="request-1", policy_version=3, mode="protect", result="block", reason="PROVENANCE_REQUIRED",
+            ))
+            db.commit()
+        response = client.get("/api/v1/current/dashboard", headers=headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["blocked_requests"] == 1
+        assert body["ai_applications"] == 1
+        assert "recent_runs" not in body
+        assert body["recent_activity"][0]["type"] == "LAYER2_BLOCK"

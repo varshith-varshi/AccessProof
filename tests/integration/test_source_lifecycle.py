@@ -1,7 +1,6 @@
 from fastapi.testclient import TestClient
-
 from apps.api.accessproof_api.app import app
-from apps.api.accessproof_api.db import Base, engine
+from apps.api.accessproof_api.db import Base, GuardGroup, GuardGroupMembership, GuardSubject, engine
 
 
 def test_source_validate_refresh_rotate_and_disconnect_lifecycle():
@@ -60,3 +59,78 @@ def test_source_validate_refresh_rotate_and_disconnect_lifecycle():
         disconnected = client.post(f"/api/v1/sources/{source['id']}/disconnect", headers=headers)
         assert disconnected.status_code == 200
         assert disconnected.json()["status"] == "disconnected"
+
+
+def test_current_source_flow_hides_legacy_project_and_is_tenant_scoped():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        first = client.post("/api/v1/auth/signup", json={
+            "email": "current-source@example.com", "password": "correct horse battery staple",
+            "organization_name": "Current source org",
+        }).json()
+        first_headers = {
+            "Authorization": f"Bearer {first['session_token']}",
+            "X-Organization-ID": first["organization_id"],
+        }
+        created = client.post("/api/v1/current/sources", headers=first_headers, json={
+            "provider": "mock", "name": "Current directory", "boundary": "directory-root",
+            "credentials": {"access_token": "never-return-this"},
+        })
+        assert created.status_code == 201
+        assert "project_id" not in created.json()
+        listed = client.get("/api/v1/current/sources", headers=first_headers)
+        assert [source["id"] for source in listed.json()] == [created.json()["id"]]
+        assert client.get("/api/v1/projects", headers=first_headers).json()[0]["name"] == "__accessproof_current_product__"
+
+        second = client.post("/api/v1/auth/signup", json={
+            "email": "other-current-source@example.com", "password": "correct horse battery staple",
+            "organization_name": "Other current source org",
+        }).json()
+        second_headers = {
+            "Authorization": f"Bearer {second['session_token']}",
+            "X-Organization-ID": second["organization_id"],
+        }
+        assert client.get("/api/v1/current/sources", headers=second_headers).json() == []
+
+
+def test_current_directory_sync_and_employee_list_are_tenant_scoped(monkeypatch):
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+    async def fake_synchronize(db, source, credentials):
+        assert credentials["access_token"] == "encrypted-source-token"
+        subject = GuardSubject(
+            organization_id=source.organization_id, provider="google-drive", provider_subject_id="provider-user-1",
+            display_name="Directory Alice", primary_email="alice@example.com", status="active",
+        )
+        group = GuardGroup(
+            organization_id=source.organization_id, provider="google-drive", provider_group_id="provider-group-1",
+            display_name="Engineering", status="active",
+        )
+        db.add_all([subject, group])
+        db.flush()
+        db.add(GuardGroupMembership(organization_id=source.organization_id, group_id=group.id, subject_id=subject.id, active=True))
+        return {"users": 1, "groups": 1, "memberships": 1}
+
+    monkeypatch.setattr("apps.api.accessproof_api.app.synchronize_directory", fake_synchronize)
+    with TestClient(app) as client:
+        signup = client.post("/api/v1/auth/signup", json={
+            "email": "directory@example.com", "password": "correct horse battery staple", "organization_name": "Directory Org",
+        }).json()
+        headers = {"Authorization": f"Bearer {signup['session_token']}", "X-Organization-ID": signup["organization_id"]}
+        source = client.post("/api/v1/current/sources", headers=headers, json={
+            "provider": "google-drive", "name": "Workspace", "boundary": "folder-id", "credentials": {"access_token": "encrypted-source-token"},
+        }).json()
+        synced = client.post(f"/api/v1/current/sources/{source['id']}/sync-directory", headers=headers)
+        assert synced.status_code == 200
+        assert synced.json()["synchronized"] == {"users": 1, "groups": 1, "memberships": 1}
+        employees = client.get("/api/v1/current/employees", headers=headers).json()
+        assert employees[0]["stable_id"] == "provider-user-1"
+        assert employees[0]["groups"][0]["name"] == "Engineering"
+
+        other = client.post("/api/v1/auth/signup", json={
+            "email": "other-directory@example.com", "password": "correct horse battery staple", "organization_name": "Other directory org",
+        }).json()
+        other_headers = {"Authorization": f"Bearer {other['session_token']}", "X-Organization-ID": other["organization_id"]}
+        assert client.get("/api/v1/current/employees", headers=other_headers).json() == []

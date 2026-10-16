@@ -21,6 +21,10 @@ export type Dashboard = {
   broken_connections: number;
   recent_runs: Array<{ id: string; outcome: string | null; state: string; created_at: string }>;
 };
+export type CurrentDashboard = {
+  ai_applications: number; guards_online: number; guards_total: number; permission_sources: number; blocked_requests: number;
+  recent_activity: Array<{ id: string; type: string; severity: string; timestamp: string; summary: string; guard_id?: string | null; application_id?: string | null; policy_version?: number | null }>;
+};
 
 export type Guard = {
   id: string; name: string; environment: string; version: string | null;
@@ -28,9 +32,8 @@ export type Guard = {
   last_heartbeat_at: string | null; enrolled_at: string | null; revoked_at: string | null;
 };
 
-export type Project = { id: string; name: string; status?: string };
-export type Source = { id: string; project_id: string; name: string; provider: string; status: string; capabilities?: Record<string,string>; last_validated_at?: string | null; last_error?: string | null };
-export type AITarget = { id: string; project_id: string; name: string; url: string; runner_mode: boolean; auth_configured: boolean; config: Record<string,unknown> };
+export type Source = { id: string; name: string; provider: string; boundary: string; status: string; capabilities?: Record<string,string>; last_validated_at?: string | null; last_error?: string | null };
+export type Employee = { id: string; name: string; email: string | null; provider: string; stable_id: string; status: string; last_synced_at: string | null; groups: Array<{ id: string; name: string; provider: string; stable_id: string }> };
 export type PermissionEvent = { id: string; source_id: string; provider: string; subject_id: string; resource_id: string; change_type: string; provider_revision: number; status: string; error_code: string | null; policy_id: string | null };
 export type AuditEvent = { id: string; actor: string | null; action: string; target_type: string; target_id: string; created_at: string; metadata: Record<string,unknown> };
 

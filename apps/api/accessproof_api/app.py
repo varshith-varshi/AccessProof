@@ -64,6 +64,8 @@ from apps.api.accessproof_api.db import (
     SyntheticResourceRecord,
     UsageRecord,
     GuardSubject,
+    GuardGroup,
+    GuardGroupMembership,
     GuardResource,
     GuardPermissionEvent,
     GuardEnrollment,
@@ -72,6 +74,7 @@ from apps.api.accessproof_api.db import (
     GuardPolicyDistribution,
     GuardEffectiveAccess,
     GuardAuditEvent,
+    GuardProtectionDecision,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
@@ -87,6 +90,7 @@ from apps.api.accessproof_api.schemas import (
     LoginRequest as LoginRequest,
     ProjectCreate as ProjectCreate,
     SourceCreate as SourceCreate,
+    CurrentSourceCreate as CurrentSourceCreate,
     TargetCreate as TargetCreate,
     TestIdentityCreate as TestIdentityCreate,
     TestIdentityCredentialUpdate as TestIdentityCredentialUpdate,
@@ -145,6 +149,8 @@ from packages.test_engine.regression import (
 )
 from packages.connector_sdk.http_target import validate_cloud_url
 from connectors.factory import create_source_adapter
+from apps.api.accessproof_api.directory_sync import synchronize_directory
+from connectors.directory import DirectorySyncError
 from packages.reporting.report import (
     render_html_payload,
     render_junit_payload,
@@ -440,6 +446,22 @@ def _source_payload(row: SourceConnection) -> dict[str, Any]:
         else None,
         "last_error": row.last_error,
     }
+
+
+_CURRENT_PRODUCT_WORKSPACE = "__accessproof_current_product__"
+
+
+def _current_product_workspace(db: OrmSession, organization_id: str) -> Project:
+    """Return an invisible legacy-compatibility workspace for an organization."""
+    project = db.scalar(select(Project).where(
+        Project.organization_id == organization_id,
+        Project.name == _CURRENT_PRODUCT_WORKSPACE,
+    ))
+    if project is None:
+        project = Project(organization_id=organization_id, name=_CURRENT_PRODUCT_WORKSPACE)
+        db.add(project)
+        db.flush()
+    return project
 
 
 @app.get("/health/live")
@@ -930,12 +952,14 @@ def guard_policy_ack(
     if payload.status == "received":
         distribution.guard_received_at = distribution.guard_received_at or now
         distribution.status = "received"
+        _audit(db, None, guard.organization_id, "guard.policy_received", "guard_policy", policy.id, {"guard_id": guard.id, "version": policy.version})
     else:
         distribution.guard_received_at = distribution.guard_received_at or now
         distribution.guard_installed_at = distribution.guard_installed_at or now
         distribution.status = "installed"
         guard.active_policy_version = max(guard.active_policy_version, payload.policy_version)
         guard.last_policy_sync_at = now
+        _audit(db, None, guard.organization_id, "guard.policy_installed", "guard_policy", policy.id, {"guard_id": guard.id, "version": policy.version})
     db.commit()
     return {"ok": True, "status": distribution.status}
 
@@ -2037,6 +2061,96 @@ def dashboard(
         },
         "broken_connections": broken_sources,
         "recent_runs": recent_runs,
+    }
+
+
+_CURRENT_ACTIVITY_ACTIONS = {
+    "source.created": ("PERMISSION_SOURCE_CONNECTED", "info", "Permission source connected"),
+    "source.validated": ("PERMISSION_SOURCE_RECOVERED", "info", "Permission source validated"),
+    "source.capabilities_refreshed": ("PERMISSION_SOURCE_RECOVERED", "info", "Permission source capabilities refreshed"),
+    "source.reauthorized": ("PERMISSION_SOURCE_RECOVERED", "info", "Permission source reauthorized"),
+    "guard.policy_committed": ("POLICY_COMMITTED", "info", "Authorization policy committed"),
+    "guard.policy_received": ("GUARD_POLICY_RECEIVED", "info", "Guard received authorization policy"),
+    "guard.policy_installed": ("GUARD_POLICY_INSTALLED", "info", "Guard installed authorization policy"),
+    "guard.enrolled": ("GUARD_ONLINE", "info", "Guard enrolled"),
+    "directory.sync_completed": ("RECONCILIATION_COMPLETED", "info", "Directory synchronization completed"),
+    "directory.sync_degraded": ("PERMISSION_SOURCE_DEGRADED", "warning", "Directory synchronization requires attention"),
+}
+
+
+@app.get("/api/v1/current/dashboard")
+def current_dashboard(
+    actor: Actor = Depends(require(Permission.RESULT_READ)), db: OrmSession = Depends(get_db)
+) -> dict[str, Any]:
+    """Current authorization-enforcement dashboard, intentionally run-free."""
+    org_id = actor.membership.organization_id
+    now = datetime.now(timezone.utc)
+    guards = list(db.scalars(select(GuardRegistration).where(
+        GuardRegistration.organization_id == org_id,
+        GuardRegistration.revoked_at.is_(None),
+    )))
+    guards_online = 0
+    for guard in guards:
+        heartbeat = guard.last_heartbeat_at
+        if heartbeat and heartbeat.tzinfo is None:
+            heartbeat = heartbeat.replace(tzinfo=timezone.utc)
+        if heartbeat and (now - heartbeat).total_seconds() <= settings.runner_offline_seconds:
+            guards_online += 1
+    source_count = int(db.scalar(select(func.count(SourceConnection.id)).where(
+        SourceConnection.organization_id == org_id
+    )) or 0)
+    blocked_count = int(db.scalar(select(func.count(GuardProtectionDecision.id)).where(
+        GuardProtectionDecision.organization_id == org_id,
+        GuardProtectionDecision.result.in_(["block", "would_block"]),
+    )) or 0)
+    application_count = int(db.scalar(select(func.count(func.distinct(GuardProtectionDecision.application_id))).where(
+        GuardProtectionDecision.organization_id == org_id
+    )) or 0)
+
+    activity: list[dict[str, Any]] = []
+    for event in db.scalars(select(AuditEvent).where(
+        AuditEvent.organization_id == org_id,
+        AuditEvent.action.in_(_CURRENT_ACTIVITY_ACTIONS),
+    ).order_by(AuditEvent.created_at.desc()).limit(50)):
+        event_type, severity, summary = _CURRENT_ACTIVITY_ACTIONS[event.action]
+        metadata = json.loads(event.metadata_json or "{}")
+        activity.append({
+            "id": event.id, "type": event_type, "severity": severity,
+            "timestamp": event.created_at.isoformat(), "summary": summary,
+            "guard_id": metadata.get("guard_id") if isinstance(metadata, dict) else None,
+            "policy_version": metadata.get("version") if isinstance(metadata, dict) else None,
+        })
+    for event in db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == org_id,
+        GuardAuditEvent.result.in_(["block", "would_block"]),
+    ).order_by(GuardAuditEvent.created_at.desc()).limit(50)):
+        activity.append({
+            "id": event.id, "type": "LAYER2_BLOCK" if "PROVENANCE" in event.reason else "LAYER1_BLOCK",
+            "severity": "warning", "timestamp": event.created_at.isoformat(),
+            "summary": "Guard blocked an AI request", "guard_id": event.guard_id,
+            "application_id": event.application_id, "policy_version": event.policy_version,
+        })
+    # Protection decisions are durable current-product authorization events.
+    # A Guard audit upload may arrive later, so show the decision promptly.
+    for decision in db.scalars(select(GuardProtectionDecision).where(
+        GuardProtectionDecision.organization_id == org_id,
+        GuardProtectionDecision.result.in_(["block", "would_block"]),
+    ).order_by(GuardProtectionDecision.created_at.desc()).limit(50)):
+        activity.append({
+            "id": f"decision:{decision.id}",
+            "type": "LAYER2_BLOCK" if "PROVENANCE" in decision.reason else "LAYER1_BLOCK",
+            "severity": "warning", "timestamp": decision.created_at.isoformat(),
+            "summary": "Guard blocked an AI request", "guard_id": decision.guard_id,
+            "application_id": decision.application_id, "policy_version": decision.policy_version,
+        })
+    activity.sort(key=lambda item: item["timestamp"], reverse=True)
+    return {
+        "ai_applications": application_count,
+        "guards_online": guards_online,
+        "guards_total": len(guards),
+        "permission_sources": source_count,
+        "blocked_requests": blocked_count,
+        "recent_activity": activity[:25],
     }
 
 
@@ -3273,6 +3387,133 @@ def create_source(
     )
     db.commit()
     return _source_payload(row)
+
+
+@app.post("/api/v1/current/sources", status_code=201)
+def create_current_source(
+    payload: CurrentSourceCreate,
+    actor: Actor = Depends(require(Permission.SOURCE_WRITE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Connect a source for Guard enforcement without exposing Projects.
+
+    ``source_connections`` retains its project foreign key for legacy
+    diagnostics.  The current product places each organization’s sources in
+    one hidden compatibility workspace instead of asking an administrator to
+    create or select a project.
+    """
+    organization_id = actor.membership.organization_id
+    _enforce_connector_entitlement(db, organization_id, payload.provider)
+    count = db.scalar(select(func.count(SourceConnection.id)).where(
+        SourceConnection.organization_id == organization_id
+    )) or 0
+    _enforce_count_entitlement(db, organization_id, "source_connections", int(count))
+    workspace = _current_product_workspace(db, organization_id)
+    # The current UI expresses the approved boundary as one field.  Retain the
+    # connector-specific value internally so the established source adapters
+    # still receive their explicit safety boundary at validation time.
+    credentials = dict(payload.credentials)
+    if payload.provider == "google-drive":
+        credentials.setdefault("test_root_folder_id", payload.boundary)
+    row = SourceConnection(
+        organization_id=organization_id,
+        project_id=workspace.id,
+        provider=payload.provider,
+        name=payload.name,
+        boundary=payload.boundary,
+        encrypted_credentials=_secret_box.encrypt(json.dumps(credentials))
+        if credentials
+        else None,
+    )
+    db.add(row)
+    db.flush()
+    _audit(db, actor, organization_id, "source.created", "source", row.id, {"provider": payload.provider})
+    db.commit()
+    return _source_payload(row)
+
+
+@app.get("/api/v1/current/sources")
+def list_current_sources(
+    actor: Actor = Depends(current_actor), db: OrmSession = Depends(get_db)
+) -> list[dict[str, Any]]:
+    rows = db.scalars(select(SourceConnection).where(
+        SourceConnection.organization_id == actor.membership.organization_id
+    ).order_by(SourceConnection.name.asc(), SourceConnection.id.asc())).all()
+    return [_source_payload(row) for row in rows]
+
+
+@app.post("/api/v1/current/sources/{source_id}/sync-directory")
+async def sync_current_source_directory(
+    source_id: str,
+    actor: Actor = Depends(require(Permission.SOURCE_WRITE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Read a complete provider directory into the tenant identity graph.
+
+    The synchronizer fetches every page before altering the graph.  A failed
+    or incomplete provider read therefore leaves the most recent trusted
+    directory data intact and marks the source degraded instead of denying
+    access based on absence.
+    """
+    row = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == source_id,
+        SourceConnection.organization_id == actor.membership.organization_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "Source not found")
+    try:
+        credentials = json.loads(_secret_box.decrypt(row.encrypted_credentials)) if row.encrypted_credentials else {}
+        result = await synchronize_directory(db, row, credentials)
+    except DirectorySyncError as exc:
+        row.status = "degraded"
+        row.last_error = exc.code
+        _audit(db, actor, row.organization_id, "directory.sync_degraded", "source", row.id, {"code": exc.code})
+        db.commit()
+        raise HTTPException(424, f"Directory synchronization failed: {exc.code}") from exc
+    except Exception as exc:
+        row.status = "degraded"
+        row.last_error = "DIRECTORY_SYNC_INCOMPLETE"
+        _audit(db, actor, row.organization_id, "directory.sync_degraded", "source", row.id, {"code": row.last_error})
+        db.commit()
+        logger.warning("directory_sync_failed source_id=%s error=%s", row.id, type(exc).__name__)
+        raise HTTPException(502, "Directory synchronization could not complete") from exc
+    row.status = "connected"
+    row.last_error = None
+    row.last_validated_at = datetime.now(timezone.utc)
+    _audit(db, actor, row.organization_id, "directory.sync_completed", "source", row.id, result)
+    db.commit()
+    return {"source": _source_payload(row), "synchronized": result}
+
+
+@app.get("/api/v1/current/employees")
+def list_current_employees(
+    actor: Actor = Depends(require(Permission.RESULT_READ)), db: OrmSession = Depends(get_db)
+) -> list[dict[str, Any]]:
+    """Return tenant-scoped, provider-stable identities and active groups."""
+    org_id = actor.membership.organization_id
+    subjects = list(db.scalars(select(GuardSubject).where(
+        GuardSubject.organization_id == org_id
+    ).order_by(GuardSubject.display_name.asc(), GuardSubject.primary_email.asc(), GuardSubject.id.asc())))
+    memberships = list(db.execute(select(GuardGroupMembership, GuardGroup).join(
+        GuardGroup, GuardGroup.id == GuardGroupMembership.group_id
+    ).where(
+        GuardGroupMembership.organization_id == org_id,
+        GuardGroupMembership.active.is_(True),
+        GuardGroup.organization_id == org_id,
+    )))
+    groups_by_subject: dict[str, list[dict[str, Any]]] = {}
+    for membership, group in memberships:
+        groups_by_subject.setdefault(membership.subject_id, []).append({
+            "id": group.id, "name": group.display_name or group.provider_group_id,
+            "provider": group.provider, "stable_id": group.provider_group_id,
+        })
+    return [{
+        "id": subject.id, "name": subject.display_name or subject.primary_email or subject.provider_subject_id,
+        "email": subject.primary_email, "provider": subject.provider,
+        "stable_id": subject.provider_subject_id, "status": subject.status,
+        "last_synced_at": subject.last_synced_at.isoformat() if subject.last_synced_at else None,
+        "groups": groups_by_subject.get(subject.id, []),
+    } for subject in subjects]
 
 
 @app.get("/api/v1/sources")

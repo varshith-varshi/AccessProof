@@ -8,7 +8,10 @@ from apps.api.accessproof_api.db import Base
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+url = os.getenv(
+    "ACCESSPROOF_CURRENT_DATABASE_URL",
+    os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url")),
+)
 config.set_main_option("sqlalchemy.url", url)
 target_metadata = Base.metadata
 

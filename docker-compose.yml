@@ -23,18 +23,18 @@ services:
       timeout: 3s
       retries: 20
   api:
-    profiles: ["full", "guard"]
+    profiles: ["full", "guard", "current"]
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
       ACCESSPROOF_ENV: development
-      DATABASE_URL: postgresql+psycopg://accessproof:accessproof@db:5432/accessproof
+      ACCESSPROOF_CURRENT_DATABASE_URL: ${ACCESSPROOF_CURRENT_DATABASE_URL:-postgresql+psycopg://accessproof:accessproof@db:5432/accessproof_current}
       REDIS_URL: redis://redis:6379/0
       WEB_ORIGIN: http://localhost:3000
       SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:-local-development-session-key-change-me}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-local-development-secret-key-change-me}
-    command: ["sh", "-c", "alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000"]
+    command: ["sh", "-c", "python /app/scripts/ensure_current_database.py && alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000"]
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
     depends_on:
       db: {condition: service_healthy}
@@ -50,7 +50,7 @@ services:
       context: .
       dockerfile: apps/worker/Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://accessproof:accessproof@db:5432/accessproof
+      ACCESSPROOF_CURRENT_DATABASE_URL: ${ACCESSPROOF_CURRENT_DATABASE_URL:-postgresql+psycopg://accessproof:accessproof@db:5432/accessproof_current}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-local-development-secret-key-change-me}
       ACCESSPROOF_RLS_BYPASS: "1"
     depends_on:
@@ -65,6 +65,16 @@ services:
     environment:
       API_URL: http://api:8000
     ports: ["127.0.0.1:${WEB_PORT:-3000}:3000"]
+    depends_on:
+      api: {condition: service_healthy}
+  web-v2:
+    profiles: ["current"]
+    build:
+      context: ./web-v2
+      dockerfile: Dockerfile
+    environment:
+      ACCESSPROOF_API_URL: http://api:8000
+    ports: ["127.0.0.1:${WEB_V2_PORT:-3001}:3000"]
     depends_on:
       api: {condition: service_healthy}
   demo-ai:
