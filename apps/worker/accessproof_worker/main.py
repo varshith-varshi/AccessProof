@@ -21,6 +21,7 @@ from apps.api.accessproof_api.db import (
     WebhookEndpoint,
 )
 from apps.api.accessproof_api.guard_pipeline import process_guard_event
+from apps.api.accessproof_api.directory_sync import DirectorySyncError, synchronize_directory
 from connectors.factory import create_source_adapter
 from integrations.webhooks.delivery import deliver
 from integrations.email.delivery import EmailDeliveryConfig, deliver_email
@@ -38,6 +39,7 @@ from apps.api.accessproof_api.observability import (
 from packages.observability.tracing import configure_tracing
 
 POLL_SECONDS = float(os.getenv("ACCESSPROOF_WORKER_POLL_SECONDS", "2"))
+DIRECTORY_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_DIRECTORY_SYNC_SECONDS", "900")))
 box = build_secret_backend(
     backend=settings.secret_backend,
     local_key=settings.secret_encryption_key,
@@ -377,9 +379,45 @@ def process_claimed_guard_event(event_id: str) -> None:
             logger.exception("guard_permission_event_processing_failed event_id=%s", event_id)
 
 
+async def synchronize_due_directories() -> int:
+    """Run one complete, source-scoped directory snapshot when it is due.
+
+    The snapshot synchronizer only changes the graph after complete provider
+    reads. Failures therefore retain the last trusted employee state.
+    """
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        sources = list(db.scalars(select(SourceConnection).where(
+            SourceConnection.provider.in_(["google-drive", "microsoft365", "sharepoint", "onedrive"]),
+            SourceConnection.encrypted_credentials.is_not(None),
+        )))
+        due = [source.id for source in sources if source.last_validated_at is None or (now - source.last_validated_at.replace(tzinfo=source.last_validated_at.tzinfo or timezone.utc)).total_seconds() >= DIRECTORY_SYNC_SECONDS]
+    completed = 0
+    for source_id in due:
+        with SessionLocal() as db:
+            source = db.get(SourceConnection, source_id)
+            if source is None or not source.encrypted_credentials:
+                continue
+            try:
+                credentials = json.loads(box.decrypt(source.encrypted_credentials))
+                await synchronize_directory(db, source, credentials)
+                source.status, source.last_error, source.last_validated_at = "connected", None, datetime.now(timezone.utc)
+                db.commit()
+                completed += 1
+            except DirectorySyncError as exc:
+                source.status, source.last_error = ("reauthorization_required" if exc.code == "REAUTHORIZATION_REQUIRED" else "degraded"), exc.code
+                db.commit()
+            except Exception as exc:
+                source.status, source.last_error = "degraded", "DIRECTORY_SYNC_INCOMPLETE"
+                db.commit()
+                logger.warning("scheduled_directory_sync_failed source_id=%s error=%s", source_id, type(exc).__name__)
+    return completed
+
+
 async def main() -> None:
     configure_tracing("accessproof-worker")
     last_retention = datetime.min.replace(tzinfo=timezone.utc)
+    last_directory_sync = datetime.min.replace(tzinfo=timezone.utc)
     while True:
         did_work = False
         now = datetime.now(timezone.utc)
@@ -388,6 +426,10 @@ async def main() -> None:
             scan_operational_alerts()
             last_retention = now
             did_work = True
+        if (now - last_directory_sync).total_seconds() >= DIRECTORY_SYNC_SECONDS:
+            if await synchronize_due_directories():
+                did_work = True
+            last_directory_sync = now
         email_id = claim_one_email()
         if email_id:
             did_work = True
