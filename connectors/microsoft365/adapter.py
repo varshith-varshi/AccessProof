@@ -68,6 +68,15 @@ class Microsoft365Adapter(SourceAdapter):
         normalize_http_error(response)
         return response
 
+    async def acl_delta_page(self, delta_url: str | None = None) -> dict[str, Any]:
+        """Read one Graph drive delta page; persist @odata.nextLink/deltaLink."""
+        path = delta_url or f"/drives/{self.drive_id}/root/delta"
+        if path.startswith(self.GRAPH):
+            response = await self._client.get(path, headers={"Authorization": f"Bearer {self.token}"})
+            normalize_http_error(response)
+            return response.json()
+        return (await self._request("GET", path)).json()
+
     async def validate_connection(self) -> ConnectionIdentity:
         r = await self._request(
             "GET",

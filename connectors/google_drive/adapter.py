@@ -48,6 +48,17 @@ class GoogleDriveAdapter(SourceAdapter):
         normalize_http_error(r)
         return r
 
+    async def acl_change_page(self, page_token: str | None = None) -> dict[str, Any]:
+        """Read one durable Drive Changes page; callers persist nextPageToken."""
+        if page_token is None:
+            response = await self._request("GET", f"{self.API}/changes/startPageToken", params={"supportsAllDrives": "true"})
+            return {"startPageToken": response.json().get("startPageToken"), "changes": [], "nextPageToken": None}
+        response = await self._request("GET", f"{self.API}/changes", params={
+            "pageToken": page_token, "includeItemsFromAllDrives": "true", "supportsAllDrives": "true",
+            "includeRemoved": "true", "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,parents,permissions(id,type,emailAddress,domain,role,permissionDetails)))",
+        })
+        return response.json()
+
     async def validate_connection(self) -> ConnectionIdentity:
         r = await self._request(
             "GET",
