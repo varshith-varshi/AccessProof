@@ -1,6 +1,18 @@
 import httpx
 import pytest
+from sqlalchemy import select
 
+from apps.api.accessproof_api.db import (
+    Base,
+    Organization,
+    Project,
+    ProviderSyncCursor,
+    SessionLocal,
+    SourceConnection,
+    engine,
+)
+from apps.api.accessproof_api.directory_sync import synchronize_directory
+from connectors.directory import DirectoryGroup, DirectoryUser
 from connectors.directory import DirectorySyncError, GoogleWorkspaceDirectoryAdapter, MicrosoftEntraDirectoryAdapter
 
 
@@ -32,3 +44,50 @@ async def test_graph_directory_maps_authorization_failure_without_leaking_detail
     adapter = MicrosoftEntraDirectoryAdapter("token", httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(403))))
     with pytest.raises(DirectorySyncError, match="INSUFFICIENT_DIRECTORY_PERMISSION"):
         await adapter.users()
+
+
+@pytest.mark.asyncio
+async def test_directory_sync_persists_a_source_scoped_recovery_cursor(monkeypatch):
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+    class FakeDirectory:
+        def __init__(self, _: str) -> None:
+            pass
+
+        async def users(self):
+            return [DirectoryUser("stable-alice", "Alice", "alice@company.test", "active")]
+
+        async def groups(self):
+            return [DirectoryGroup("group-engineering", "Engineering", "eng@company.test")]
+
+        async def members(self, _: str):
+            return ["stable-alice"]
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr("apps.api.accessproof_api.directory_sync.GoogleWorkspaceDirectoryAdapter", FakeDirectory)
+    db = SessionLocal()
+    try:
+        org = Organization(name="Cursor organization")
+        db.add(org)
+        db.flush()
+        project = Project(organization_id=org.id, name="Current")
+        db.add(project)
+        db.flush()
+        source = SourceConnection(organization_id=org.id, project_id=project.id, provider="google-drive", name="Workspace", boundary="root")
+        db.add(source)
+        db.commit()
+        result = await synchronize_directory(db, source, {"access_token": "test-token"})
+        db.commit()
+        assert result == {"users": 1, "groups": 1, "memberships": 1}
+        cursor = db.scalar(select(ProviderSyncCursor))
+        assert cursor is not None
+        assert cursor.source_id == source.id and cursor.status == "connected"
+        assert cursor.last_success_at is not None and cursor.last_provider_revision
+        await synchronize_directory(db, source, {"access_token": "test-token"})
+        db.commit()
+        assert len(list(db.scalars(select(ProviderSyncCursor)))) == 1
+    finally:
+        db.close()

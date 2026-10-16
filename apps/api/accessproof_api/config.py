@@ -71,6 +71,8 @@ def validate_production_settings(value: Settings = settings) -> None:
         problems.append("WEB_ORIGIN must use HTTPS in production")
     if not value.cors_allowed_origins or any(not origin.startswith("https://") for origin in value.cors_allowed_origins):
         problems.append("CORS_ALLOWED_ORIGINS must contain explicit HTTPS origins in production")
+    if any("*" in origin for origin in value.cors_allowed_origins):
+        problems.append("CORS_ALLOWED_ORIGINS must not contain wildcard origins in production")
     required_secrets = [
         ("SESSION_HMAC_KEY", value.session_hmac_key),
         ("REPORT_SIGNING_KEY", value.report_signing_key),

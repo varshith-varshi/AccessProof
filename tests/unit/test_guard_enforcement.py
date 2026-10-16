@@ -24,6 +24,7 @@ def test_guard_binds_identity_tenant_request_and_one_time_provenance(tmp_path, m
     monkeypatch.setattr(guard_app, "issuer", "https://issuer")
     monkeypatch.setattr(guard_app, "audience", "rag")
     monkeypatch.setattr(guard_app, "verification_key", "test-key-with-at-least-thirty-two-bytes")
+    monkeypatch.setattr(guard_app, "identity_mode", "static")
     monkeypatch.setattr(guard_app, "expected_tenant", "tenant-a")
     monkeypatch.setattr(guard_app, "subject_claim", "oid")
     monkeypatch.setattr(guard_app, "mode", "protect")

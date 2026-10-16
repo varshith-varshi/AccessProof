@@ -64,6 +64,13 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 docker compose --env-file .env.production -f docker-compose.production.yml ps
 ```
 
+Before deploying, run the safe configuration preflight. It reports setting
+names and pass/fail results, never credential values:
+
+```bash
+ACCESSPROOF_ENV=production python scripts/validate_production_config.py
+```
+
 Connect the Nginx container to the same private Docker network and install
 `deploy/nginx/accessproof.conf`. The upstream names are the Compose service names
 `web` and `api`. Create `/etc/nginx/snippets/accessproof-tls.conf` through Certbot

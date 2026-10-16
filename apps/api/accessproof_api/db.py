@@ -319,6 +319,29 @@ class SourceConnection(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ProviderSyncCursor(Base):
+    """Tenant-scoped durable progress for a provider synchronization stream.
+
+    Cursors are deliberately source-specific: a directory or ACL token from
+    one customer/source must never be resumed against another boundary.
+    """
+    __tablename__ = "provider_sync_cursors"
+    __table_args__ = (UniqueConstraint("organization_id", "source_id", "sync_kind"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(50), index=True)
+    sync_kind: Mapped[str] = mapped_column(String(50))
+    cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_provider_revision: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="never_synced", index=True)
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class AITarget(Base):
     __tablename__ = "ai_targets"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)

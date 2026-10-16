@@ -7,7 +7,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from apps.api.accessproof_api.db import GuardGroup, GuardGroupMembership, GuardSubject, SourceConnection
+from apps.api.accessproof_api.db import (
+    GuardGroup,
+    GuardGroupMembership,
+    GuardSubject,
+    ProviderSyncCursor,
+    SourceConnection,
+)
 from connectors.directory import (
     DirectorySyncError,
     GoogleWorkspaceDirectoryAdapter,
@@ -26,8 +32,24 @@ def _provider(source: SourceConnection) -> str:
 async def synchronize_directory(db: Session, source: SourceConnection, credentials: dict[str, Any]) -> dict[str, int]:
     """Synchronize complete provider directory state, preserving prior data on error."""
     provider = _provider(source)
+    cursor = db.scalar(select(ProviderSyncCursor).where(
+        ProviderSyncCursor.organization_id == source.organization_id,
+        ProviderSyncCursor.source_id == source.id,
+        ProviderSyncCursor.sync_kind == "directory",
+    ))
+    if cursor is None:
+        cursor = ProviderSyncCursor(
+            organization_id=source.organization_id,
+            source_id=source.id,
+            provider=provider,
+            sync_kind="directory",
+        )
+        db.add(cursor)
+    cursor.status, cursor.last_started_at, cursor.last_error_code = "syncing", _now(), None
+    db.flush()
     token = str(credentials.get("access_token") or "")
     if not token:
+        cursor.status, cursor.last_error_at, cursor.last_error_code = "reauthorization_required", _now(), "REAUTHORIZATION_REQUIRED"
         raise DirectorySyncError("REAUTHORIZATION_REQUIRED")
     if provider == "google-drive":
         adapter = GoogleWorkspaceDirectoryAdapter(token)
@@ -39,6 +61,12 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
         users = await adapter.users()
         groups = await adapter.groups()
         members = {group.provider_id: await adapter.members(group.provider_id) for group in groups}
+    except DirectorySyncError as exc:
+        cursor.status, cursor.last_error_at, cursor.last_error_code = "degraded", _now(), exc.code
+        raise
+    except Exception:
+        cursor.status, cursor.last_error_at, cursor.last_error_code = "degraded", _now(), "DIRECTORY_SYNC_INCOMPLETE"
+        raise
     finally:
         await adapter.close()
     now = _now()
@@ -96,4 +124,11 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
             if subject and subject.provider_subject_id not in present:
                 row.active = False
                 row.updated_at = now
+    cursor.status = "connected"
+    cursor.last_success_at = now
+    cursor.last_error_code = None
+    # Full-snapshot readers do not have an incremental cursor.  Persist a
+    # monotonic successful revision so restarts and operator diagnostics have
+    # durable evidence without pretending a provider delta token exists.
+    cursor.last_provider_revision = now.isoformat()
     return {"users": len(users), "groups": len(groups), "memberships": memberships}

@@ -26,6 +26,6 @@ if response.response is None:
 return response.response
 ```
 
-The employee token is never put in browser storage by this library. Keep the Guard on the customer-controlled network and pass tokens only over TLS. Configure `ACCESSPROOF_GUARD_IDENTITY_TENANT_ID` for Entra-compatible tokens and `ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM=oid` when the policy uses Entra object IDs.
+The employee token is never put in browser storage by this library. Keep the Guard on the customer-controlled network and pass tokens only over TLS. In production it validates employee tokens through OIDC discovery and JWKS, caches public key material locally, and refreshes JWKS once when an identity provider rotates to a new `kid`. Configure `ACCESSPROOF_GUARD_IDENTITY_MODE=oidc`, the issuer and audience, `ACCESSPROOF_GUARD_IDENTITY_TENANT_ID` for Entra-compatible tokens, and `ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM=oid` when the policy uses Entra object IDs. `static` symmetric-key validation is for isolated local tests only.
 
 Layer 2 contexts bind the application, stable subject, original request ID, and a five-minute expiry. They are consumed after one verification. For regeneration, perform a fresh Layer 1 check using only the already-authorized resources.

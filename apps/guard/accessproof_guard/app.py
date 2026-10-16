@@ -14,14 +14,17 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .cache import PolicyCache
+from .identity import IdentityError, OidcVerifier
 from .sync import GuardMachineCredentials, GuardSyncClient
 
 cache = PolicyCache(os.getenv("ACCESSPROOF_GUARD_CACHE", "/var/lib/accessproof-guard/policy.db"))
 issuer = os.getenv("ACCESSPROOF_GUARD_JWT_ISSUER")
 audience = os.getenv("ACCESSPROOF_GUARD_JWT_AUDIENCE")
 verification_key = os.getenv("ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY")
+identity_mode = os.getenv("ACCESSPROOF_GUARD_IDENTITY_MODE", "oidc" if not verification_key else "static").lower()
 expected_tenant = os.getenv("ACCESSPROOF_GUARD_IDENTITY_TENANT_ID")
 subject_claim = os.getenv("ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM", "sub")
+identity_cache_seconds = max(30.0, float(os.getenv("ACCESSPROOF_GUARD_IDENTITY_CACHE_SECONDS", "300")))
 mode = os.getenv("ACCESSPROOF_GUARD_MODE", "protect").lower()
 fail_mode = os.getenv("ACCESSPROOF_GUARD_FAIL_MODE", "fail_closed").lower()
 _credential_path = Path(os.getenv("ACCESSPROOF_GUARD_CREDENTIAL_FILE", "/var/lib/accessproof-guard/credentials.json"))
@@ -45,6 +48,22 @@ guard_credential = os.getenv("ACCESSPROOF_GUARD_CREDENTIAL") or _machine_setting
 guard_version = os.getenv("ACCESSPROOF_GUARD_VERSION", "0.1.0")
 sync_interval_seconds = max(2.0, float(os.getenv("ACCESSPROOF_GUARD_SYNC_SECONDS", "10")))
 _sync_error: str | None = None
+_oidc_verifier: OidcVerifier | None = None
+
+
+def _oidc() -> OidcVerifier:
+    global _oidc_verifier
+    if not issuer or not audience:
+        raise HTTPException(503, "IDENTITY_PROVIDER_UNAVAILABLE")
+    if _oidc_verifier is None:
+        _oidc_verifier = OidcVerifier(
+            issuer=issuer,
+            audience=audience,
+            subject_claim=subject_claim,
+            tenant_id=expected_tenant,
+            cache_seconds=identity_cache_seconds,
+        )
+    return _oidc_verifier
 
 
 async def _sync_loop() -> None:
@@ -87,6 +106,8 @@ async def lifespan(_: FastAPI):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        if _oidc_verifier is not None:
+            _oidc_verifier.close()
 
 
 app = FastAPI(title="AccessProof Guard", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -121,20 +142,26 @@ class ProvenanceItem(BaseModel):
 
 
 def _subject(authorization: str | None) -> str:
-    if not issuer or not audience or not verification_key:
-        raise HTTPException(503, "Trusted identity validation is not configured")
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise HTTPException(401, "Trusted identity token required")
+        raise HTTPException(401, "IDENTITY_TOKEN_INVALID")
+    if identity_mode == "oidc":
+        try:
+            return _oidc().verify(token).subject
+        except IdentityError as exc:
+            status = 503 if exc.args[0] in {"IDENTITY_KEY_UNAVAILABLE", "IDENTITY_PROVIDER_UNAVAILABLE"} else 401
+            raise HTTPException(status, exc.args[0]) from exc
+    if identity_mode != "static" or not issuer or not audience or not verification_key:
+        raise HTTPException(503, "IDENTITY_PROVIDER_UNAVAILABLE")
     try:
         claims = jwt.decode(token, verification_key, algorithms=["HS256"], issuer=issuer, audience=audience, options={"require": ["exp", "sub", "iss", "aud"]})
     except jwt.PyJWTError as exc:
-        raise HTTPException(401, "Invalid trusted identity token") from exc
+        raise HTTPException(401, "IDENTITY_TOKEN_INVALID") from exc
     if expected_tenant and claims.get("tid") != expected_tenant:
-        raise HTTPException(401, "Trusted identity token is for a different tenant")
+        raise HTTPException(401, "IDENTITY_TENANT_MISMATCH")
     stable_subject = claims.get(subject_claim)
     if not isinstance(stable_subject, str) or not stable_subject:
-        raise HTTPException(401, "Trusted identity token has no stable subject")
+        raise HTTPException(401, "IDENTITY_SUBJECT_UNKNOWN")
     return stable_subject
 
 
