@@ -841,6 +841,24 @@ class GuardRegistration(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AIApplication(Base):
+    """Tenant-owned AI surface whose enforcement mode is backend controlled."""
+    __tablename__ = "ai_applications"
+    __table_args__ = (UniqueConstraint("organization_id", "application_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_id: Mapped[str] = mapped_column(String(255), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    mode: Mapped[str] = mapped_column(String(20), default="shadow")
+    guard_id: Mapped[str | None] = mapped_column(ForeignKey("guard_registrations.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_id: Mapped[str | None] = mapped_column(ForeignKey("source_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    layer1_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    layer2_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provenance_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    buffering_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class GuardEnrollment(Base):
     __tablename__ = "guard_enrollments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
@@ -860,6 +878,7 @@ class GuardGroup(Base):
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(50))
     provider_group_id: Mapped[str] = mapped_column(String(255))
+    provider_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

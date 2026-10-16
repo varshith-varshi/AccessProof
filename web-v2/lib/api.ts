@@ -25,6 +25,8 @@ export type CurrentDashboard = {
   ai_applications: number; guards_online: number; guards_total: number; permission_sources: number; blocked_requests: number;
   recent_activity: Array<{ id: string; type: string; severity: string; timestamp: string; summary: string; guard_id?: string | null; application_id?: string | null; policy_version?: number | null }>;
 };
+export type ApplicationReadinessCheck = { code: string; ok: boolean; reason: string | null };
+export type AIApplication = { id: string; application_id: string; name: string; mode: string; guard_id: string | null; source_id: string | null; readiness: ApplicationReadinessCheck[] };
 
 export type Guard = {
   id: string; name: string; environment: string; version: string | null;

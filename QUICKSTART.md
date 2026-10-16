@@ -8,6 +8,19 @@ AccessProof tests whether a configured enterprise AI target stops exposing contr
 4. Create a test suite and queue a run from **Runs**.
 5. Follow the persisted timeline through source access confirmation, mutation, source denial, AI probes, stable denial, and the final SLO outcome.
 
+The worker also keeps the Guard authorization graph current for Google Drive and
+SharePoint/OneDrive. It consumes provider change cursors, re-reads each changed
+item's ACL, and queues durable grant/revoke events. Set
+`ACCESSPROOF_DIRECTORY_SYNC_SECONDS` and `ACCESSPROOF_ACL_SYNC_SECONDS` to tune
+the polling intervals (the defaults are 15 minutes and 5 minutes). OAuth source
+credentials may include an encrypted `refresh_token`, `expires_at`, token
+endpoint, client ID, and client secret; the worker refreshes them before expiry
+and preserves rotated refresh tokens.
+
+AI applications are registered under **AI applications**. They begin in Shadow;
+the API will reject Protect mode until the tenant-scoped Guard, source, OIDC,
+Layer 1, Layer 2, provenance, and buffered-response readiness checks pass.
+
 For a developer-only local demonstration:
 
 ```bash

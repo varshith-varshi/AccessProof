@@ -77,6 +77,12 @@ class Microsoft365Adapter(SourceAdapter):
             return response.json()
         return (await self._request("GET", path)).json()
 
+    async def permissions_snapshot(self, item_id: str) -> list[dict[str, Any]]:
+        response = await self._request(
+            "GET", f"/drives/{self.drive_id}/items/{item_id}/permissions"
+        )
+        return list(response.json().get("value") or [])
+
     async def validate_connection(self) -> ConnectionIdentity:
         r = await self._request(
             "GET",

@@ -243,6 +243,24 @@ class GuardAuditBatch(BaseModel):
     events: list[GuardAuditEventInput] = Field(min_length=1, max_length=100)
 
 
+class AIApplicationCreate(BaseModel):
+    application_id: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=200)
+    guard_id: str | None = None
+    source_id: str | None = None
+
+
+class AIApplicationModeUpdate(BaseModel):
+    mode: Literal["shadow", "protect"]
+
+
+class AIApplicationVerification(BaseModel):
+    layer1: bool = False
+    layer2: bool = False
+    provenance: bool = False
+    buffering: bool = False
+
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=12, max_length=256)

@@ -7,6 +7,7 @@ from typing import Any
 import json
 from dataclasses import asdict
 import hashlib
+import os
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -75,6 +76,7 @@ from apps.api.accessproof_api.db import (
     GuardEffectiveAccess,
     GuardAuditEvent,
     GuardProtectionDecision,
+    AIApplication,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
@@ -115,6 +117,9 @@ from apps.api.accessproof_api.schemas import (
     GuardHeartbeat as GuardHeartbeat,
     GuardPolicyAck as GuardPolicyAck,
     GuardAuditBatch as GuardAuditBatch,
+    AIApplicationCreate as AIApplicationCreate,
+    AIApplicationModeUpdate as AIApplicationModeUpdate,
+    AIApplicationVerification as AIApplicationVerification,
     ResetPasswordRequest as ResetPasswordRequest,
     ChangePasswordRequest as ChangePasswordRequest,
     MfaEnableRequest as MfaEnableRequest,
@@ -2119,6 +2124,9 @@ def current_dashboard(
     application_ids.update(db.scalars(select(GuardProtectionDecision.application_id).where(
         GuardProtectionDecision.organization_id == org_id
     )))
+    application_ids.update(db.scalars(select(AIApplication.application_id).where(
+        AIApplication.organization_id == org_id
+    )))
     application_count = len(application_ids)
 
     activity: list[dict[str, Any]] = []
@@ -2186,6 +2194,128 @@ def current_protection_decisions(
         "resource_ids": json.loads(row.resources_json or "[]"),
         "created_at": row.created_at.isoformat(),
     } for row in rows]
+
+
+def _application_checks(db: OrmSession, row: AIApplication, organization_id: str) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    checks: list[dict[str, Any]] = []
+    guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
+    source = db.get(SourceConnection, row.source_id) if row.source_id else None
+    heartbeat_ok = bool(guard and guard.last_heartbeat_at and (now - (guard.last_heartbeat_at.replace(tzinfo=timezone.utc) if guard.last_heartbeat_at.tzinfo is None else guard.last_heartbeat_at)).total_seconds() <= settings.runner_offline_seconds)
+    checks.append({"code": "APPLICATION_EXISTS", "ok": True, "reason": None})
+    checks.append({"code": "TENANT_SCOPE_VALID", "ok": row.organization_id == organization_id, "reason": None if row.organization_id == organization_id else "Application belongs to another organization."})
+    checks.append({"code": "GUARD_BOUND", "ok": guard is not None, "reason": None if guard else "Bind an AccessProof Guard."})
+    checks.append({"code": "GUARD_ENROLLED", "ok": bool(guard and guard.enrolled_at and guard.revoked_at is None), "reason": None if guard and guard.enrolled_at and guard.revoked_at is None else "Enroll the selected Guard."})
+    checks.append({"code": "GUARD_ONLINE", "ok": heartbeat_ok, "reason": None if heartbeat_ok else "The selected Guard has no recent heartbeat."})
+    checks.append({"code": "GUARD_POLICY_INSTALLED", "ok": bool(guard and guard.active_policy_version > 0), "reason": None if guard and guard.active_policy_version > 0 else "The Guard has not installed a policy."})
+    checks.append({"code": "PERMISSION_SOURCE_USABLE", "ok": bool(source and source.status == "connected"), "reason": None if source and source.status == "connected" else "Connect and synchronize a permission source."})
+    oidc_ok = settings.env == "production" and bool(os.getenv("ACCESSPROOF_GUARD_IDENTITY_MODE", "oidc") == "oidc" and os.getenv("ACCESSPROOF_GUARD_JWT_ISSUER") and os.getenv("ACCESSPROOF_GUARD_JWT_AUDIENCE"))
+    checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok, "reason": None if oidc_ok else "Production OIDC/JWKS identity verification is incomplete."})
+    checks.append({"code": "LAYER1_INTEGRATION_CONFIRMED", "ok": row.layer1_verified_at is not None, "reason": None if row.layer1_verified_at else "Complete the authenticated Layer 1 verification."})
+    checks.append({"code": "LAYER2_INTEGRATION_CONFIRMED", "ok": row.layer2_verified_at is not None, "reason": None if row.layer2_verified_at else "Complete the buffered Layer 2 verification."})
+    checks.append({"code": "PROVENANCE_READY", "ok": row.provenance_verified_at is not None, "reason": None if row.provenance_verified_at else "Confirm structured provenance handling."})
+    checks.append({"code": "BUFFERED_RESPONSE_GATE_READY", "ok": row.buffering_verified_at is not None, "reason": None if row.buffering_verified_at else "Confirm response buffering before release."})
+    return checks
+
+
+@app.post("/api/v1/current/ai-applications", status_code=201)
+def create_current_ai_application(
+    payload: AIApplicationCreate,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    org_id = actor.membership.organization_id
+    guard = db.get(GuardRegistration, payload.guard_id) if payload.guard_id else None
+    if payload.guard_id and (guard is None or guard.organization_id != org_id):
+        raise HTTPException(404, "Guard not found")
+    source = db.get(SourceConnection, payload.source_id) if payload.source_id else None
+    if payload.source_id and (source is None or source.organization_id != org_id):
+        raise HTTPException(404, "Permission source not found")
+    row = AIApplication(organization_id=org_id, application_id=payload.application_id, name=payload.name, guard_id=payload.guard_id, source_id=payload.source_id)
+    db.add(row)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(409, "An application with this ID already exists.") from exc
+    return {"id": row.id, "application_id": row.application_id, "name": row.name, "mode": row.mode}
+
+
+@app.get("/api/v1/current/ai-applications")
+def list_current_ai_applications(
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    rows = db.scalars(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+    ).order_by(AIApplication.created_at.desc())).all()
+    return [{
+        "id": row.id,
+        "application_id": row.application_id,
+        "name": row.name,
+        "mode": row.mode,
+        "guard_id": row.guard_id,
+        "source_id": row.source_id,
+        "readiness": _application_checks(db, row, actor.membership.organization_id),
+    } for row in rows]
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/protect-readiness")
+def current_ai_application_readiness(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(AIApplication.organization_id == actor.membership.organization_id, AIApplication.application_id == application_id))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    checks = _application_checks(db, row, actor.membership.organization_id)
+    return {"application_id": application_id, "ready": all(bool(check["ok"]) for check in checks), "checks": checks, "mode": row.mode}
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/verification")
+def verify_current_ai_application(
+    application_id: str,
+    payload: AIApplicationVerification,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(AIApplication.organization_id == actor.membership.organization_id, AIApplication.application_id == application_id))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    now = datetime.now(timezone.utc)
+    if payload.layer1:
+        row.layer1_verified_at = now
+    if payload.layer2:
+        row.layer2_verified_at = now
+    if payload.provenance:
+        row.provenance_verified_at = now
+    if payload.buffering:
+        row.buffering_verified_at = now
+    db.commit()
+    return current_ai_application_readiness(application_id, actor, db)
+
+
+@app.patch("/api/v1/current/ai-applications/{application_id}/mode")
+def update_current_ai_application_mode(
+    application_id: str,
+    payload: AIApplicationModeUpdate,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(AIApplication.organization_id == actor.membership.organization_id, AIApplication.application_id == application_id))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    if payload.mode == "protect":
+        readiness = _application_checks(db, row, actor.membership.organization_id)
+        failed = [check["code"] for check in readiness if not check["ok"]]
+        if failed:
+            raise HTTPException(409, {"code": "PROTECT_NOT_READY", "failed_checks": failed})
+    previous = row.mode
+    row.mode = payload.mode
+    _audit(db, actor, row.organization_id, "PROTECT_ENABLED" if payload.mode == "protect" else "PROTECT_DISABLED", "ai_application", row.id, {"previous_mode": previous})
+    db.commit()
+    return {"application_id": row.application_id, "mode": row.mode}
 
 
 @app.get("/api/v1/projects")

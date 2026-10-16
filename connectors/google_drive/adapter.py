@@ -59,6 +59,13 @@ class GoogleDriveAdapter(SourceAdapter):
         })
         return response.json()
 
+    async def permissions_snapshot(self, file_id: str) -> list[dict[str, Any]]:
+        response = await self._request(
+            "GET", f"{self.API}/files/{file_id}/permissions",
+            params={"supportsAllDrives": "true", "fields": "permissions(id,type,emailAddress,domain,role,permissionDetails,displayName),nextPageToken"},
+        )
+        return list(response.json().get("permissions") or [])
+
     async def validate_connection(self) -> ConnectionIdentity:
         r = await self._request(
             "GET",

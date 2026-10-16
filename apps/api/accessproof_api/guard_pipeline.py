@@ -48,6 +48,12 @@ def _group(db: Session, event: GuardPermissionEvent, provider_group_id: str) -> 
         GuardGroup.provider_group_id == provider_group_id,
     ))
     if row is None:
+        row = db.scalar(select(GuardGroup).where(
+            GuardGroup.organization_id == event.organization_id,
+            GuardGroup.provider == event.provider,
+            GuardGroup.provider_email == provider_group_id,
+        ))
+    if row is None:
         row = GuardGroup(
             organization_id=event.organization_id,
             provider=event.provider,

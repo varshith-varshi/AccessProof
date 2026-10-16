@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 
 import httpx
 import pytest
@@ -19,3 +20,28 @@ def test_refresh_classifies_invalid_grant_without_exposing_provider_body():
     client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(400, json={"error": "invalid_grant", "error_description": "sensitive"})))
     with pytest.raises(OAuthRefreshError, match="REAUTHORIZATION_REQUIRED"):
         refresh_credentials(OAuthCredentials("old", "refresh"), token_endpoint="https://issuer.test/token", client_id="id", client_secret="secret", save=lambda _: None, client=client)
+
+
+@pytest.mark.asyncio
+async def test_worker_refresh_reencrypts_rotated_source_credentials(monkeypatch):
+    from types import SimpleNamespace
+    from apps.worker.accessproof_worker import main as worker
+
+    refreshed = OAuthCredentials("new-access", "new-refresh", datetime.now(timezone.utc) + timedelta(hours=1))
+
+    def fake_refresh(_credentials, **kwargs):
+        kwargs["save"](refreshed)
+        return refreshed
+
+    monkeypatch.setattr(worker, "refresh_credentials", fake_refresh)
+    source = SimpleNamespace(encrypted_credentials=None)
+    original = {
+        "access_token": "old-access", "refresh_token": "old-refresh",
+        "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        "token_endpoint": "https://issuer.test/token", "client_id": "client", "client_secret": "secret",
+    }
+    result = await worker.refresh_source_credentials_if_needed(None, source, original)
+    assert result["access_token"] == "new-access"
+    assert result["refresh_token"] == "new-refresh"
+    persisted = json.loads(worker.box.decrypt(source.encrypted_credentials))
+    assert persisted["access_token"] == "new-access"

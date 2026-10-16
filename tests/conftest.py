@@ -20,8 +20,13 @@ os.close(_fd)
 _database_path = Path(_path)
 os.environ["DATABASE_URL"] = f"sqlite:///{_database_path}"
 os.environ["ACCESSPROOF_ENV"] = "development"
+_guard_fd, _guard_path = tempfile.mkstemp(prefix="accessproof-guard-", suffix=".db")
+os.close(_guard_fd)
+_guard_cache_path = Path(_guard_path)
+os.environ["ACCESSPROOF_GUARD_CACHE"] = str(_guard_cache_path)
 
 
 @atexit.register
 def _remove_test_database() -> None:
     _database_path.unlink(missing_ok=True)
+    _guard_cache_path.unlink(missing_ok=True)
