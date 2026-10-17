@@ -5,7 +5,10 @@ import hashlib
 import hmac
 import os
 
-ITERATIONS = 310_000
+# Keep the production work factor fixed and strong.  The test-only override is
+# set by tests/conftest.py before application modules are imported, which keeps
+# the large integration suite fast without changing deployed behaviour.
+ITERATIONS = int(os.getenv("ACCESSPROOF_TEST_PASSWORD_ITERATIONS", "310000"))
 
 
 def hash_password(password: str) -> str:

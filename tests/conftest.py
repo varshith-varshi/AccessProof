@@ -20,6 +20,10 @@ os.close(_fd)
 _database_path = Path(_path)
 os.environ["DATABASE_URL"] = f"sqlite:///{_database_path}"
 os.environ["ACCESSPROOF_ENV"] = "development"
+# Account creation is exercised hundreds of times in the integration suite.
+# Production retains the default 310,000 PBKDF2 rounds because this variable is
+# only supplied by the test harness.
+os.environ["ACCESSPROOF_TEST_PASSWORD_ITERATIONS"] = "1000"
 _guard_fd, _guard_path = tempfile.mkstemp(prefix="accessproof-guard-", suffix=".db")
 os.close(_guard_fd)
 _guard_cache_path = Path(_guard_path)
