@@ -1,5 +1,18 @@
 import { expect, test } from "@playwright/test";
 
+test("browser console and network remain clean on public flow", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("console", message => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", request => failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? "unknown"}`));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Make enterprise AI respect enterprise permissions." })).toBeVisible();
+  expect(consoleErrors, consoleErrors.join("\n")).toEqual([]);
+  expect(failedRequests, failedRequests.join("\n")).toEqual([]);
+});
+
 test("public landing and authentication pages are usable", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Make enterprise AI respect enterprise permissions." })).toBeVisible();
