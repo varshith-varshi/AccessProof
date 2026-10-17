@@ -21,7 +21,7 @@ from apps.api.accessproof_api.db import (
     WebhookDelivery,
     WebhookEndpoint,
 )
-from apps.api.accessproof_api.guard_pipeline import process_guard_event
+from apps.api.accessproof_api.guard_pipeline import process_guard_event_with_retry
 from apps.api.accessproof_api.directory_sync import DirectorySyncError, synchronize_directory
 from apps.api.accessproof_api.acl_sync import ACLSyncError, reconcile_known_acls, synchronize_acls
 from packages.auth.oauth_refresh import OAuthCredentials, OAuthRefreshError, refresh_credentials
@@ -44,7 +44,18 @@ from packages.observability.tracing import configure_tracing
 POLL_SECONDS = float(os.getenv("ACCESSPROOF_WORKER_POLL_SECONDS", "2"))
 DIRECTORY_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_DIRECTORY_SYNC_SECONDS", "900")))
 ACL_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_ACL_SYNC_SECONDS", "300")))
-ACL_RECONCILE_SECONDS = max(300, int(os.getenv("ACCESSPROOF_ACL_RECONCILE_SECONDS", os.getenv("ACCESSPROOF_GOOGLE_ACL_RECONCILE_SECONDS", os.getenv("ACCESSPROOF_MICROSOFT_ACL_RECONCILE_SECONDS", "3600")))))
+ACL_RECONCILE_SECONDS = max(
+    300,
+    int(
+        os.getenv(
+            "ACCESSPROOF_ACL_RECONCILE_SECONDS",
+            os.getenv(
+                "ACCESSPROOF_GOOGLE_ACL_RECONCILE_SECONDS",
+                os.getenv("ACCESSPROOF_MICROSOFT_ACL_RECONCILE_SECONDS", "3600"),
+            ),
+        )
+    ),
+)
 box = build_secret_backend(
     backend=settings.secret_backend,
     local_key=settings.secret_encryption_key,
@@ -53,7 +64,9 @@ box = build_secret_backend(
 )
 
 
-async def refresh_source_credentials_if_needed(db, source: SourceConnection, credentials: dict) -> dict:
+async def refresh_source_credentials_if_needed(
+    db, source: SourceConnection, credentials: dict
+) -> dict:
     """Refresh an expiring OAuth source credential and atomically re-encrypt it."""
     endpoint = credentials.get("token_endpoint") or credentials.get("oauth_token_url")
     client_id = credentials.get("client_id") or credentials.get("oauth_client_id")
@@ -418,10 +431,10 @@ def claim_one_guard_event() -> str | None:
 
 
 def process_claimed_guard_event(event_id: str) -> None:
-    with SessionLocal() as db:
-        try:
-            process_guard_event(db, event_id)
-        except Exception as exc:
+    try:
+        process_guard_event_with_retry(SessionLocal, event_id)
+    except Exception as exc:
+        with SessionLocal() as db:
             event = db.get(GuardPermissionEvent, event_id)
             if event is not None:
                 event.processing_status = "error"
@@ -429,7 +442,7 @@ def process_claimed_guard_event(event_id: str) -> None:
                 event.processing_started_at = None
                 event.completed_at = datetime.now(timezone.utc)
                 db.commit()
-            logger.exception("guard_permission_event_processing_failed event_id=%s", event_id)
+        logger.exception("guard_permission_event_processing_failed event_id=%s", event_id)
 
 
 async def synchronize_due_directories() -> int:
@@ -440,11 +453,28 @@ async def synchronize_due_directories() -> int:
     """
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
-        sources = list(db.scalars(select(SourceConnection).where(
-            SourceConnection.provider.in_(["google-drive", "microsoft365", "sharepoint", "onedrive"]),
-            SourceConnection.encrypted_credentials.is_not(None),
-        )))
-        due = [source.id for source in sources if source.last_validated_at is None or (now - source.last_validated_at.replace(tzinfo=source.last_validated_at.tzinfo or timezone.utc)).total_seconds() >= DIRECTORY_SYNC_SECONDS]
+        sources = list(
+            db.scalars(
+                select(SourceConnection).where(
+                    SourceConnection.provider.in_(
+                        ["google-drive", "microsoft365", "sharepoint", "onedrive"]
+                    ),
+                    SourceConnection.encrypted_credentials.is_not(None),
+                )
+            )
+        )
+        due = [
+            source.id
+            for source in sources
+            if source.last_validated_at is None
+            or (
+                now
+                - source.last_validated_at.replace(
+                    tzinfo=source.last_validated_at.tzinfo or timezone.utc
+                )
+            ).total_seconds()
+            >= DIRECTORY_SYNC_SECONDS
+        ]
     completed = 0
     for source_id in due:
         with SessionLocal() as db:
@@ -455,19 +485,41 @@ async def synchronize_due_directories() -> int:
                 credentials = json.loads(box.decrypt(source.encrypted_credentials))
                 credentials = await refresh_source_credentials_if_needed(db, source, credentials)
                 await synchronize_directory(db, source, credentials)
-                source.status, source.last_error, source.last_validated_at = "connected", None, datetime.now(timezone.utc)
+                source.status, source.last_error, source.last_validated_at = (
+                    "connected",
+                    None,
+                    datetime.now(timezone.utc),
+                )
                 db.commit()
                 completed += 1
             except DirectorySyncError as exc:
-                source.status, source.last_error = ("reauthorization_required" if exc.code == "REAUTHORIZATION_REQUIRED" else "degraded"), exc.code
+                source.status, source.last_error = (
+                    (
+                        "reauthorization_required"
+                        if exc.code == "REAUTHORIZATION_REQUIRED"
+                        else "degraded"
+                    ),
+                    exc.code,
+                )
                 db.commit()
             except OAuthRefreshError as exc:
-                source.status, source.last_error = ("reauthorization_required" if exc.code == "REAUTHORIZATION_REQUIRED" else "degraded"), exc.code
+                source.status, source.last_error = (
+                    (
+                        "reauthorization_required"
+                        if exc.code == "REAUTHORIZATION_REQUIRED"
+                        else "degraded"
+                    ),
+                    exc.code,
+                )
                 db.commit()
             except Exception as exc:
                 source.status, source.last_error = "degraded", "DIRECTORY_SYNC_INCOMPLETE"
                 db.commit()
-                logger.warning("scheduled_directory_sync_failed source_id=%s error=%s", source_id, type(exc).__name__)
+                logger.warning(
+                    "scheduled_directory_sync_failed source_id=%s error=%s",
+                    source_id,
+                    type(exc).__name__,
+                )
     return completed
 
 
@@ -475,12 +527,37 @@ async def synchronize_due_acls() -> int:
     """Consume provider ACL deltas and enqueue normalized Guard events."""
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
-        sources = list(db.scalars(select(SourceConnection).where(
-            SourceConnection.provider.in_(["google-drive", "microsoft365", "sharepoint", "onedrive"]),
-            SourceConnection.encrypted_credentials.is_not(None),
-        )))
-        cursors = {row.source_id: row for row in db.scalars(select(ProviderSyncCursor).where(ProviderSyncCursor.sync_kind == "acl"))}
-        due = [source.id for source in sources if source.id not in cursors or cursors[source.id].last_success_at is None or (now - (cursors[source.id].last_success_at.replace(tzinfo=cursors[source.id].last_success_at.tzinfo or timezone.utc))).total_seconds() >= ACL_SYNC_SECONDS]
+        sources = list(
+            db.scalars(
+                select(SourceConnection).where(
+                    SourceConnection.provider.in_(
+                        ["google-drive", "microsoft365", "sharepoint", "onedrive"]
+                    ),
+                    SourceConnection.encrypted_credentials.is_not(None),
+                )
+            )
+        )
+        cursors = {
+            row.source_id: row
+            for row in db.scalars(
+                select(ProviderSyncCursor).where(ProviderSyncCursor.sync_kind == "acl")
+            )
+        }
+        due = [
+            source.id
+            for source in sources
+            if source.id not in cursors
+            or cursors[source.id].last_success_at is None
+            or (
+                now
+                - (
+                    cursors[source.id].last_success_at.replace(
+                        tzinfo=cursors[source.id].last_success_at.tzinfo or timezone.utc
+                    )
+                )
+            ).total_seconds()
+            >= ACL_SYNC_SECONDS
+        ]
     completed = 0
     for source_id in due:
         with SessionLocal() as db:
@@ -495,7 +572,12 @@ async def synchronize_due_acls() -> int:
                 completed += 1
             except ACLSyncError as exc:
                 db.rollback()
-                cursor = db.scalar(select(ProviderSyncCursor).where(ProviderSyncCursor.source_id == source_id, ProviderSyncCursor.sync_kind == "acl"))
+                cursor = db.scalar(
+                    select(ProviderSyncCursor).where(
+                        ProviderSyncCursor.source_id == source_id,
+                        ProviderSyncCursor.sync_kind == "acl",
+                    )
+                )
                 if cursor is None:
                     cursor = ProviderSyncCursor(
                         organization_id=source.organization_id,
@@ -504,7 +586,11 @@ async def synchronize_due_acls() -> int:
                         sync_kind="acl",
                     )
                     db.add(cursor)
-                cursor.status = "reauthorization_required" if exc.code == "REAUTHORIZATION_REQUIRED" else "degraded"
+                cursor.status = (
+                    "reauthorization_required"
+                    if exc.code == "REAUTHORIZATION_REQUIRED"
+                    else "degraded"
+                )
                 cursor.last_error_code = exc.code
                 cursor.last_error_at = datetime.now(timezone.utc)
                 db.commit()
@@ -512,29 +598,54 @@ async def synchronize_due_acls() -> int:
                 db.rollback()
                 source = db.get(SourceConnection, source_id)
                 if source:
-                    source.status, source.last_error = ("reauthorization_required" if exc.code == "REAUTHORIZATION_REQUIRED" else "degraded"), exc.code
+                    source.status, source.last_error = (
+                        (
+                            "reauthorization_required"
+                            if exc.code == "REAUTHORIZATION_REQUIRED"
+                            else "degraded"
+                        ),
+                        exc.code,
+                    )
                     db.commit()
             except Exception as exc:
                 db.rollback()
-                cursor = db.scalar(select(ProviderSyncCursor).where(ProviderSyncCursor.source_id == source_id, ProviderSyncCursor.sync_kind == "acl"))
+                cursor = db.scalar(
+                    select(ProviderSyncCursor).where(
+                        ProviderSyncCursor.source_id == source_id,
+                        ProviderSyncCursor.sync_kind == "acl",
+                    )
+                )
                 if cursor is None:
-                    cursor = ProviderSyncCursor(organization_id=source.organization_id, source_id=source.id, provider=source.provider, sync_kind="acl")
+                    cursor = ProviderSyncCursor(
+                        organization_id=source.organization_id,
+                        source_id=source.id,
+                        provider=source.provider,
+                        sync_kind="acl",
+                    )
                     db.add(cursor)
                 cursor.status = "degraded"
                 cursor.last_error_code = "ACL_SYNC_INCOMPLETE"
                 cursor.last_error_at = datetime.now(timezone.utc)
                 db.commit()
-                logger.warning("scheduled_acl_sync_failed source_id=%s error=%s", source_id, type(exc).__name__)
+                logger.warning(
+                    "scheduled_acl_sync_failed source_id=%s error=%s", source_id, type(exc).__name__
+                )
     return completed
 
 
 async def reconcile_known_source_acls() -> int:
     """Re-read a bounded set of known resources to repair missed provider deltas."""
     with SessionLocal() as db:
-        source_ids = list(db.scalars(select(SourceConnection.id).where(
-            SourceConnection.provider.in_(["google-drive", "microsoft365", "sharepoint", "onedrive"]),
-            SourceConnection.encrypted_credentials.is_not(None),
-        )))
+        source_ids = list(
+            db.scalars(
+                select(SourceConnection.id).where(
+                    SourceConnection.provider.in_(
+                        ["google-drive", "microsoft365", "sharepoint", "onedrive"]
+                    ),
+                    SourceConnection.encrypted_credentials.is_not(None),
+                )
+            )
+        )
     completed = 0
     for source_id in source_ids:
         with SessionLocal() as db:
@@ -551,7 +662,14 @@ async def reconcile_known_source_acls() -> int:
                 db.rollback()
                 source = db.get(SourceConnection, source_id)
                 if source:
-                    source.status, source.last_error = ("reauthorization_required" if getattr(exc, "code", "") == "REAUTHORIZATION_REQUIRED" else "degraded"), getattr(exc, "code", "ACL_RECONCILIATION_INCOMPLETE")
+                    source.status, source.last_error = (
+                        (
+                            "reauthorization_required"
+                            if getattr(exc, "code", "") == "REAUTHORIZATION_REQUIRED"
+                            else "degraded"
+                        ),
+                        getattr(exc, "code", "ACL_RECONCILIATION_INCOMPLETE"),
+                    )
                     db.commit()
             except Exception:
                 db.rollback()

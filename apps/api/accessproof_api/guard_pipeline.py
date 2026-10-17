@@ -5,12 +5,15 @@ turns the complete persisted permission state into an effective authorization
 decision.  A revocation deactivates one grant path; it is never itself treated
 as a denial.
 """
+
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from apps.api.accessproof_api.db import (
@@ -26,6 +29,7 @@ from apps.api.accessproof_api.db import (
     GuardPolicySequence,
     GuardRegistration,
     GuardResource,
+    Organization,
 )
 
 
@@ -42,17 +46,21 @@ def _event_mutation(event: GuardPermissionEvent) -> dict[str, object]:
 
 
 def _group(db: Session, event: GuardPermissionEvent, provider_group_id: str) -> GuardGroup:
-    row = db.scalar(select(GuardGroup).where(
-        GuardGroup.organization_id == event.organization_id,
-        GuardGroup.provider == event.provider,
-        GuardGroup.provider_group_id == provider_group_id,
-    ))
-    if row is None:
-        row = db.scalar(select(GuardGroup).where(
+    row = db.scalar(
+        select(GuardGroup).where(
             GuardGroup.organization_id == event.organization_id,
             GuardGroup.provider == event.provider,
-            GuardGroup.provider_email == provider_group_id,
-        ))
+            GuardGroup.provider_group_id == provider_group_id,
+        )
+    )
+    if row is None:
+        row = db.scalar(
+            select(GuardGroup).where(
+                GuardGroup.organization_id == event.organization_id,
+                GuardGroup.provider == event.provider,
+                GuardGroup.provider_email == provider_group_id,
+            )
+        )
     if row is None:
         row = GuardGroup(
             organization_id=event.organization_id,
@@ -65,7 +73,9 @@ def _group(db: Session, event: GuardPermissionEvent, provider_group_id: str) -> 
     return row
 
 
-def _apply_mutation(db: Session, event: GuardPermissionEvent, mutation: dict[str, object]) -> str | None:
+def _apply_mutation(
+    db: Session, event: GuardPermissionEvent, mutation: dict[str, object]
+) -> str | None:
     """Apply a normalized change.  Return an UNKNOWN reason when inputs are incomplete."""
     if not bool(mutation.get("snapshot_complete", True)) or event.change_type == "sync_incomplete":
         return "SOURCE_SYNC_INCOMPLETE"
@@ -75,11 +85,13 @@ def _apply_mutation(db: Session, event: GuardPermissionEvent, mutation: dict[str
         if not provider_group_id:
             return "GROUP_MEMBERSHIP_UNAVAILABLE"
         group = _group(db, event, provider_group_id)
-        membership = db.scalar(select(GuardGroupMembership).where(
-            GuardGroupMembership.organization_id == event.organization_id,
-            GuardGroupMembership.group_id == group.id,
-            GuardGroupMembership.subject_id == event.subject_id,
-        ))
+        membership = db.scalar(
+            select(GuardGroupMembership).where(
+                GuardGroupMembership.organization_id == event.organization_id,
+                GuardGroupMembership.group_id == group.id,
+                GuardGroupMembership.subject_id == event.subject_id,
+            )
+        )
         if membership is not None and membership.provider_revision > event.provider_revision:
             return "STALE"
         if membership is None:
@@ -104,11 +116,15 @@ def _apply_mutation(db: Session, event: GuardPermissionEvent, mutation: dict[str
         # An event without a stable provider permission identifier cannot safely
         # mutate state.  Record UNKNOWN instead of guessing which path changed.
         return "PERMISSION_DATA_STALE"
-    grant = db.scalar(select(GuardPermissionGrant).where(
-        GuardPermissionGrant.organization_id == event.organization_id,
-        GuardPermissionGrant.source_id == event.source_id,
-        GuardPermissionGrant.grant_key == grant_key,
-    ))
+    grant = db.scalar(
+        select(GuardPermissionGrant)
+        .where(
+            GuardPermissionGrant.organization_id == event.organization_id,
+            GuardPermissionGrant.source_id == event.source_id,
+            GuardPermissionGrant.grant_key == grant_key,
+        )
+        .with_for_update()
+    )
     if grant is not None and grant.provider_revision > event.provider_revision:
         return "STALE"
     if event.change_type == "grant_revoke":
@@ -157,21 +173,32 @@ def _apply_mutation(db: Session, event: GuardPermissionEvent, mutation: dict[str
     return None
 
 
-def _effective_grants(db: Session, event: GuardPermissionEvent, scope: str) -> list[GuardPermissionGrant]:
-    group_ids = list(db.scalars(select(GuardGroupMembership.group_id).where(
-        GuardGroupMembership.organization_id == event.organization_id,
-        GuardGroupMembership.subject_id == event.subject_id,
-        GuardGroupMembership.active.is_(True),
-    )))
-    grants = list(db.scalars(select(GuardPermissionGrant).where(
-        GuardPermissionGrant.organization_id == event.organization_id,
-        GuardPermissionGrant.source_id == event.source_id,
-        GuardPermissionGrant.resource_id == event.resource_id,
-        GuardPermissionGrant.scope == scope,
-        GuardPermissionGrant.active.is_(True),
-    )))
+def _effective_grants(
+    db: Session, event: GuardPermissionEvent, scope: str
+) -> list[GuardPermissionGrant]:
+    group_ids = list(
+        db.scalars(
+            select(GuardGroupMembership.group_id).where(
+                GuardGroupMembership.organization_id == event.organization_id,
+                GuardGroupMembership.subject_id == event.subject_id,
+                GuardGroupMembership.active.is_(True),
+            )
+        )
+    )
+    grants = list(
+        db.scalars(
+            select(GuardPermissionGrant).where(
+                GuardPermissionGrant.organization_id == event.organization_id,
+                GuardPermissionGrant.source_id == event.source_id,
+                GuardPermissionGrant.resource_id == event.resource_id,
+                GuardPermissionGrant.scope == scope,
+                GuardPermissionGrant.active.is_(True),
+            )
+        )
+    )
     return [
-        grant for grant in grants
+        grant
+        for grant in grants
         if (grant.principal_type == "subject" and grant.principal_id == event.subject_id)
         or (grant.principal_type == "group" and grant.principal_id in group_ids)
         or (grant.principal_type == "organization" and grant.principal_id == event.organization_id)
@@ -194,6 +221,10 @@ def _next_policy_version(db: Session, organization_id: str) -> int:
     PostgreSQL locks the per-tenant sequence row.  SQLite serializes writers;
     its test behaviour therefore exercises the same persisted allocator.
     """
+    # Serialize allocation per tenant, including first-use sequence creation.
+    # Locking the organization row avoids the otherwise unavoidable race where
+    # two concurrent changes both observe a missing sequence row.
+    db.scalar(select(Organization).where(Organization.id == organization_id).with_for_update())
     sequence = db.scalar(
         select(GuardPolicySequence)
         .where(GuardPolicySequence.organization_id == organization_id)
@@ -212,9 +243,22 @@ def _next_policy_version(db: Session, organization_id: str) -> int:
 
 def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
     """Resolve a claimed event transactionally and idempotently."""
-    event = db.get(GuardPermissionEvent, event_id)
+    event = db.scalar(
+        select(GuardPermissionEvent).where(GuardPermissionEvent.id == event_id).with_for_update()
+    )
     if event is None:
         return {"status": "missing"}
+    # Serialize all mutations for one tenant/resource authorization key.  This
+    # prevents lock-order inversions between the event, grant and effective
+    # rows under concurrent provider delivery while retaining concurrency
+    # across unrelated tenants/resources.
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {
+                "lock_key": f"guard:{event.organization_id}:{event.source_id}:{event.subject_id}:{event.resource_id}"
+            },
+        )
     if event.processing_status in {"resolved", "stale", "error"}:
         return {"status": event.processing_status, "policy_id": event.policy_id or ""}
     event.processing_status = "processing"
@@ -227,13 +271,17 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
     db.flush()
     resource = db.get(GuardResource, event.resource_id)
     scope = str(mutation.get("scope") or (resource.scope if resource else "read") or "read")
-    prior = db.scalar(select(GuardEffectiveAccess).where(
-        GuardEffectiveAccess.organization_id == event.organization_id,
-        GuardEffectiveAccess.source_id == event.source_id,
-        GuardEffectiveAccess.subject_id == event.subject_id,
-        GuardEffectiveAccess.resource_id == event.resource_id,
-        GuardEffectiveAccess.scope == scope,
-    ))
+    prior = db.scalar(
+        select(GuardEffectiveAccess)
+        .where(
+            GuardEffectiveAccess.organization_id == event.organization_id,
+            GuardEffectiveAccess.source_id == event.source_id,
+            GuardEffectiveAccess.subject_id == event.subject_id,
+            GuardEffectiveAccess.resource_id == event.resource_id,
+            GuardEffectiveAccess.scope == scope,
+        )
+        .with_for_update()
+    )
     if prior is not None and event.provider_revision < prior.source_revision:
         event.processing_status = "stale"
         event.error_code = "STALE"
@@ -266,22 +314,30 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
         prior.source_revision = max(prior.source_revision, event.provider_revision)
         prior.state_version = state_version
         prior.resolved_at = _now()
-    db.add(GuardPermissionSnapshot(
-        organization_id=event.organization_id,
-        effective_access_id=prior.id,
-        permission_event_id=event.id,
-        state_version=state_version,
-        source_revision=event.provider_revision,
-        decision=decision,
-        reason=reason,
-        grant_keys_json=json.dumps(sorted(grant.grant_key for grant in grants)),
-    ))
+    db.add(
+        GuardPermissionSnapshot(
+            organization_id=event.organization_id,
+            effective_access_id=prior.id,
+            permission_event_id=event.id,
+            state_version=state_version,
+            source_revision=event.provider_revision,
+            decision=decision,
+            reason=reason,
+            grant_keys_json=json.dumps(sorted(grant.grant_key for grant in grants)),
+        )
+    )
     if changed:
         next_version = _next_policy_version(db, event.organization_id)
-        previous_policy = db.scalar(select(GuardPolicy).where(
-            GuardPolicy.organization_id == event.organization_id,
-            GuardPolicy.policy_key == f"{event.source_id}:{event.subject_id}:{event.resource_id}:{scope}",
-        ).order_by(GuardPolicy.version.desc()).limit(1))
+        previous_policy = db.scalar(
+            select(GuardPolicy)
+            .where(
+                GuardPolicy.organization_id == event.organization_id,
+                GuardPolicy.policy_key
+                == f"{event.source_id}:{event.subject_id}:{event.resource_id}:{scope}",
+            )
+            .order_by(GuardPolicy.version.desc())
+            .limit(1)
+        )
         policy = GuardPolicy(
             organization_id=event.organization_id,
             policy_key=f"{event.source_id}:{event.subject_id}:{event.resource_id}:{scope}",
@@ -299,35 +355,70 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
         db.add(policy)
         db.flush()
         event.policy_id = policy.id
-        guards = list(db.scalars(select(GuardRegistration).where(
-            GuardRegistration.organization_id == event.organization_id,
-            GuardRegistration.revoked_at.is_(None),
-        )))
+        guards = list(
+            db.scalars(
+                select(GuardRegistration).where(
+                    GuardRegistration.organization_id == event.organization_id,
+                    GuardRegistration.revoked_at.is_(None),
+                )
+            )
+        )
         if guards:
             for guard in guards:
-                db.add(GuardPolicyDistribution(
+                db.add(
+                    GuardPolicyDistribution(
+                        organization_id=event.organization_id,
+                        policy_id=policy.id,
+                        guard_id=guard.id,
+                        status="pending",
+                    )
+                )
+        else:
+            db.add(
+                GuardPolicyDistribution(
                     organization_id=event.organization_id,
                     policy_id=policy.id,
-                    guard_id=guard.id,
+                    guard_id=None,
                     status="pending",
-                ))
-        else:
-            db.add(GuardPolicyDistribution(
+                )
+            )
+        db.add(
+            AuditEvent(
                 organization_id=event.organization_id,
-                policy_id=policy.id,
-                guard_id=None,
-                status="pending",
-            ))
-        db.add(AuditEvent(
-            organization_id=event.organization_id,
-            action="guard.policy_committed",
-            target_type="guard_policy",
-            target_id=policy.id,
-            metadata_json=json.dumps({"event_id": event.id, "decision": decision, "version": next_version}),
-        ))
+                action="guard.policy_committed",
+                target_type="guard_policy",
+                target_id=policy.id,
+                metadata_json=json.dumps(
+                    {"event_id": event.id, "decision": decision, "version": next_version}
+                ),
+            )
+        )
     event.processing_status = "resolved"
     event.error_code = None
     event.processing_started_at = None
     event.completed_at = _now()
     db.commit()
     return {"status": "resolved", "policy_id": event.policy_id or "", "decision": decision}
+
+
+def process_guard_event_with_retry(db_factory, event_id: str, attempts: int = 4) -> dict[str, str]:
+    """Retry transient PostgreSQL serialization/deadlock failures safely.
+
+    The transaction is rolled back before each retry; no partially applied
+    grant, effective state, policy, or distribution can escape the boundary.
+    """
+    for attempt in range(attempts):
+        db = db_factory()
+        try:
+            return process_guard_event(db, event_id)
+        except OperationalError as exc:
+            db.rollback()
+            text = str(exc).lower()
+            if "deadlock" not in text and "serialization" not in text:
+                raise
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.02 * (attempt + 1))
+        finally:
+            db.close()
+    raise RuntimeError("unreachable")
