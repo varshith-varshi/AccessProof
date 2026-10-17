@@ -81,6 +81,7 @@ from apps.api.accessproof_api.db import (
     WebhookEndpoint,
     Session as DbSession,
     SourceConnection,
+    ProviderSyncCursor,
     TestIdentity,
     TestRun,
     TestSuite,
@@ -2205,10 +2206,28 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     checks.append({"code": "APPLICATION_EXISTS", "ok": True, "reason": None})
     checks.append({"code": "TENANT_SCOPE_VALID", "ok": row.organization_id == organization_id, "reason": None if row.organization_id == organization_id else "Application belongs to another organization."})
     checks.append({"code": "GUARD_BOUND", "ok": guard is not None, "reason": None if guard else "Bind an AccessProof Guard."})
-    checks.append({"code": "GUARD_ENROLLED", "ok": bool(guard and guard.enrolled_at and guard.revoked_at is None), "reason": None if guard and guard.enrolled_at and guard.revoked_at is None else "Enroll the selected Guard."})
-    checks.append({"code": "GUARD_ONLINE", "ok": heartbeat_ok, "reason": None if heartbeat_ok else "The selected Guard has no recent heartbeat."})
-    checks.append({"code": "GUARD_POLICY_INSTALLED", "ok": bool(guard and guard.active_policy_version > 0), "reason": None if guard and guard.active_policy_version > 0 else "The Guard has not installed a policy."})
-    checks.append({"code": "PERMISSION_SOURCE_USABLE", "ok": bool(source and source.status == "connected"), "reason": None if source and source.status == "connected" else "Connect and synchronize a permission source."})
+    guard_enrolled = bool(guard and guard.enrolled_at is not None)
+    guard_revoked = bool(guard and guard.revoked_at is None)
+    checks.append({"code": "GUARD_ENROLLED", "ok": guard_enrolled, "reason": None if guard_enrolled else "Enroll the selected Guard."})
+    checks.append({"code": "GUARD_NOT_REVOKED", "ok": guard_revoked, "reason": None if guard_revoked else "The selected Guard has been revoked."})
+    checks.append({"code": "GUARD_HEARTBEAT_RECENT", "ok": heartbeat_ok, "reason": None if heartbeat_ok else "The selected Guard has no recent heartbeat."})
+    installed = bool(guard and guard.active_policy_version > 0 and db.scalar(select(GuardPolicyDistribution.id).where(
+        GuardPolicyDistribution.organization_id == organization_id,
+        GuardPolicyDistribution.guard_id == guard.id,
+        GuardPolicyDistribution.status == "installed",
+    )) is not None)
+    checks.append({"code": "GUARD_POLICY_INSTALLED", "ok": installed, "reason": None if installed else "The Guard has not installed a policy."})
+    source_connected = bool(source and source.status == "connected" and source.last_validated_at is not None)
+    checks.append({"code": "PERMISSION_SOURCE_CONFIGURED", "ok": source is not None and source.encrypted_credentials is not None, "reason": None if source and source.encrypted_credentials else "Configure a permission source."})
+    checks.append({"code": "PERMISSION_SOURCE_TRUSTED", "ok": source_connected, "reason": None if source_connected else "Connect and validate a permission source."})
+    acl_cursor = db.scalar(select(ProviderSyncCursor).where(
+        ProviderSyncCursor.organization_id == organization_id,
+        ProviderSyncCursor.source_id == (source.id if source else ""),
+        ProviderSyncCursor.sync_kind == "acl",
+    )) if source else None
+    acl_trusted = bool(acl_cursor and acl_cursor.status == "connected" and acl_cursor.last_success_at is not None and not acl_cursor.last_error_code)
+    checks.append({"code": "PERMISSION_SOURCE_SYNCED", "ok": acl_trusted, "reason": None if acl_trusted else "Complete a trusted permission synchronization."})
+    checks.append({"code": "PERMISSION_SOURCE_USABLE", "ok": source_connected and acl_trusted, "reason": None if source_connected and acl_trusted else "Connect and synchronize a permission source."})
     oidc_ok = settings.env == "production" and bool(os.getenv("ACCESSPROOF_GUARD_IDENTITY_MODE", "oidc") == "oidc" and os.getenv("ACCESSPROOF_GUARD_JWT_ISSUER") and os.getenv("ACCESSPROOF_GUARD_JWT_AUDIENCE"))
     checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok, "reason": None if oidc_ok else "Production OIDC/JWKS identity verification is incomplete."})
     checks.append({"code": "LAYER1_INTEGRATION_CONFIRMED", "ok": row.layer1_verified_at is not None, "reason": None if row.layer1_verified_at else "Complete the authenticated Layer 1 verification."})
