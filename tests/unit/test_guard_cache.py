@@ -1,6 +1,5 @@
 from apps.guard.accessproof_guard.cache import PolicyCache
 from apps.guard.accessproof_guard.sync import GuardMachineCredentials, GuardSyncClient
-from apps.guard.accessproof_guard import cli
 import httpx
 
 
@@ -44,6 +43,19 @@ def test_decision_context_is_bound_to_application_and_subject(tmp_path):
     assert cache.load_context("decision", "rag", "bob") is None
 
 
+def test_identity_mapping_is_exact_and_revocation_snapshot_removes_it(tmp_path):
+    cache = PolicyCache(str(tmp_path / "guard.db"))
+    cache.set_identity_mappings([{
+        "source_id": "drive", "issuer": "https://tenant.example/", "subject": "employee-1",
+        "tenant_id": "tenant-a", "source_subject_id": "google-opaque-id",
+    }])
+    assert cache.resolve_identity("drive", "https://tenant.example/", "employee-1", "tenant-a") == "google-opaque-id"
+    assert cache.resolve_identity("drive", "https://tenant.example", "employee-1", "tenant-a") is None
+    assert cache.resolve_identity("drive", "https://tenant.example/", "employee-1", "tenant-b") is None
+    cache.set_identity_mappings([])
+    assert cache.resolve_identity("drive", "https://tenant.example/", "employee-1", "tenant-a") is None
+
+
 def test_decision_context_is_bound_to_request_and_is_one_time_use(tmp_path):
     cache = PolicyCache(str(tmp_path / "guard.db"))
     cache.save_context("decision", "rag", "bob", ["handbook"], request_id="request-1")
@@ -58,6 +70,12 @@ def test_audit_buffer_is_idempotent_and_bounded_without_content(tmp_path):
     assert cache.buffer_audit("a", application_id="rag", subject_id="alice", request_id="r1", result="block", reason="DENY", policy_version=1)
     assert not cache.buffer_audit("a", application_id="rag", subject_id="alice", request_id="r1", result="block", reason="DENY", policy_version=1)
     cache.buffer_audit("b", application_id="rag", subject_id="alice", request_id="r2", result="allow", reason="ALLOW", policy_version=1)
+    # While all records are undelivered, do not silently erase evidence.
+    import pytest
+    with pytest.raises(RuntimeError, match="AUDIT_BUFFER_FULL"):
+        cache.buffer_audit("c", application_id="rag", subject_id="alice", request_id="r3", result="allow", reason="ALLOW", policy_version=1)
+    assert {item["event_id"] for item in cache.pending_audit()} == {"a", "b"}
+    cache.mark_audit_delivered(["a"])
     cache.buffer_audit("c", application_id="rag", subject_id="alice", request_id="r3", result="allow", reason="ALLOW", policy_version=1)
     pending = cache.pending_audit()
     assert len(pending) == 2
@@ -71,7 +89,7 @@ def test_sync_client_installs_then_acks_and_uploads_audit_idempotently(tmp_path)
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.method == "GET":
-            return httpx.Response(200, json={"kind": "incremental", "version": 3, "policies": [{"version": 3, "subject_id": "alice", "source_id": "drive", "resource_id": "finance", "scope": "read", "decision": "deny", "reason": "REVOKED"}]})
+            return httpx.Response(200, json={"kind": "incremental", "version": 3, "applications": [{"application_id": "rag", "source_id": "drive", "mode": "protect", "source_acl_healthy": True}], "policies": [{"version": 3, "subject_id": "alice", "source_id": "drive", "resource_id": "finance", "scope": "read", "decision": "deny", "reason": "REVOKED"}]})
         return httpx.Response(202 if request.url.path.endswith("audit-events") else 200, json={"ok": True})
 
     cache = PolicyCache(str(tmp_path / "guard.db"))
@@ -85,18 +103,71 @@ def test_sync_client_installs_then_acks_and_uploads_audit_idempotently(tmp_path)
     assert len(ack_statuses) == 2 and b"received" in ack_statuses[0] and b"installed" in ack_statuses[1]
 
 
-def test_guard_enrollment_cli_persists_a_private_machine_credential(tmp_path, monkeypatch):
-    class Response:
-        def raise_for_status(self):
-            return None
+def test_guard_enrollment_cli_delegates_to_secure_onboarding(tmp_path, monkeypatch):
+    from apps.guard.accessproof_guard import cli
+    recorded = {}
 
-        def json(self):
-            return {"guard_id": "guard-1", "guard_credential": "machine-credential"}
+    def exchange(**kwargs):
+        recorded.update(kwargs)
+        destination = kwargs["state_dir"] / "credentials.json"
+        destination.write_text('{"guard_id":"guard-1"}')
+        destination.chmod(0o600)
+        return {"guard_id": "guard-1"}
 
-    monkeypatch.setattr(cli.httpx, "post", lambda *args, **kwargs: Response())
-    cli.enroll(server="https://control.example/", token="one-time", version="1.2.3", state_dir=tmp_path)
-    credentials = tmp_path / "credentials.json"
-    assert credentials.stat().st_mode & 0o777 == 0o600
-    assert credentials.read_text(encoding="utf-8") == (
-        '{"control_plane_url": "https://control.example", "guard_id": "guard-1", "credential": "machine-credential"}'
+    monkeypatch.setattr(cli, "enroll_guard", exchange)
+    cli.enroll(server="https://control.example", token="one-time", version="1.2.3",
+               state_dir=tmp_path, issuer="https://issuer.example", audience="rag")
+    assert recorded["server"] == "https://control.example"
+    assert recorded["issuer"] == "https://issuer.example"
+    assert recorded["audience"] == "rag"
+    assert (tmp_path / "credentials.json").stat().st_mode & 0o777 == 0o600
+
+
+
+def test_stale_control_plane_policy_cannot_change_application_mode(tmp_path):
+    import pytest
+
+    cache = PolicyCache(str(tmp_path / "guard.db"))
+    cache.install(9, [{"subject_id": "alice", "source_id": "drive",
+                       "resource_id": "doc", "decision": "allow"}])
+    cache.set_application_bindings([
+        {"application_id": "rag", "source_id": "drive", "mode": "protect"}
+    ])
+    assert cache.application_binding("rag") == ("drive", "protect")
+
+    def stale(request):
+        return httpx.Response(200, json={
+            "version": 8, "kind": "incremental", "policies": [],
+            "applications": [{"application_id": "rag", "source_id": "drive", "mode": "shadow"}],
+        })
+    client = GuardSyncClient(
+        cache, GuardMachineCredentials("https://control.example", "guard-1", "machine", "1"),
+        httpx.Client(transport=httpx.MockTransport(stale)),
     )
+    with pytest.raises(ValueError, match="STALE_POLICY"):
+        client.sync_once()
+    assert cache.application_binding("rag") == ("drive", "protect")
+    assert cache.version() == 9
+
+
+
+def test_machine_heartbeat_degraded_without_installed_policy(tmp_path):
+    import json
+    observed = []
+    def receive(request: httpx.Request) -> httpx.Response:
+        observed.append(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True})
+    cache = PolicyCache(str(tmp_path / "empty-heartbeat.db"))
+    client = GuardSyncClient(
+        cache, GuardMachineCredentials("https://control.example", "g", "machine", "1"),
+        httpx.Client(transport=httpx.MockTransport(receive)),
+    )
+    client.heartbeat()
+    assert observed[-1]["cache_status"] == "degraded"
+    assert "POLICY_NOT_INSTALLED" in observed[-1]["degraded_conditions"]
+    cache.install(1, [{"subject_id": "alice", "source_id": "drive",
+                       "resource_id": "test", "decision": "deny"}])
+    cache.mark_sync_success()
+    client.heartbeat()
+    assert observed[-1]["cache_status"] == "healthy"
+    assert observed[-1]["degraded_conditions"] == []

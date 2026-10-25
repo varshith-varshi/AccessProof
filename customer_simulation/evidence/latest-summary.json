@@ -1,0 +1,7 @@
+{
+  "smoke_documents": 250,
+  "performance_metadata": 10000,
+  "scenarios": 150,
+  "locally_executed_end_to_end": 0,
+  "external_sandbox_required": 26
+}

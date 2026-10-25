@@ -22,6 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cache-connectors = ["pymemcache>=4,<5"]
 aws-kms = ["boto3>=1.43,<2"]
 observability = ["opentelemetry-sdk>=1.36,<2", "opentelemetry-exporter-otlp-proto-http>=1.36,<2"]
 dev = [

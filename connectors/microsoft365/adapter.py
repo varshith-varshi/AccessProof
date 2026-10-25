@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, cast
+import hashlib
 
 import httpx
 
@@ -33,6 +34,10 @@ class Microsoft365Adapter(SourceAdapter):
     ):
         if not drive_id or not test_root_item_id:
             raise UnsafeBoundaryError("Explicit drive_id and test_root_item_id are required")
+        if any(not isinstance(value, str) or not value.isascii()
+               or not value or any(char in value for char in "/?\\#%\r\n")
+               for value in (drive_id, test_root_item_id)):
+            raise UnsafeBoundaryError("Invalid Microsoft Graph drive or folder ID")
         self.token = access_token
         self.drive_id = drive_id
         self.test_root_item_id = test_root_item_id
@@ -68,27 +73,173 @@ class Microsoft365Adapter(SourceAdapter):
         normalize_http_error(response)
         return response
 
+    def _continuation_path(self, raw: str, expected_path: str) -> str:
+        """Bind all Graph-provided page links to this connector's exact endpoint."""
+        if not isinstance(raw, str) or len(raw) > 16000:
+            raise UnsafeBoundaryError("Invalid Microsoft Graph continuation")
+        try:
+            target = httpx.URL(raw)
+        except (ValueError, TypeError) as exc:
+            raise UnsafeBoundaryError("Invalid Microsoft Graph continuation") from exc
+        if (target.scheme != "https" or target.host != "graph.microsoft.com"
+                or target.port not in {None, 443} or target.path != expected_path
+                or target.username or target.password or target.fragment):
+            raise UnsafeBoundaryError("Untrusted Microsoft Graph continuation")
+        try:
+            query = target.query.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise UnsafeBoundaryError("Non-ASCII Graph continuation query") from exc
+        return expected_path.removeprefix("/v1.0") + ("?" + query if query else "")
+
+    async def _paged_collection(
+        self, path: str, *, max_pages: int = 2000, max_items: int = 20000,
+    ) -> list[dict[str, Any]]:
+        """Bounded, complete Graph list retrieval; partial reads never authorize."""
+        output: list[dict[str, Any]] = []
+        seen_links: set[str] = set()
+        original_path = f"/v1.0{path.split('?', 1)[0]}"
+        for _ in range(max_pages):
+            if path in seen_links:
+                raise UnsafeBoundaryError("Microsoft Graph pagination loop")
+            seen_links.add(path)
+            response = await self._request("GET", path)
+            payload = response.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("value"), list):
+                raise UnsafeBoundaryError("Incomplete Microsoft Graph page")
+            page = payload["value"]
+            if any(not isinstance(item, dict) for item in page):
+                raise UnsafeBoundaryError("Malformed Microsoft Graph page")
+            output.extend(page)
+            if len(output) > max_items:
+                raise UnsafeBoundaryError("Microsoft Graph inventory exceeds safety limit")
+            next_link = payload.get("@odata.nextLink")
+            if not next_link:
+                return output
+            path = self._continuation_path(next_link, original_path)
+        raise UnsafeBoundaryError("Microsoft Graph pagination limit exceeded")
+
+    async def list_boundary_resources(
+        self, *, root_id: str | None = None, max_resources: int = 20000,
+    ) -> list[dict[str, Any]]:
+        """Enumerate an approved folder subtree, never a folder outside the root."""
+        if max_resources < 1:
+            raise UnsafeBoundaryError("Invalid inventory limit")
+        start = root_id or self.test_root_item_id
+        if root_id is not None and not await self.is_inside_boundary(start):
+            raise UnsafeBoundaryError("Microsoft Graph subtree outside approved boundary")
+        seen = {start}
+        queued = [start]
+        resources: list[dict[str, Any]] = []
+        while queued:
+            folder_id = queued.pop(0)
+            path = f"/drives/{self.drive_id}/items/{folder_id}/children"
+            items = await self._paged_collection(path, max_items=max_resources)
+            for item in items:
+                item_id = item.get("id")
+                if not isinstance(item_id, str) or not item_id:
+                    raise UnsafeBoundaryError("Microsoft Graph inventory item missing ID")
+                if item_id in seen:
+                    # Duplicated items within pagination are treated as unsafe
+                    # rather than adding a conflicting parent relationship.
+                    raise UnsafeBoundaryError("Duplicate Microsoft Graph inventory item")
+                parent = item.get("parentReference")
+                if (not isinstance(parent, dict) or parent.get("id") != folder_id
+                        or parent.get("driveId", self.drive_id) != self.drive_id):
+                    raise UnsafeBoundaryError("Microsoft Graph inventory escaped source boundary")
+                seen.add(item_id)
+                # remoteItem represents a linked/shared object, possibly in
+                # another drive or tenant. It is not a local document grant.
+                if "remoteItem" in item:
+                    continue
+                resources.append(item)
+                if len(resources) > max_resources:
+                    raise UnsafeBoundaryError("Microsoft Graph inventory exceeds safety limit")
+                if isinstance(item.get("folder"), dict):
+                    queued.append(item_id)
+        return resources
+
+    async def acl_latest_delta_link(self) -> str:
+        """Capture a start cursor BEFORE the initial inventory to close scan races."""
+        path = f"/drives/{self.drive_id}/root/delta?token=latest"
+        response = await self._request("GET", path)
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise UnsafeBoundaryError("Microsoft Graph delta checkpoint unavailable")
+        token = payload.get("@odata.deltaLink")
+        if not isinstance(token, str):
+            raise UnsafeBoundaryError("Microsoft Graph delta checkpoint unavailable")
+        self._continuation_path(token, f"/v1.0/drives/{self.drive_id}/root/delta")
+        return token
+
     async def acl_delta_page(self, delta_url: str | None = None) -> dict[str, Any]:
-        """Read one Graph drive delta page; persist @odata.nextLink/deltaLink."""
-        path = delta_url or f"/drives/{self.drive_id}/root/delta"
-        if path.startswith(self.GRAPH):
-            response = await self._client.get(path, headers={"Authorization": f"Bearer {self.token}"})
-            normalize_http_error(response)
-            return response.json()
-        return (await self._request("GET", path)).json()
+        """Read a Graph delta page without following an untrusted continuation URL.
+
+        Microsoft Graph returns absolute nextLink/deltaLink URLs. They are
+        provider-controlled data, not permission to send customer bearer tokens
+        to a different host, scheme, drive, or API path.
+        """
+        if delta_url is None:
+            path = f"/drives/{self.drive_id}/root/delta"
+        else:
+            path = self._continuation_path(
+                delta_url, f"/v1.0/drives/{self.drive_id}/root/delta"
+            )
+        return cast(dict[str, Any], (await self._request("GET", path)).json())
+
+    async def is_inside_boundary(self, item_id: str, *, max_depth: int = 64) -> bool:
+        """Confirm Graph item ancestry inside the explicitly approved folder.
+
+        A Graph drive delta feed covers the entire drive, not the configured
+        protected root. Never ingest unrelated document ACLs without verifying
+        a complete path to the customer-approved root item.
+        """
+        if not item_id:
+            raise UnsafeBoundaryError("Microsoft Graph item ID is missing")
+        if item_id == self.test_root_item_id:
+            return True
+        seen: set[str] = set()
+        current = item_id
+        for _ in range(max_depth):
+            if current in seen:
+                raise UnsafeBoundaryError("Microsoft Graph item ancestry cycle")
+            seen.add(current)
+            result = await self._request(
+                "GET", f"/drives/{self.drive_id}/items/{current}",
+                params={"$select": "id,parentReference,remoteItem"},
+            )
+            entry = result.json()
+            if not isinstance(entry, dict) or entry.get("id") != current:
+                raise UnsafeBoundaryError("Invalid Microsoft Graph item ancestry")
+            if "remoteItem" in entry:
+                return False  # Cross-drive/shortcut content is out of scope.
+            parent = entry.get("parentReference")
+            if not isinstance(parent, dict):
+                return False
+            parent_drive = parent.get("driveId")
+            if parent_drive is not None and parent_drive != self.drive_id:
+                return False
+            parent_id = parent.get("id")
+            if not isinstance(parent_id, str) or not parent_id:
+                return False
+            if parent_id == self.test_root_item_id:
+                return True
+            current = parent_id
+        raise UnsafeBoundaryError("Microsoft Graph ancestry exceeds maximum depth")
 
     async def permissions_snapshot(self, item_id: str) -> list[dict[str, Any]]:
-        response = await self._request(
-            "GET", f"/drives/{self.drive_id}/items/{item_id}/permissions"
+        return await self._paged_collection(
+            f"/drives/{self.drive_id}/items/{item_id}/permissions",
+            max_items=10000,
         )
-        return list(response.json().get("value") or [])
 
     async def validate_connection(self) -> ConnectionIdentity:
         r = await self._request(
             "GET",
-            f"/drives/{self.drive_id}/items/{self.test_root_item_id}?$select=id,name,parentReference",
+            f"/drives/{self.drive_id}/items/{self.test_root_item_id}?$select=id,name,parentReference,remoteItem",
         )
         item = r.json()
+        if not isinstance(item, dict) or "remoteItem" in item or item.get("id") != self.test_root_item_id:
+            raise UnsafeBoundaryError("Approved Microsoft boundary must be a local drive item")
         metadata = {
             "name": item.get("name"),
             "advanced_directory_mode": self.advanced_directory_mode,
@@ -162,8 +313,14 @@ class Microsoft365Adapter(SourceAdapter):
         )
 
     async def create_resource(self, *, name: str, content: str, marker: str) -> SourceResource:
-        safe_name = name.replace("/", "_")
-        path = f"/drives/{self.drive_id}/items/{self.test_root_item_id}:/{safe_name}.txt:/content"
+        if not marker:
+            raise UnsafeBoundaryError("A unique Microsoft test resource marker is required")
+        marker_tag = hashlib.sha256(marker.encode("utf-8")).hexdigest()[:24]
+        safe_name = "".join(
+            char if char.isascii() and (char.isalnum() or char in "._-") else "_"
+            for char in name[:80]
+        ).strip("._") or "accessproof-test"
+        path = f"/drives/{self.drive_id}/items/{self.test_root_item_id}:/{safe_name}-{marker_tag}.txt:/content"
         r = await self._request(
             "PUT", path, content=content.encode(), headers={"Content-Type": "text/plain"}
         )
@@ -171,7 +328,7 @@ class Microsoft365Adapter(SourceAdapter):
         self._created.add(item["id"])
         return SourceResource(
             provider_id=item["id"],
-            name=item.get("name", safe_name),
+            name=item.get("name") or f"{safe_name}-{marker_tag}.txt",
             marker="accessproof-generated",
             canary=marker,
             metadata={"drive_id": self.drive_id, "test_root_item_id": self.test_root_item_id},
@@ -193,6 +350,32 @@ class Microsoft365Adapter(SourceAdapter):
             raise UnsafeBoundaryError(
                 "Tracked Microsoft resource does not match the authorized drive boundary"
             )
+        moved_parent = resource.metadata.get("moved_to_parent_item_id")
+        if moved_parent and moved_parent != self.move_target_parent_item_id:
+            raise UnsafeBoundaryError("Tracked Microsoft file moved beyond approved test boundary")
+        if not resource.provider_id or not resource.canary:
+            raise UnsafeBoundaryError("Missing durable test resource ownership proof")
+        if (not resource.provider_id.isascii()
+                or any(char in resource.provider_id for char in ("/", "?", "#", "%", "\\", "\r", "\n", "\0"))):
+            raise UnsafeBoundaryError("Unsafe provider resource identifier")
+        expected_tag = hashlib.sha256(resource.canary.encode("utf-8")).hexdigest()[:24]
+        observed = await self._request(
+            "GET", f"/drives/{self.drive_id}/items/{resource.provider_id}",
+            params={"$select": "id,name,parentReference,deleted"},
+        )
+        provider_item = observed.json()
+        parent = provider_item.get("parentReference") if isinstance(provider_item, dict) else None
+        if (
+            not isinstance(provider_item, dict)
+            or not isinstance(parent, dict)
+            or provider_item.get("id") != resource.provider_id
+            or provider_item.get("name") != resource.name
+            or expected_tag not in resource.name
+            or parent.get("id") != (moved_parent or self.test_root_item_id)
+            or parent.get("driveId") != self.drive_id
+            or provider_item.get("deleted") is not None
+        ):
+            raise UnsafeBoundaryError("Microsoft file does not prove authorized synthetic ownership")
         self._created.add(resource.provider_id)
         parent_pid = resource.metadata.get("microsoft_parent_permission_id")
         parent_principal = resource.metadata.get("microsoft_parent_principal")

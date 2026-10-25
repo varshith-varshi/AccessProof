@@ -4,8 +4,10 @@ import asyncio
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update, or_, and_
+from sqlalchemy.orm import Session
 
 from apps.api.accessproof_api.config import settings
 from apps.api.accessproof_api.db import (
@@ -17,14 +19,19 @@ from apps.api.accessproof_api.db import (
     SessionLocal,
     SourceConnection,
     ProviderSyncCursor,
+    ProviderEventJournal,
+    ProviderEventSubscription,
     TestRun,
     WebhookDelivery,
     WebhookEndpoint,
 )
+from apps.worker.accessproof_worker.watch_lifecycle import ensure_google_watch, validate_callback_url
 from apps.api.accessproof_api.guard_pipeline import process_guard_event_with_retry
-from apps.api.accessproof_api.directory_sync import DirectorySyncError, synchronize_directory
+from apps.api.accessproof_api.directory_sync import synchronize_directory
+from connectors.directory import DirectorySyncError
 from apps.api.accessproof_api.acl_sync import ACLSyncError, reconcile_known_acls, synchronize_acls
 from packages.auth.oauth_refresh import OAuthCredentials, OAuthRefreshError, refresh_credentials
+from packages.auth.microsoft_consent import graph_app_token, MicrosoftConsentError, tenant_uuid
 from connectors.factory import create_source_adapter
 from integrations.webhooks.delivery import deliver
 from integrations.email.delivery import EmailDeliveryConfig, deliver_email
@@ -44,6 +51,8 @@ from packages.observability.tracing import configure_tracing
 POLL_SECONDS = float(os.getenv("ACCESSPROOF_WORKER_POLL_SECONDS", "2"))
 DIRECTORY_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_DIRECTORY_SYNC_SECONDS", "900")))
 ACL_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_ACL_SYNC_SECONDS", "300")))
+GOOGLE_WATCH_CALLBACK_URL = os.getenv("ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL", "").strip()
+GOOGLE_WATCH_CHECK_SECONDS = max(60, int(os.getenv("ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS", "900")))
 ACL_RECONCILE_SECONDS = max(
     300,
     int(
@@ -65,10 +74,67 @@ box = build_secret_backend(
 
 
 async def refresh_source_credentials_if_needed(
-    db, source: SourceConnection, credentials: dict
-) -> dict:
+    db: Session, source: SourceConnection, credentials: dict[str, Any]
+) -> dict[str, Any]:
     """Refresh an expiring OAuth source credential and atomically re-encrypt it."""
     endpoint = credentials.get("token_endpoint") or credentials.get("oauth_token_url")
+    if str(getattr(source, "provider", "")).lower() == "google-drive":
+        # Source credentials are administrator-controlled input. Prevent the
+        # OAuth refresh worker from POSTing credentials to an arbitrary URL.
+        expected = "https://oauth2.googleapis.com/token"
+        if endpoint and endpoint != expected:
+            raise OAuthRefreshError("UNTRUSTED_GOOGLE_TOKEN_ENDPOINT")
+        endpoint = expected
+    if str(getattr(source, "provider", "")).lower() in {"microsoft365", "sharepoint", "onedrive"}:
+        # Token endpoint is not a generic URL: source credentials are supplied
+        # by tenant administrators and must never cause a credential POST to
+        # a caller-controlled server.
+        import re
+        tenant_id = str(credentials.get("tenant_id") or credentials.get("tenant_hint") or "")
+        if not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", tenant_id):
+            if credentials.get("refresh_token"):
+                raise OAuthRefreshError("INVALID_MICROSOFT_TENANT")
+        elif credentials.get("refresh_token"):
+            expected = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            if endpoint and endpoint != expected:
+                raise OAuthRefreshError("UNTRUSTED_MICROSOFT_TOKEN_ENDPOINT")
+            endpoint = expected
+    if (str(getattr(source, "provider", "")).lower() in {"microsoft365", "sharepoint", "onedrive"}
+            and credentials.get("grant_type") == "client_credentials"):
+        # Application permissions use the client-credentials grant; Microsoft
+        # does not issue refresh tokens for this grant. Reacquire short-lived
+        # Graph tokens from the *configured tenant only*, never an arbitrary URL.
+        try:
+            tenant = tenant_uuid(credentials.get("tenant_id") or credentials.get("tenant_hint"))
+        except MicrosoftConsentError as exc:
+            raise OAuthRefreshError("INVALID_MICROSOFT_TENANT") from exc
+        expected = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+        if endpoint and endpoint != expected:
+            raise OAuthRefreshError("UNTRUSTED_MICROSOFT_TOKEN_ENDPOINT")
+        expiry_raw = credentials.get("expires_at")
+        try:
+            expiry = datetime.fromisoformat(str(expiry_raw).replace("Z", "+00:00"))
+            if expiry.tzinfo is None:
+                raise ValueError("Timezone missing")
+        except (TypeError, ValueError) as exc:
+            raise OAuthRefreshError("MICROSOFT_TOKEN_EXPIRY_INVALID") from exc
+        if (credentials.get("access_token")
+                and expiry > datetime.now(timezone.utc) + timedelta(minutes=5)):
+            return credentials
+        try:
+            access_token, new_expiry = await asyncio.to_thread(
+                graph_app_token, tenant_id=tenant,
+                client_id=str(credentials.get("client_id") or ""),
+                client_secret=str(credentials.get("client_secret") or ""),
+            )
+        except MicrosoftConsentError as exc:
+            raise OAuthRefreshError(str(exc)) from exc
+        updated = dict(credentials)
+        updated["access_token"] = access_token
+        updated["expires_at"] = new_expiry.isoformat()
+        updated["token_endpoint"] = expected
+        source.encrypted_credentials = box.encrypt(json.dumps(updated, sort_keys=True))
+        return updated
     client_id = credentials.get("client_id") or credentials.get("oauth_client_id")
     client_secret = credentials.get("client_secret") or credentials.get("oauth_client_secret")
     refresh_token = credentials.get("refresh_token")
@@ -403,6 +469,81 @@ async def process_cleanup_task(task_id: str) -> None:
             db.commit()
 
 
+def claim_one_provider_event() -> str | None:
+    """Lease one provider notification without conflating it with ACL truth."""
+    now = datetime.now(timezone.utc)
+    abandoned = now - timedelta(minutes=5)
+    eligible = or_(
+        and_(ProviderEventJournal.status.in_(["received", "retry"]),
+             ProviderEventJournal.next_attempt_at <= now),
+        and_(ProviderEventJournal.status == "processing",
+             ProviderEventJournal.processing_started_at < abandoned),
+    )
+    with SessionLocal() as db:
+        # A conditional UPDATE/RETURNING is a single atomic claim. Workers
+        # cannot both lease the same row even if they select concurrently.
+        # The nested ID query is intentionally deterministic for fair ordering.
+        candidate = (select(ProviderEventJournal.id).where(eligible)
+                     .order_by(ProviderEventJournal.received_at, ProviderEventJournal.id)
+                     .limit(1).scalar_subquery())
+        row_id = db.scalar(
+            update(ProviderEventJournal)
+            .where(ProviderEventJournal.id == candidate, eligible)
+            .values(status="processing", processing_started_at=now,
+                    attempts=ProviderEventJournal.attempts + 1)
+            .returning(ProviderEventJournal.id)
+        )
+        db.commit()
+        return row_id
+
+
+async def process_provider_event(event_id: str) -> None:
+    """Fetch the authoritative provider delta for a validated notification."""
+    with SessionLocal() as db:
+        event = db.get(ProviderEventJournal, event_id)
+        if event is None or event.status != "processing":
+            return
+        source = db.get(SourceConnection, event.source_id)
+        subscription = db.get(ProviderEventSubscription, event.subscription_id)
+        if source is None or subscription is None or source.organization_id != event.organization_id:
+            event.status, event.error_code, event.completed_at = "failed", "SOURCE_BINDING_MISMATCH", datetime.now(timezone.utc)
+            db.commit()
+            return
+        credentials = json.loads(box.decrypt(source.encrypted_credentials)) if source.encrypted_credentials else {}
+    try:
+        # The event is only a wake-up signal. ACL sync resumes the durable
+        # provider cursor and fetches authoritative state before policy changes.
+        with SessionLocal() as db:
+            source = db.get(SourceConnection, event.source_id)
+            if source is None:
+                raise ACLSyncError("SOURCE_BINDING_MISMATCH")
+            credentials = await refresh_source_credentials_if_needed(db, source, credentials)
+            await synchronize_acls(db, source, credentials, max_pages=50)
+            db.commit()
+        with SessionLocal() as db:
+            event = db.get(ProviderEventJournal, event_id)
+            subscription = db.get(ProviderEventSubscription, event.subscription_id) if event else None
+            if event:
+                event.status, event.error_code, event.completed_at = "completed", None, datetime.now(timezone.utc)
+            if subscription:
+                subscription.last_successful_processing_at = datetime.now(timezone.utc)
+            db.commit()
+    except Exception as exc:
+        code = getattr(exc, "code", type(exc).__name__)[:100]
+        with SessionLocal() as db:
+            event = db.get(ProviderEventJournal, event_id)
+            if event:
+                if event.attempts >= 8:
+                    event.status, event.completed_at = "failed", datetime.now(timezone.utc)
+                else:
+                    event.status = "retry"
+                    event.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=min(300, 2 ** min(event.attempts, 8)))
+                event.error_code = code
+                event.processing_started_at = None
+                db.commit()
+        logger.warning("provider_event_sync_failed event_id=%s code=%s", event_id, code)
+
+
 def claim_one_guard_event() -> str | None:
     # A worker can terminate after leasing an event and before it writes a
     # terminal result.  Reclaim only leases old enough to be abandoned so a
@@ -463,29 +604,32 @@ async def synchronize_due_directories() -> int:
                 )
             )
         )
-        due = [
-            source.id
-            for source in sources
-            if source.last_validated_at is None
-            or (
-                now
-                - source.last_validated_at.replace(
-                    tzinfo=source.last_validated_at.tzinfo or timezone.utc
-                )
-            ).total_seconds()
-            >= DIRECTORY_SYNC_SECONDS
-        ]
+        cursor_success = {
+            row.source_id: row.last_success_at
+            for row in db.scalars(select(ProviderSyncCursor).where(
+                ProviderSyncCursor.sync_kind == "directory"
+            ))
+        }
+        due: list[str] = []
+        for source in sources:
+            last_success = cursor_success.get(source.id)
+            if last_success is None:
+                due.append(source.id)
+                continue
+            checked_at = last_success.replace(tzinfo=last_success.tzinfo or timezone.utc)
+            if (now - checked_at).total_seconds() >= DIRECTORY_SYNC_SECONDS:
+                due.append(source.id)
     completed = 0
     for source_id in due:
         with SessionLocal() as db:
-            source = db.get(SourceConnection, source_id)
-            if source is None or not source.encrypted_credentials:
+            stored_source = db.get(SourceConnection, source_id)
+            if stored_source is None or not stored_source.encrypted_credentials:
                 continue
             try:
-                credentials = json.loads(box.decrypt(source.encrypted_credentials))
-                credentials = await refresh_source_credentials_if_needed(db, source, credentials)
-                await synchronize_directory(db, source, credentials)
-                source.status, source.last_error, source.last_validated_at = (
+                credentials = json.loads(box.decrypt(stored_source.encrypted_credentials))
+                credentials = await refresh_source_credentials_if_needed(db, stored_source, credentials)
+                await synchronize_directory(db, stored_source, credentials)
+                stored_source.status, stored_source.last_error, stored_source.last_validated_at = (
                     "connected",
                     None,
                     datetime.now(timezone.utc),
@@ -493,7 +637,7 @@ async def synchronize_due_directories() -> int:
                 db.commit()
                 completed += 1
             except DirectorySyncError as exc:
-                source.status, source.last_error = (
+                stored_source.status, stored_source.last_error = (
                     (
                         "reauthorization_required"
                         if exc.code == "REAUTHORIZATION_REQUIRED"
@@ -503,7 +647,7 @@ async def synchronize_due_directories() -> int:
                 )
                 db.commit()
             except OAuthRefreshError as exc:
-                source.status, source.last_error = (
+                stored_source.status, stored_source.last_error = (
                     (
                         "reauthorization_required"
                         if exc.code == "REAUTHORIZATION_REQUIRED"
@@ -513,7 +657,7 @@ async def synchronize_due_directories() -> int:
                 )
                 db.commit()
             except Exception as exc:
-                source.status, source.last_error = "degraded", "DIRECTORY_SYNC_INCOMPLETE"
+                stored_source.status, stored_source.last_error = "degraded", "DIRECTORY_SYNC_INCOMPLETE"
                 db.commit()
                 logger.warning(
                     "scheduled_directory_sync_failed source_id=%s error=%s",
@@ -543,21 +687,16 @@ async def synchronize_due_acls() -> int:
                 select(ProviderSyncCursor).where(ProviderSyncCursor.sync_kind == "acl")
             )
         }
-        due = [
-            source.id
-            for source in sources
-            if source.id not in cursors
-            or cursors[source.id].last_success_at is None
-            or (
-                now
-                - (
-                    cursors[source.id].last_success_at.replace(
-                        tzinfo=cursors[source.id].last_success_at.tzinfo or timezone.utc
-                    )
-                )
-            ).total_seconds()
-            >= ACL_SYNC_SECONDS
-        ]
+        due: list[str] = []
+        for candidate_source in sources:
+            cursor = cursors.get(candidate_source.id)
+            last_success = cursor.last_success_at if cursor else None
+            if last_success is None:
+                due.append(candidate_source.id)
+                continue
+            normalized_success = last_success.replace(tzinfo=last_success.tzinfo or timezone.utc)
+            if (now - normalized_success).total_seconds() >= ACL_SYNC_SECONDS:
+                due.append(candidate_source.id)
     completed = 0
     for source_id in due:
         with SessionLocal() as db:
@@ -596,9 +735,9 @@ async def synchronize_due_acls() -> int:
                 db.commit()
             except OAuthRefreshError as exc:
                 db.rollback()
-                source = db.get(SourceConnection, source_id)
-                if source:
-                    source.status, source.last_error = (
+                refreshed_source = db.get(SourceConnection, source_id)
+                if refreshed_source:
+                    refreshed_source.status, refreshed_source.last_error = (
                         (
                             "reauthorization_required"
                             if exc.code == "REAUTHORIZATION_REQUIRED"
@@ -676,12 +815,39 @@ async def reconcile_known_source_acls() -> int:
     return completed
 
 
+async def maintain_google_watches() -> int:
+    """Register/renew watch channels when an administrator opted in."""
+    if not GOOGLE_WATCH_CALLBACK_URL:
+        return 0
+    if not validate_callback_url(GOOGLE_WATCH_CALLBACK_URL):
+        logger.error("google_watch_invalid_callback_configuration")
+        return 0
+    with SessionLocal() as db:
+        source_ids = list(db.scalars(select(SourceConnection.id).where(
+            SourceConnection.provider == "google-drive",
+            SourceConnection.encrypted_credentials.is_not(None),
+        )))
+    installed = 0
+    for source_id in source_ids:
+        try:
+            if await ensure_google_watch(
+                source_id, callback_url=GOOGLE_WATCH_CALLBACK_URL,
+                box=box, refresh_credentials=refresh_source_credentials_if_needed,
+            ):
+                installed += 1
+        except Exception as exc:
+            logger.warning("google_watch_registration_failed source_id=%s error=%s",
+                           source_id, type(exc).__name__)
+    return installed
+
+
 async def main() -> None:
     configure_tracing("accessproof-worker")
     last_retention = datetime.min.replace(tzinfo=timezone.utc)
     last_directory_sync = datetime.min.replace(tzinfo=timezone.utc)
     last_acl_sync = datetime.min.replace(tzinfo=timezone.utc)
     last_acl_reconcile = datetime.min.replace(tzinfo=timezone.utc)
+    last_google_watch = datetime.min.replace(tzinfo=timezone.utc)
     while True:
         did_work = False
         now = datetime.now(timezone.utc)
@@ -702,6 +868,10 @@ async def main() -> None:
             if await reconcile_known_source_acls():
                 did_work = True
             last_acl_reconcile = now
+        if (now - last_google_watch).total_seconds() >= GOOGLE_WATCH_CHECK_SECONDS:
+            if await maintain_google_watches():
+                did_work = True
+            last_google_watch = now
         email_id = claim_one_email()
         if email_id:
             did_work = True
@@ -714,6 +884,10 @@ async def main() -> None:
         if delivery_id:
             did_work = True
             await process_delivery(delivery_id)
+        provider_event_id = claim_one_provider_event()
+        if provider_event_id:
+            did_work = True
+            await process_provider_event(provider_event_id)
         guard_event_id = claim_one_guard_event()
         if guard_event_id:
             did_work = True

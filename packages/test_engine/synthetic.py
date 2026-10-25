@@ -77,13 +77,13 @@ _TEMPLATES = {
 
 
 def generate_synthetic_document(
-    prefix: str | None = None, *, category: str = "finance"
+    prefix: str | None = None, *, category: str = "finance", canary: str | None = None
 ) -> SyntheticDocument:
     if category not in _TEMPLATES:
         raise ValueError(f"Unknown synthetic content category: {category}")
     default_subject, secret_label, secret_value, distractor = _TEMPLATES[category]
     subject = prefix or default_subject
-    token = f"AP-CANARY-{uuid4()}"
+    token = canary or f"AP-CANARY-{uuid4()}"
     fact = f"{subject} {secret_label} is {secret_value}."
     body = (
         f"AccessProof synthetic security test. Category: {category}. {fact}\n"

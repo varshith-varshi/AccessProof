@@ -1,0 +1,9 @@
+# SharePoint/OneDrive effective rights — actual implementation boundary
+
+`connectors/microsoft365/adapter.py` lists a configured drive/root, consumes bounded Graph delta pages, processes moved/deleted items, and ingests drive-item sharing permissions into existing ACL graph. Directory sync includes Entra users/groups/transitive members with stable immutable IDs. This is a **preview** and does not constitute SharePoint's complete effective-ACL oracle.
+
+`connectors/microsoft365/sharepoint_effective.py` performs a diagnostic, read-only `GetUserEffectivePermissions` query for an exact list item and independently verified SharePoint LoginName using a separate SharePoint-audience token. It requires integration with a trustworthy site/library/drive/list-item ID mapper, native SharePoint group/scope inheritance analysis, role masks, link possession and freshness-aware policy publishing before Protect.
+
+Source profile requirement introduced in `source_certification.py`: a Microsoft source with site+list IDs can only match `sharepoint_list_item_effective`, while a personally owned drive with owner object ID can only match `onedrive_owner_and_sharing_effective`. An ambiguous Microsoft drive cannot self-classify as safe. Exact source/tenant/root/drive scope and expiry are part of the signed certificate. That certificate verifier is not an actual provider-validation engine and there is currently no issuer.
+
+Missing: native site/library/folder/item role definitions and inheritance breaks/restores, SharePoint groups with siteUser ID mapping, permissions from non-sharing paths, specific/organization/anonymous/guest links, external auth, OneDrive inherited personal-drive/owner rules, list-item mapping, rights masks under real SharePoint REST and live source→policy→Guard revocation comparisons. Therefore **no production Microsoft Protect ALLOW is certified**.

@@ -1,0 +1,3 @@
+# Verdict: CONDITIONAL PILOT
+
+The local synthetic environment verifies the supported direct/group Google Drive policy pipeline, Guard, Python SDK, two-layer release boundary, source freshness failure, tenant/source binding, and audit flow. It does not prove compatibility with a real Google Workspace tenant or arbitrary customer RAG. A pilot must be limited to explicitly instrumented, buffered RAG routes; verified OIDC identities; direct/group Drive grants with approved Directory access; and a dedicated test root. Complete the listed disposable Google Workspace sandbox validation before broader production claims.

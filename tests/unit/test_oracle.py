@@ -19,3 +19,14 @@ def test_oracle_citation_level():
         resource_id="r1",
     )
     assert m.exposed and m.level is EvidenceLevel.CITATION
+
+
+def test_detects_numeric_paraphrase_of_protected_fact():
+    m = detect_exposure(
+        TargetObservation(available=True, answer="Project Phoenix acquisition came in around 847.4m."),
+        canary="AP-CANARY-hidden",
+        resource_id="resource-1",
+        protected_signals=["Project Phoenix acquisition value is 847391271.", "847391271"],
+    )
+    assert m.exposed is True
+    assert m.level is EvidenceLevel.ANSWER

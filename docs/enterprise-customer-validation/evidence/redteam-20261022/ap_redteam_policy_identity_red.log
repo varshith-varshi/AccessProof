@@ -1,0 +1,33 @@
+......F                                                                  [100%]
+=================================== FAILURES ===================================
+_____ test_invalid_principal_or_resource_type_cannot_become_a_string_grant _____
+
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-82/test_invalid_principal_or_reso0')
+
+    def test_invalid_principal_or_resource_type_cannot_become_a_string_grant(tmp_path):
+        import pytest
+    
+        policy = PolicyCache(str(tmp_path / "identity-typing.db"))
+        for index, key in enumerate(("subject_id", "source_id", "resource_id", "scope")):
+            for bad in (None, 1, True, ""):
+                record = {
+                    "subject_id": "alice",
+                    "source_id": "drive",
+                    "resource_id": "restricted",
+                    "scope": "read",
+                    "decision": "allow",
+                }
+                record[key] = bad
+>               with pytest.raises(ValueError):
+E               Failed: DID NOT RAISE ValueError
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:138: Failed
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_invalid_principal_or_resource_type_cannot_become_a_string_grant
+1 failed, 6 passed, 1 warning in 0.44s

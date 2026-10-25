@@ -1,0 +1,222 @@
+
+> @accessproof/rag-sdk@0.1.0 test
+> npm run build && node --test test/*.test.mjs
+
+
+> @accessproof/rag-sdk@0.1.0 build
+> tsc -p tsconfig.json
+
+TAP version 13
+# Subtest: malformed retrieved document returns block instead of throwing past the enforcement boundary
+ok 1 - malformed retrieved document returns block instead of throwing past the enforcement boundary
+  ---
+  duration_ms: 2.095223
+  type: 'test'
+  ...
+# Subtest: unstructured output decision fails closed: null
+ok 2 - unstructured output decision fails closed: null
+  ---
+  duration_ms: 42.833078
+  type: 'test'
+  ...
+# Subtest: unstructured output decision fails closed: []
+ok 3 - unstructured output decision fails closed: []
+  ---
+  duration_ms: 0.928334
+  type: 'test'
+  ...
+# Subtest: unstructured output decision fails closed: {}
+ok 4 - unstructured output decision fails closed: {}
+  ---
+  duration_ms: 0.831161
+  type: 'test'
+  ...
+# Subtest: unstructured output decision fails closed: true
+ok 5 - unstructured output decision fails closed: true
+  ---
+  duration_ms: 0.588899
+  type: 'test'
+  ...
+# Subtest: unstructured output decision fails closed: "allow"
+ok 6 - unstructured output decision fails closed: "allow"
+  ---
+  duration_ms: 1.422777
+  type: 'test'
+  ...
+# Subtest: unstructured output decision fails closed: {"decision":"allow"}
+ok 7 - unstructured output decision fails closed: {"decision":"allow"}
+  ---
+  duration_ms: 0.472922
+  type: 'test'
+  ...
+# Subtest: contradictory duplicate grants must block [["public"],[]]
+ok 8 - contradictory duplicate grants must block [["public"],[]]
+  ---
+  duration_ms: 32.910121
+  type: 'test'
+  ...
+# Subtest: contradictory duplicate grants must block [[],["public"]]
+ok 9 - contradictory duplicate grants must block [[],["public"]]
+  ---
+  duration_ms: 0.772661
+  type: 'test'
+  ...
+# Subtest: contradictory duplicate grants must block [["public"],["restricted"]]
+ok 10 - contradictory duplicate grants must block [["public"],["restricted"]]
+  ---
+  duration_ms: 0.562639
+  type: 'test'
+  ...
+# Subtest: redundant identical grants do not block authorized input
+ok 11 - redundant identical grants do not block authorized input
+  ---
+  duration_ms: 1.150888
+  type: 'test'
+  ...
+# Subtest: late source with delimiter collision receives independent Layer 1 check
+ok 12 - late source with delimiter collision receives independent Layer 1 check
+  ---
+  duration_ms: 23.346124
+  type: 'test'
+  ...
+# Subtest: reauthorizes a trusted late source before releasing a buffered answer
+ok 13 - reauthorizes a trusted late source before releasing a buffered answer
+  ---
+  duration_ms: 37.791198
+  type: 'test'
+  ...
+# Subtest: denies extra source when second Layer 1 rejects it
+ok 14 - denies extra source when second Layer 1 rejects it
+  ---
+  duration_ms: 1.653069
+  type: 'test'
+  ...
+# Subtest: nested vector-store node cannot mutate the generator content after Layer 1
+ok 15 - nested vector-store node cannot mutate the generator content after Layer 1
+  ---
+  duration_ms: 33.518388
+  type: 'test'
+  ...
+# Subtest: contradictory framework getContent and pageContent cannot silently reach generation
+ok 16 - contradictory framework getContent and pageContent cannot silently reach generation
+  ---
+  duration_ms: 0.437194
+  type: 'test'
+  ...
+# Subtest: LlamaIndex-style nested node getContent remains usable after isolated snapshot
+ok 17 - LlamaIndex-style nested node getContent remains usable after isolated snapshot
+  ---
+  duration_ms: 1.611353
+  type: 'test'
+  ...
+# Subtest: Protect never releases an observational would-allow decision
+ok 18 - Protect never releases an observational would-allow decision
+  ---
+  duration_ms: 30.801758
+  type: 'test'
+  ...
+# Subtest: Protect enforces a chunk-level allowlist before generation
+ok 19 - Protect enforces a chunk-level allowlist before generation
+  ---
+  duration_ms: 2.747276
+  type: 'test'
+  ...
+# Subtest: filters before generation and verifies before release
+ok 20 - filters before generation and verifies before release
+  ---
+  duration_ms: 30.613303
+  type: 'test'
+  ...
+# Subtest: does not release a blocked Layer 2 response
+ok 21 - does not release a blocked Layer 2 response
+  ---
+  duration_ms: 1.562085
+  type: 'test'
+  ...
+# Subtest: missing trusted provenance blocks Protect and never calls the generator
+ok 22 - missing trusted provenance blocks Protect and never calls the generator
+  ---
+  duration_ms: 0.641197
+  type: 'test'
+  ...
+# Subtest: attested TypeScript route verifies real Ed25519 source and Layer 2 before release
+ok 23 - attested TypeScript route verifies real Ed25519 source and Layer 2 before release
+  ---
+  duration_ms: 45.530476
+  type: 'test'
+  ...
+# Subtest: signed-content bypass attempts fail closed before generation
+ok 24 - signed-content bypass attempts fail closed before generation
+  ---
+  duration_ms: 12.002913
+  type: 'test'
+  ...
+# Subtest: signed initial context and untrusted tool content cannot be laundered through Layer 2
+ok 25 - signed initial context and untrusted tool content cannot be laundered through Layer 2
+  ---
+  duration_ms: 2.826014
+  type: 'test'
+  ...
+# Subtest: attested RAG refuses Shadow downgrade
+ok 26 - attested RAG refuses Shadow downgrade
+  ---
+  duration_ms: 1.482369
+  type: 'test'
+  ...
+# Subtest: framework adapter forwards attested bytes and rejects a swapped vector result
+ok 27 - framework adapter forwards attested bytes and rejects a swapped vector result
+  ---
+  duration_ms: 2.93408
+  type: 'test'
+  ...
+# Subtest: cryptographic verification failure must return a safe block
+ok 28 - cryptographic verification failure must return a safe block
+  ---
+  duration_ms: 0.995451
+  type: 'test'
+  ...
+# Subtest: TypeScript verifies actual Python-issued Ed25519 attestation
+ok 29 - TypeScript verifies actual Python-issued Ed25519 attestation
+  ---
+  duration_ms: 2.398534
+  type: 'test'
+  ...
+# Subtest: declared foreign source cannot be overwritten by a configured source
+ok 30 - declared foreign source cannot be overwritten by a configured source
+  ---
+  duration_ms: 4.273602
+  type: 'test'
+  ...
+# Subtest: conflicting resource/chunk aliases must not silently choose a trusted identifier
+ok 31 - conflicting resource/chunk aliases must not silently choose a trusted identifier
+  ---
+  duration_ms: 0.452417
+  type: 'test'
+  ...
+# Subtest: declared source can be absent when a registered source is configured
+ok 32 - declared source can be absent when a registered source is configured
+  ---
+  duration_ms: 0.2499
+  type: 'test'
+  ...
+# Subtest: a concurrently mutated vector result cannot change model input after authorization
+ok 33 - a concurrently mutated vector result cannot change model input after authorization
+  ---
+  duration_ms: 32.85806
+  type: 'test'
+  ...
+# Subtest: direct TypeScript ProtectedRAG freezes retrieval membership before Guard I/O
+ok 34 - direct TypeScript ProtectedRAG freezes retrieval membership before Guard I/O
+  ---
+  duration_ms: 0.819732
+  type: 'test'
+  ...
+1..34
+# tests 34
+# suites 0
+# pass 34
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 144.263592

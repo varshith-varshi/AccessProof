@@ -149,6 +149,7 @@ async def execute_job(
         scenario=scenario,
         resume_checkpoint=job.get("checkpoint"),
         run_id_override=job.get("run_id"),
+        oracle_canary=job.get("oracle_canary"),
     )
     return dict(build_manifest(result)["payload"])
 
@@ -175,7 +176,7 @@ async def runner_loop() -> None:
         auth_headers = {"Authorization": f"Bearer {runner_secret}"}
         while not stop.is_set():
             try:
-                await client.post(
+                heartbeat = await client.post(
                     f"{api_url}/api/v1/runners/heartbeat",
                     json={
                         "runner_id": runner_id,
@@ -186,6 +187,18 @@ async def runner_loop() -> None:
                     },
                     headers=auth_headers,
                 )
+                # Do not silently retry a credential that the control plane has
+                # explicitly rejected. A stale local enrollment (for example
+                # after restoring a database backup) otherwise creates an
+                # endless 401 loop and looks like an unavailable runner. Keep
+                # the credential file for diagnosis, but stop with a clear
+                # operator action instead.
+                if heartbeat.status_code in {401, 403}:
+                    raise SystemExit(
+                        "Runner credentials were rejected by AccessProof. "
+                        "Create a new enrollment code and re-enroll this runner."
+                    )
+                heartbeat.raise_for_status()
                 leased = await client.post(
                     f"{api_url}/api/v1/runners/lease",
                     json={"runner_id": runner_id},

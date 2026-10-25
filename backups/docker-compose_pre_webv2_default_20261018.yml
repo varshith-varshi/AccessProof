@@ -1,0 +1,164 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: accessproof
+      POSTGRES_PASSWORD: accessproof
+      POSTGRES_DB: accessproof
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accessproof"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - accessproof_pg:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    profiles: ["full", "guard", "current"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      ACCESSPROOF_ENV: development
+      ACCESSPROOF_CURRENT_DATABASE_URL: ${ACCESSPROOF_CURRENT_DATABASE_URL:-postgresql+psycopg://accessproof:accessproof@db:5432/accessproof_current}
+      REDIS_URL: redis://redis:6379/0
+      WEB_ORIGIN: http://localhost:3000
+      SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:-local-development-session-key-change-me}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-local-development-secret-key-change-me}
+    command: ["sh", "-c", "python /app/scripts/ensure_current_database.py && alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000"]
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  worker:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      ACCESSPROOF_CURRENT_DATABASE_URL: ${ACCESSPROOF_CURRENT_DATABASE_URL:-postgresql+psycopg://accessproof:accessproof@db:5432/accessproof_current}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-local-development-secret-key-change-me}
+      ACCESSPROOF_RLS_BYPASS: "1"
+    depends_on:
+      api: {condition: service_healthy}
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_URL: http://api:8000
+    environment:
+      API_URL: http://api:8000
+    ports: ["127.0.0.1:${WEB_PORT:-3000}:3000"]
+    depends_on:
+      api: {condition: service_healthy}
+  web-v2:
+    profiles: ["current"]
+    build:
+      context: ./web-v2
+      dockerfile: Dockerfile
+    environment:
+      ACCESSPROOF_API_URL: http://api:8000
+    ports: ["127.0.0.1:${WEB_V2_PORT:-3001}:3000"]
+    depends_on:
+      api: {condition: service_healthy}
+  demo-ai:
+    profiles: ["demo-ai"]
+    build:
+      context: .
+      dockerfile: apps/demo_ai/Dockerfile
+    environment:
+      DEMO_AI_MODEL_BASE_URL: ${DEMO_AI_MODEL_BASE_URL:-}
+      DEMO_AI_MODEL_API_KEY: ${DEMO_AI_MODEL_API_KEY:-}
+      DEMO_AI_MODEL_NAME: ${DEMO_AI_MODEL_NAME:-}
+      DEMO_AI_SERVICE_TOKEN: ${DEMO_AI_SERVICE_TOKEN:-}
+      DEMO_AI_STALE_ACCESS_SECONDS: ${DEMO_AI_STALE_ACCESS_SECONDS:-90}
+      DEMO_AI_OIDC_ISSUER: ${DEMO_AI_OIDC_ISSUER:-}
+      DEMO_AI_OIDC_AUDIENCE: ${DEMO_AI_OIDC_AUDIENCE:-}
+      DEMO_AI_REQUIRE_OIDC: ${DEMO_AI_REQUIRE_OIDC:-0}
+      DEMO_AI_OIDC_REQUIRED_SCOPES: ${DEMO_AI_OIDC_REQUIRED_SCOPES:-}
+      DEMO_AI_OIDC_TENANT_ID: ${DEMO_AI_OIDC_TENANT_ID:-}
+    ports: ["127.0.0.1:${DEMO_AI_PORT:-8100}:8100"]
+  drive-rag:
+    profiles: ["drive-rag"]
+    build:
+      context: .
+      dockerfile: drive-rag-demo/Dockerfile
+    container_name: accessproof-drive-rag
+    environment:
+      DRIVE_OWNER_TOKEN: ${DRIVE_OWNER_TOKEN:-}
+      DRIVE_ROOT_FOLDER_ID: ${DRIVE_ROOT_FOLDER_ID:-}
+      ALICE_EMAIL: ${ALICE_EMAIL:-}
+      ALICE_RAG_TOKEN: ${ALICE_RAG_TOKEN:-}
+      BOB_EMAIL: ${BOB_EMAIL:-}
+      BOB_RAG_TOKEN: ${BOB_RAG_TOKEN:-}
+      ACL_CACHE_SECONDS: ${ACL_CACHE_SECONDS:-20}
+      ACCESSPROOF_DEMO_ALLOW_LEGACY: ${ACCESSPROOF_DEMO_ALLOW_LEGACY:-0}
+      ACCESSPROOF_ENV: development
+      ACCESSPROOF_DEMO_GUARD_URL: ${ACCESSPROOF_DEMO_GUARD_URL:-http://guard:8080}
+      ACCESSPROOF_DEMO_SOURCE_ID: ${ACCESSPROOF_DEMO_SOURCE_ID:-}
+      ACCESSPROOF_DEMO_APPLICATION_ID: ${ACCESSPROOF_DEMO_APPLICATION_ID:-}
+    ports: ["127.0.0.1:${DRIVE_RAG_PORT:-8200}:8200"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  runner:
+    profiles: ["runner"]
+    build:
+      context: .
+      dockerfile: apps/runner/Dockerfile
+    environment:
+      ACCESSPROOF_API_URL: ${ACCESSPROOF_API_URL:-http://api:8000}
+      ACCESSPROOF_RUNNER_ID: ${ACCESSPROOF_RUNNER_ID:-}
+      ACCESSPROOF_RUNNER_SECRET: ${ACCESSPROOF_RUNNER_SECRET:-}
+      ACCESSPROOF_RUNNER_STATE_DIR: /app/.accessproof-runner
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - runner_state:/app/.accessproof-runner
+  guard:
+    profiles: ["guard"]
+    build:
+      context: .
+      dockerfile: apps/guard/Dockerfile
+    environment:
+      ACCESSPROOF_GUARD_CONTROL_PLANE_URL: ${ACCESSPROOF_GUARD_CONTROL_PLANE_URL:-http://api:8000}
+      ACCESSPROOF_GUARD_ID: ${ACCESSPROOF_GUARD_ID:-}
+      ACCESSPROOF_GUARD_CREDENTIAL: ${ACCESSPROOF_GUARD_CREDENTIAL:-}
+      ACCESSPROOF_GUARD_JWT_ISSUER: ${ACCESSPROOF_GUARD_JWT_ISSUER:-}
+      ACCESSPROOF_GUARD_JWT_AUDIENCE: ${ACCESSPROOF_GUARD_JWT_AUDIENCE:-}
+      ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY: ${ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY:-}
+      ACCESSPROOF_GUARD_IDENTITY_MODE: ${ACCESSPROOF_GUARD_IDENTITY_MODE:-oidc}
+      ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM: ${ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM:-sub}
+      ACCESSPROOF_GUARD_IDENTITY_TENANT_ID: ${ACCESSPROOF_GUARD_IDENTITY_TENANT_ID:-}
+      ACCESSPROOF_GUARD_IDENTITY_CACHE_SECONDS: ${ACCESSPROOF_GUARD_IDENTITY_CACHE_SECONDS:-300}
+      ACCESSPROOF_GUARD_MODE: ${ACCESSPROOF_GUARD_MODE:-protect}
+      ACCESSPROOF_GUARD_FAIL_MODE: ${ACCESSPROOF_GUARD_FAIL_MODE:-fail_closed}
+    volumes:
+      - guard_state:/var/lib/accessproof-guard
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:${GUARD_PORT:-8080}:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+volumes:
+  accessproof_pg:
+  runner_state:
+  guard_state:

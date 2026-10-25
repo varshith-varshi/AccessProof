@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 api_requests = Counter(
@@ -64,6 +65,71 @@ email_queue_depth = Gauge(
 source_connection_health = Gauge(
     "accessproof_source_connection_count", "Source connection count by status", ["status"]
 )
+
+# Authorization/evidence metrics. Labels are restricted to bounded decision
+# reasons and provider names; employee, resource and application identifiers
+# never become metric labels.
+authz_decisions = Counter(
+    "accessproof_authz_decision_total",
+    "Guard authorization decisions accepted from machine-authenticated audit",
+    ["layer", "result", "reason"],
+)
+authz_decision_latency = Histogram(
+    "accessproof_authz_decision_latency_seconds",
+    "Guard authorization decision latency where the Guard reports it",
+)
+guard_revision_lag = Gauge(
+    "accessproof_guard_revision_lag_seconds",
+    "Largest pending interval between control-plane authorization revision creation and Guard acknowledgement",
+)
+source_freshness = Gauge(
+    "accessproof_source_freshness_seconds", "Age of the last trusted ACL synchronization", ["provider"]
+)
+directory_freshness = Gauge(
+    "accessproof_directory_freshness_seconds", "Age of the last trusted directory synchronization", ["provider"]
+)
+provider_event_lag = Gauge(
+    "accessproof_provider_event_lag_seconds",
+    "Largest observed delay between provider change observation and receipt",
+    ["provider"],
+)
+revocation_end_to_end = Histogram(
+    "accessproof_revocation_end_to_end_seconds",
+    "Observed provider change to first Guard denial, measured from retained events",
+)
+route_certificate_age = Gauge(
+    "accessproof_route_certificate_age_seconds",
+    "Age of the oldest current reference-route certificate reported by AccessProof",
+)
+protected_route_coverage = Gauge(
+    "accessproof_protected_route_coverage_ratio",
+    "Known Protect-bound applications with a current route certificate divided by known Protect-bound applications",
+)
+cache_reauth = Counter(
+    "accessproof_cache_reauth_total", "Protected cache-hit reauthorization outcomes", ["result"]
+)
+layer2_blocks = Counter(
+    "accessproof_layer2_block_total", "Layer 2 blocked releases", ["reason"]
+)
+provider_api_errors = Counter(
+    "accessproof_provider_api_error_total", "Provider API errors by provider and status", ["provider", "status"]
+)
+jit_verifications = Counter(
+    "accessproof_jit_verification_total", "Optional just-in-time provider verifications", ["result"]
+)
+evidence_generation = Counter(
+    "accessproof_evidence_generation_total", "Evidence report generation outcomes", ["result"]
+)
+scanner_bypass_findings = Counter(
+    "accessproof_scanner_bypass_finding_total", "Read-only compatibility scanner bypass findings", ["type"]
+)
+
+_SAFE_LABEL = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+def bounded_reason(reason: str) -> str:
+    """Keep metric cardinality bounded even if an upstream reason is malformed."""
+    return reason if _SAFE_LABEL.fullmatch(reason) else "UNCLASSIFIED"
 
 logger = logging.getLogger("accessproof")
 if not logger.handlers:

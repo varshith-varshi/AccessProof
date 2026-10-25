@@ -68,6 +68,10 @@ def _scope_for_request(request: Request) -> str | None:
         return "runs:read" if method == "GET" else "runs:create"
     if path.startswith("/api/v1/reports"):
         return "reports:read"
+    if path.startswith("/api/v1/current/reports"):
+        # Reading, verifying and downloading signed evidence is available to
+        # machine keys; generating a new signed report remains interactive-only.
+        return "reports:read" if method in {"GET", "HEAD"} else None
     if path.startswith("/api/v1/sources"):
         return "sources:read" if method == "GET" else "sources:write"
     if path.startswith("/api/v1/targets"):

@@ -37,6 +37,8 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     environment:
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
       ACCESSPROOF_ENV: production
       DATABASE_URL: postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof
       REDIS_URL: redis://redis:6379/0
@@ -50,6 +52,7 @@ services:
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY}
       REPORT_SIGNING_KEY: ${REPORT_SIGNING_KEY:?set REPORT_SIGNING_KEY}
       ACCESSPROOF_SECRET_BACKEND: local
+      ACCESSPROOF_GUARD_RELEASE_VERSION: ${ACCESSPROOF_GUARD_RELEASE_VERSION:-0.1.4}
       ACCESSPROOF_EMAIL_MODE: smtp
       ACCESSPROOF_EMAIL_FROM: ${ACCESSPROOF_EMAIL_FROM:?set ACCESSPROOF_EMAIL_FROM}
       ACCESSPROOF_SMTP_HOST: ${ACCESSPROOF_SMTP_HOST:?set ACCESSPROOF_SMTP_HOST}
@@ -79,6 +82,8 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     environment:
+      ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL: ${ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL:-}
+      ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS: ${ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS:-900}
       ACCESSPROOF_ENV: production
       DATABASE_URL: postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof
       REDIS_URL: redis://redis:6379/0
@@ -97,12 +102,10 @@ services:
     networks: [accessproof]
 
   web:
+    image: accessproof/web-v2:ab59ffd
     build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-      args:
-        API_URL: http://api:8000
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL}
+      context: ./web-v2
+      dockerfile: Dockerfile
     restart: unless-stopped
     init: true
     read_only: true
@@ -111,8 +114,10 @@ services:
     cap_drop: [ALL]
     environment:
       NODE_ENV: production
-      API_URL: http://api:8000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL}
+      ACCESSPROOF_API_URL: ${ACCESSPROOF_API_URL:-https://api.accessproof.in}
+      ACCESSPROOF_API_HOST: ${ACCESSPROOF_API_HOST:-api.accessproof.in}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://app.accessproof.in}
+      NEXT_PUBLIC_ENVIRONMENT: production
     depends_on:
       api: {condition: service_healthy}
     networks: [accessproof]

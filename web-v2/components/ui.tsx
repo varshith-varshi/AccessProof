@@ -8,6 +8,12 @@ export function StatusBadge({ value }: { value: string }) {
   return <span className={`status-badge ${tone}`}><Icon size={12}/>{titleCase(value)}</span>;
 }
 
+export function ProtectionStateBadge({ value }: { value: string }) {
+  const tone = value === "PROTECTED_VERIFIED" ? "success" : /BLOCKED|DEGRADED/.test(value) ? "danger" : /VALIDATING|PROTECT_PENDING|STALE|CERTIFICATION_EXPIRED|CONNECTED|UNKNOWN/.test(value) ? "warning" : "neutral";
+  const Icon = tone === "success" ? CheckCircle2 : tone === "danger" ? CircleSlash2 : tone === "warning" ? AlertTriangle : Info;
+  return <span className={`status-badge ${tone}`}><Icon size={12}/>{titleCase(value)}</span>;
+}
+
 export function Skeleton({ rows = 3 }: { rows?: number }) { return <div className="skeleton-stack" aria-label="Loading" aria-live="polite">{Array.from({ length: rows }, (_, index) => <span className="skeleton" key={index}/>)}</div>; }
 
 export function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) { return <div className="empty-state"><div className="empty-symbol" aria-hidden="true">AP</div><h2>{title}</h2><p>{description}</p>{action}</div>; }

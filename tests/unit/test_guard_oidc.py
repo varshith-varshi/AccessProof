@@ -90,3 +90,54 @@ def test_oidc_verifier_rejects_none_algorithm_without_fetching_keys() -> None:
     token = jwt.encode({"iss": ISSUER, "aud": AUDIENCE, "sub": "subject"}, key="", algorithm="none")
     with pytest.raises(IdentityError, match="IDENTITY_TOKEN_INVALID"):
         verifier.verify(token)
+
+
+def test_oidc_verifier_preserves_trailing_slash_issuer_exactly() -> None:
+    issuer = "https://tenant.example.test/"
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json={"issuer": issuer, "jwks_uri": "https://tenant.example.test/keys"})
+        return httpx.Response(200, json={"keys": [_jwk(key, "one")]})
+
+    verifier = OidcVerifier(issuer=issuer, audience=AUDIENCE, subject_claim="sub", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    token = jwt.encode({"iss": issuer, "aud": AUDIENCE, "sub": "employee-1", "iat": datetime.now(timezone.utc), "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}, key, algorithm="RS256", headers={"kid": "one"})
+    assert verifier.verify(token).issuer == issuer
+
+    def altered_discovery(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"issuer": issuer.rstrip("/"), "jwks_uri": "https://tenant.example.test/keys"})
+    with pytest.raises(IdentityError, match="IDENTITY_ISSUER_MISMATCH"):
+        OidcVerifier(issuer=issuer, audience=AUDIENCE, subject_claim="sub", client=httpx.Client(transport=httpx.MockTransport(altered_discovery))).verify(token)
+
+
+def test_adversarial_jwks_cannot_redirect_guard_to_loopback() -> None:
+    """An issuer-controlled JWKS URL cannot turn the Guard into an SSRF proxy."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    called: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        called.append(str(request.url))
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json={
+                "issuer": ISSUER, "jwks_uri": "https://127.0.0.1:8443/steal-local-data",
+            })
+        return httpx.Response(200, json={"keys": [_jwk(key, "one")]})
+
+    with pytest.raises(IdentityError, match="IDENTITY_KEY_UNAVAILABLE"):
+        _verifier(handler).verify(_token(key, "one"))
+    assert len(called) == 1, called
+
+
+@pytest.mark.parametrize("issuer", [
+    "https://127.0.0.1", "https://169.254.169.254",
+    "https://localhost", "https://metadata.internal",
+])
+def test_adversarial_oidc_issuer_cannot_be_private(issuer: str) -> None:
+    with pytest.raises(IdentityError, match="IDENTITY_ISSUER_INVALID"):
+        OidcVerifier(
+            issuer=issuer, audience=AUDIENCE, subject_claim="sub",
+            client=httpx.Client(transport=httpx.MockTransport(
+                lambda _: pytest.fail("private issuer must not be fetched")
+            )),
+        )

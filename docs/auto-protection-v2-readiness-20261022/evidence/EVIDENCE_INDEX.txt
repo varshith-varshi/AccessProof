@@ -1,0 +1,7 @@
+Local /tmp logs are test artifacts; not copied into deliverable because provider/audit logs may contain sensitive metadata.
+/tmp/accessproof_v2_after_certification_full_python_20261022.log
+/tmp/accessproof_v2_four_red_20261022.log
+/tmp/accessproof_v2_four_green_20261022.log
+/tmp/accessproof_v2_ts_sdk_all_final_20261022.log
+/tmp/accessproof_v2_playwright_full_20261022.log
+/tmp/accessproof_v2_new_migration.log

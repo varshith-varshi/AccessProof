@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from apps.api.accessproof_api import acl_sync
 from apps.api.accessproof_api.acl_sync import synchronize_acls
+from apps.api.accessproof_api.directory_sync import _queue_membership_events
 from apps.api.accessproof_api.guard_pipeline import process_guard_event
 from apps.api.accessproof_api.db import (
     Base,
@@ -18,6 +19,7 @@ from apps.api.accessproof_api.db import (
     GuardPermissionGrant,
     GuardGroup,
     GuardGroupMembership,
+    GuardEffectiveAccess,
 )
 
 
@@ -35,6 +37,12 @@ class FakeDrive:
         if token is None:
             return {"startPageToken": "start"}
         return self.pages[min(self.page_index, len(self.pages) - 1)]
+
+    async def list_boundary_resources(self):
+        return []
+
+    async def is_inside_boundary(self, file_id):
+        return True
 
     async def permissions_snapshot(self, file_id):
         if file_id == "root":
@@ -72,7 +80,7 @@ async def test_acl_sync_queues_idempotent_upsert_then_revoke(monkeypatch):
         db.commit()
         events = list(db.scalars(select(GuardPermissionEvent)))
         assert len(events) == 1
-        assert json.loads(events[0].mutation_json)["grant_key"] == "google-drive:perm-1"
+        assert json.loads(events[0].mutation_json)["grant_key"] == acl_sync._grant_key("google-drive", "file-1", {"id": "perm-1", "type": "user", "emailAddress": "alice@example.com", "role": "reader"})
         process_guard_event(db, events[0].id)
         db.commit()
         assert len(list(db.scalars(select(GuardPermissionGrant)))) == 1
@@ -121,3 +129,49 @@ async def test_group_acl_maps_to_existing_group_and_membership(monkeypatch):
         process_guard_event(db, event.id)
         grant = db.scalar(select(GuardPermissionGrant))
         assert grant is not None and grant.principal_type == "group" and grant.principal_id == group.id
+
+
+@pytest.mark.asyncio
+async def test_empty_group_acl_is_retained_for_a_later_directory_membership(monkeypatch):
+    """An ACL must not disappear merely because the group is temporarily empty."""
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+    class EmptyGroupDrive(FakeDrive):
+        async def permissions_snapshot(self, file_id):
+            if file_id == "root":
+                return []
+            return [{"id": "group-perm", "type": "group", "emailAddress": "finance@example.com", "role": "reader"}]
+
+    fake = EmptyGroupDrive()
+    monkeypatch.setattr(acl_sync, "GoogleDriveAdapter", lambda **_: fake)
+    with SessionLocal() as db:
+        org = Organization(name="Empty group ACL org")
+        db.add(org)
+        db.flush()
+        project = Project(organization_id=org.id, name="Group project")
+        db.add(project)
+        db.flush()
+        source = SourceConnection(organization_id=org.id, project_id=project.id, provider="google-drive", name="Drive", boundary="root")
+        group = GuardGroup(organization_id=org.id, provider="google-drive", provider_group_id="group-1", provider_email="finance@example.com")
+        db.add_all([source, group])
+        db.flush()
+        await synchronize_acls(db, source, {"access_token": "token", "test_root_folder_id": "root"})
+        db.commit()
+
+        result = await synchronize_acls(db, source, {"access_token": "token", "test_root_folder_id": "root"})
+        assert result["events"] == 0
+        grant = db.scalar(select(GuardPermissionGrant))
+        assert grant is not None and grant.active and grant.principal_id == group.id
+
+        subject = GuardSubject(organization_id=org.id, provider="google-drive", provider_subject_id="alice", primary_email="alice@example.com")
+        db.add(subject)
+        db.flush()
+        db.add(GuardGroupMembership(organization_id=org.id, group_id=group.id, subject_id=subject.id, active=True))
+        _queue_membership_events(db, source, "google-drive", group, subject, "membership_upsert", acl_sync._now())
+        db.commit()
+        event = db.scalar(select(GuardPermissionEvent).where(GuardPermissionEvent.change_type == "membership_upsert"))
+        assert event is not None
+        process_guard_event(db, event.id)
+        effective = db.scalar(select(GuardEffectiveAccess).where(GuardEffectiveAccess.subject_id == subject.id))
+        assert effective is not None and effective.decision == "allow"

@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, cast
+from urllib.parse import urlsplit
+import hashlib
 
 import httpx
 from packages.connector_sdk.base import (
@@ -16,6 +18,8 @@ class GoogleDriveAdapter(SourceAdapter):
     provider = "google-drive"
     API = "https://www.googleapis.com/drive/v3"
     UPLOAD = "https://www.googleapis.com/upload/drive/v3"
+    FOLDER_MIME = "application/vnd.google-apps.folder"
+    SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
 
     def __init__(
         self,
@@ -55,16 +59,198 @@ class GoogleDriveAdapter(SourceAdapter):
             return {"startPageToken": response.json().get("startPageToken"), "changes": [], "nextPageToken": None}
         response = await self._request("GET", f"{self.API}/changes", params={
             "pageToken": page_token, "includeItemsFromAllDrives": "true", "supportsAllDrives": "true",
-            "includeRemoved": "true", "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,parents,permissions(id,type,emailAddress,domain,role,permissionDetails)))",
+            "includeRemoved": "true", "fields": "nextPageToken,newStartPageToken,changes(changeType,fileId,driveId,removed,file(id,name,mimeType,parents,driveId,permissions(id,type,emailAddress,domain,role,permissionDetails)))",
         })
-        return response.json()
+        payload = response.json()
+        if (not isinstance(payload, dict) or not isinstance(payload.get("changes"), list)
+                or not any(isinstance(payload.get(key), str) and payload[key]
+                           for key in ("nextPageToken", "newStartPageToken"))
+                or ("kind" in payload and payload["kind"] != "drive#changeList")):
+            raise ValueError("DRIVE_CHANGES_PAGE_INCOMPLETE")
+        # Google also reports shared-drive membership and access changes that
+        # carry a driveId instead of a fileId. Such events require a scoped
+        # re-evaluation of all known resources, not a silent drop or bad page.
+        for change in payload["changes"]:
+            if not isinstance(change, dict):
+                raise ValueError("DRIVE_CHANGES_PAGE_INCOMPLETE")
+            kind = change.get("changeType") or change.get("type") or "file"
+            if kind == "file":
+                if not isinstance(change.get("fileId"), str) or not change["fileId"]:
+                    raise ValueError("DRIVE_CHANGES_PAGE_INCOMPLETE")
+            elif kind == "drive":
+                if not isinstance(change.get("driveId"), str) or not change["driveId"]:
+                    raise ValueError("DRIVE_CHANGES_PAGE_INCOMPLETE")
+            else:
+                raise ValueError("DRIVE_CHANGES_PAGE_INCOMPLETE")
+        return cast(dict[str, Any], payload)
+
+    async def watch_changes(
+        self, *, page_token: str, channel_id: str, callback_url: str,
+        channel_token: str, expiration_millis: int | None = None,
+    ) -> dict[str, Any]:
+        """Register a Google ``changes.watch`` channel for this source context.
+
+        The callback is only a trigger. Callers must persist the returned
+        resource binding and then fetch ``changes.list`` authoritatively.
+        """
+        parsed = urlsplit(callback_url)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username
+                or parsed.password or parsed.fragment):
+            raise UnsafeBoundaryError("Google webhook callback must be an HTTPS endpoint")
+        if not page_token or not channel_id or not channel_token:
+            raise UnsafeBoundaryError("Google watch channel binding is incomplete")
+        body: dict[str, Any] = {
+            "id": channel_id, "type": "web_hook", "address": callback_url,
+            "token": channel_token,
+        }
+        if expiration_millis is not None:
+            if expiration_millis <= 0:
+                raise UnsafeBoundaryError("Google watch expiration is invalid")
+            body["expiration"] = str(expiration_millis)
+        response = await self._request("POST", f"{self.API}/changes/watch", params={
+            "pageToken": page_token, "supportsAllDrives": "true",
+            "includeItemsFromAllDrives": "true",
+        }, json=body)
+        payload = response.json()
+        if (not isinstance(payload, dict) or payload.get("id") != channel_id
+                or not isinstance(payload.get("resourceId"), str)
+                or not payload["resourceId"]
+                or not str(payload.get("expiration") or "").isdecimal()):
+            raise ValueError("DRIVE_WATCH_RESPONSE_INVALID")
+        return cast(dict[str, Any], payload)
+
+    async def stop_watch_channel(self, *, channel_id: str, resource_id: str) -> None:
+        """Stop an obsolete channel after a replacement is durably active."""
+        if not channel_id or not resource_id:
+            raise UnsafeBoundaryError("Google channel stop binding is incomplete")
+        await self._request("POST", f"{self.API}/channels/stop", json={
+            "id": channel_id, "resourceId": resource_id,
+        })
 
     async def permissions_snapshot(self, file_id: str) -> list[dict[str, Any]]:
-        response = await self._request(
-            "GET", f"{self.API}/files/{file_id}/permissions",
-            params={"supportsAllDrives": "true", "fields": "permissions(id,type,emailAddress,domain,role,permissionDetails,displayName),nextPageToken"},
-        )
-        return list(response.json().get("permissions") or [])
+        """Return ALL permission pages or fail the sync; never trust a partial ACL."""
+        result: list[dict[str, Any]] = []
+        token: str | None = None
+        seen: set[str] = set()
+        while True:
+            params = {
+                "supportsAllDrives": "true", "pageSize": 100,
+                 "fields": "kind,permissions(id,type,emailAddress,domain,role,expirationTime,deleted,permissionDetails,displayName),nextPageToken",
+            }
+            if token:
+                params["pageToken"] = token
+            response = await self._request("GET", f"{self.API}/files/{file_id}/permissions", params=params)
+            payload = response.json()
+            if not isinstance(payload, dict) or (
+                "kind" in payload and payload["kind"] != "drive#permissionList"
+            ):
+                raise ValueError("DRIVE_PERMISSION_SNAPSHOT_INCOMPLETE")
+            permissions = payload.get("permissions")
+            # Drive may omit an empty repeated field. Accept that only when
+            # the typed response identifies a genuine permission-list result.
+            if permissions is None and payload.get("kind") == "drive#permissionList" and not payload.get("nextPageToken"):
+                permissions = []
+            if not isinstance(permissions, list) or any(not isinstance(item, dict) or not item.get("id") for item in permissions):
+                raise ValueError("DRIVE_PERMISSION_SNAPSHOT_INCOMPLETE")
+            result.extend(permissions)
+            next_token = payload.get("nextPageToken")
+            if not next_token:
+                return result
+            if not isinstance(next_token, str) or next_token in seen:
+                raise ValueError("DRIVE_PERMISSION_PAGINATION_INVALID")
+            seen.add(next_token)
+            token = next_token
+
+    async def list_boundary_resources(self, *, max_items: int = 20000, root_id: str | None = None) -> list[dict[str, Any]]:
+        """Inventory existing descendants of the explicitly approved root folder.
+
+        StartPageToken is obtained *before* this scan by the caller, so
+        concurrent changes will subsequently be replayed from that token.
+        An incomplete traversal raises rather than marking the ACL state ready.
+        """
+        queue = [root_id or self.root]
+        visited: set[str] = set()
+        resources: list[dict[str, Any]] = []
+        while queue:
+            folder = queue.pop(0)
+            if folder in visited:
+                continue
+            visited.add(folder)
+            token: str | None = None
+            seen_tokens: set[str] = set()
+            while True:
+                params = {
+                    "q": f"'{folder.replace(chr(92), chr(92) * 2).replace(chr(39), chr(92) + chr(39))}' in parents and trashed = false",
+                     "fields": "kind,nextPageToken,incompleteSearch,files(id,name,mimeType,parents,driveId,shortcutDetails,trashed)",
+                    "pageSize": 1000, "supportsAllDrives": "true",
+                    "includeItemsFromAllDrives": "true",
+                }
+                if token:
+                    params["pageToken"] = token
+                response = await self._request("GET", f"{self.API}/files", params=params)
+                payload = response.json()
+                if not isinstance(payload, dict) or payload.get("incompleteSearch") or (
+                    "kind" in payload and payload["kind"] != "drive#fileList"
+                ):
+                    raise ValueError("DRIVE_BOUNDARY_INVENTORY_INCOMPLETE")
+                files = payload.get("files")
+                if files is None and payload.get("kind") == "drive#fileList" and not payload.get("nextPageToken"):
+                    files = []
+                if not isinstance(files, list):
+                    raise ValueError("DRIVE_BOUNDARY_INVENTORY_INCOMPLETE")
+                for item in files:
+                    if not isinstance(item, dict) or not item.get("id"):
+                        raise ValueError("DRIVE_BOUNDARY_INVENTORY_INCOMPLETE")
+                    # A shortcut is not a permission boundary: its target may
+                    # live outside this approved root and carry a different
+                    # ACL. V1 rejects it rather than accidentally mapping the
+                    # shortcut ACL to target content.
+                    if item.get("mimeType") == self.SHORTCUT_MIME:
+                        continue
+                    resources.append(item)
+                    if len(resources) > max_items:
+                        raise ValueError("DRIVE_BOUNDARY_INVENTORY_LIMIT")
+                    if item.get("mimeType") == self.FOLDER_MIME:
+                        queue.append(str(item["id"]))
+                token_next = payload.get("nextPageToken")
+                if not token_next:
+                    break
+                if not isinstance(token_next, str) or token_next in seen_tokens:
+                    raise ValueError("DRIVE_BOUNDARY_PAGINATION_INVALID")
+                seen_tokens.add(token_next)
+                token = token_next
+        return resources
+
+    async def is_inside_boundary(self, file_id: str, *, max_depth: int = 100) -> bool:
+        """Check whether a changed resource is still under the approved root.
+
+        Unrelated changes from the user-wide Drive feed are ignored.
+        Errors propagate to a degraded sync; never assume in-scope on errors.
+        """
+        if file_id == self.root:
+            return True
+        current = [file_id]
+        visited: set[str] = set()
+        for _ in range(max_depth):
+            if not current:
+                return False
+            next_ids: list[str] = []
+            for candidate in current:
+                if candidate == self.root:
+                    return True
+                if candidate in visited:
+                    continue
+                visited.add(candidate)
+                response = await self._request(
+                    "GET", f"{self.API}/files/{candidate}",
+                    params={"fields": "id,parents,trashed", "supportsAllDrives": "true"},
+                )
+                info = response.json()
+                if info.get("trashed"):
+                    return False
+                next_ids.extend(str(parent) for parent in info.get("parents") or [])
+            current = next_ids
+        raise ValueError("DRIVE_BOUNDARY_DEPTH_EXCEEDED")
 
     async def validate_connection(self) -> ConnectionIdentity:
         r = await self._request(
@@ -73,6 +259,8 @@ class GoogleDriveAdapter(SourceAdapter):
             params={"fields": "id,name,driveId,mimeType", "supportsAllDrives": "true"},
         )
         data = r.json()
+        if data.get("mimeType") != self.FOLDER_MIME:
+            raise UnsafeBoundaryError("Configured Google Drive test root must be a folder")
         metadata = {
             "name": data.get("name"),
             "drive_id": data.get("driveId"),
@@ -90,11 +278,7 @@ class GoogleDriveAdapter(SourceAdapter):
                 raise UnsafeBoundaryError("Configured Google Drive move target is not a folder")
             # Moving between unrelated shared drives changes ownership/permission semantics
             # and is outside this dedicated test-boundary scenario.
-            if (
-                data.get("driveId")
-                and target_data.get("driveId")
-                and data.get("driveId") != target_data.get("driveId")
-            ):
+            if data.get("driveId") != target_data.get("driveId"):
                 raise UnsafeBoundaryError(
                     "Move target must belong to the same Shared Drive as the test root"
                 )
@@ -133,9 +317,14 @@ class GoogleDriveAdapter(SourceAdapter):
         )
 
     async def create_resource(self, *, name: str, content: str, marker: str) -> SourceResource:
+        if not marker:
+            raise UnsafeBoundaryError("A unique test resource marker is required")
+        # A stable, hard-to-guess marker also lives in the provider filename;
+        # recovered rows cannot claim an unrelated existing customer file.
+        marker_tag = hashlib.sha256(marker.encode("utf-8")).hexdigest()[:24]
         boundary = "accessproof_boundary"
         metadata = {
-            "name": f"{name}.txt",
+            "name": f"{name}-{marker_tag}.txt",
             "parents": [self.root],
             "description": f"accessproof-generated {marker}",
         }
@@ -159,7 +348,7 @@ class GoogleDriveAdapter(SourceAdapter):
         self._created.add(data["id"])
         return SourceResource(
             provider_id=data["id"],
-            name=data.get("name", name),
+            name=str(data.get("name") or metadata["name"]),
             marker="accessproof-generated",
             canary=marker,
             metadata={"test_root_folder_id": self.root},
@@ -182,6 +371,29 @@ class GoogleDriveAdapter(SourceAdapter):
             raise UnsafeBoundaryError(
                 "Tracked Google Drive resource moved outside the authorized move target"
             )
+        if not resource.canary or not resource.provider_id:
+            raise UnsafeBoundaryError("Missing immutable test resource ownership evidence")
+        if (not resource.provider_id.isascii()
+                or any(char in resource.provider_id for char in ("/", "?", "#", "%", "\\", "\r", "\n", "\0"))):
+            raise UnsafeBoundaryError("Unsafe Google Drive resource identifier")
+        expected_tag = hashlib.sha256(resource.canary.encode("utf-8")).hexdigest()[:24]
+        expected_parent = moved_to or self.root
+        observed = await self._request(
+            "GET", f"{self.API}/files/{resource.provider_id}",
+            params={"fields": "id,name,description,parents,trashed",
+                    "supportsAllDrives": "true"},
+        )
+        provider_file = observed.json()
+        if (
+            not isinstance(provider_file, dict)
+            or provider_file.get("id") != resource.provider_id
+            or provider_file.get("name") != resource.name
+            or expected_tag not in resource.name
+            or provider_file.get("description") != f"accessproof-generated {resource.canary}"
+            or provider_file.get("trashed") is True
+            or expected_parent not in (provider_file.get("parents") or [])
+        ):
+            raise UnsafeBoundaryError("Provider file does not prove ownership inside the test boundary")
         self._created.add(resource.provider_id)
         pid = resource.metadata.get("google_parent_permission_id")
         principal = resource.metadata.get("google_parent_principal")

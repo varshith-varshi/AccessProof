@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -13,7 +14,9 @@ class SignupRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    # Bound password input limits request memory/CPU work without reducing the
+    # entropy of supported password-manager generated passwords.
+    password: str = Field(min_length=1, max_length=256)
     organization_id: str | None = None
     totp_code: str | None = None
 
@@ -211,18 +214,38 @@ class GuardExchange(BaseModel):
     version: str = Field(min_length=1, max_length=50)
 
 
+class GuardRevisionReport(BaseModel):
+    revision: int = Field(ge=1)
+    revision_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class GuardHeartbeat(BaseModel):
     guard_id: str
     version: str = Field(min_length=1, max_length=50)
     active_policy_version: int = Field(default=0, ge=0)
     cache_status: str = Field(default="healthy", max_length=30)
     degraded_conditions: list[str] = Field(default_factory=list, max_length=20)
+    active_applications: dict[str, Literal["shadow", "protect"]] = Field(default_factory=dict, max_length=100)
+    active_authorization_revisions: dict[str, GuardRevisionReport] = Field(default_factory=dict, max_length=100)
 
 
 class GuardPolicyAck(BaseModel):
     guard_id: str
     policy_version: int = Field(ge=1)
     status: Literal["received", "installed"]
+
+
+class GuardIdentityMappingCreate(BaseModel):
+    source_id: str = Field(min_length=1, max_length=36)
+    oidc_issuer: str = Field(min_length=8, max_length=1000)
+    oidc_subject: str = Field(min_length=1, max_length=500)
+    oidc_tenant_id: str | None = Field(default=None, max_length=255)
+    source_subject_id: str = Field(min_length=1, max_length=36)
+    method: Literal["admin_verified", "scim_verified", "directory_verified"] = "admin_verified"
+
+
+class GuardIdentityMappingStatusUpdate(BaseModel):
+    status: Literal["VERIFIED", "SUSPENDED", "REVOKED"]
 
 
 class GuardAuditEventInput(BaseModel):
@@ -235,6 +258,11 @@ class GuardAuditEventInput(BaseModel):
     result: str = Field(min_length=1, max_length=30)
     reason: str = Field(min_length=1, max_length=255)
     policy_version: int = Field(default=0, ge=0)
+    authorization_revision: int | None = Field(default=None, ge=1)
+    authorization_revision_hash: str | None = Field(
+        default=None, min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$"
+    )
+    occurred_at: datetime | None = None
     resource_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
@@ -248,17 +276,100 @@ class AIApplicationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     guard_id: str | None = None
     source_id: str | None = None
+    adapter_type: Literal[
+        "generic-python", "generic-typescript", "langchain-python",
+        "llamaindex-python", "langchain-typescript", "haystack-python",
+        "generic-http", "accessproof-gateway",
+    ] = "generic-python"
+    adapter_contract_version: Literal["accessproof.rag/v1", "target-config/v1"] = "accessproof.rag/v1"
 
 
 class AIApplicationModeUpdate(BaseModel):
     mode: Literal["shadow", "protect"]
 
 
+class ControlPlaneReportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    report_type: Literal[
+        "APPLICATION_COVERAGE",
+        "GUARD_HEALTH",
+        "AUTHORIZATION_ACTIVITY",
+    ]
+
+
+class RouteChallengeStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Compare an operator-approved manifest digest and real Gateway route to
+    # the attested machine observations; neither alone grants certification.
+    deployment_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    route_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RouteChallengeResult(BaseModel):
+    """Machine-reported HTTP observations, corroborated with Guard audits.
+
+    This is NOT a general-purpose self-attestation. Only a bound enrolled
+    Guard can submit it, and the control plane independently checks the actual
+    Layer 1/2 decision events associated with each challenge request.
+    """
+    model_config = ConfigDict(extra="forbid")
+    challenge_id: str = Field(min_length=36, max_length=36)
+    guard_id: str = Field(min_length=36, max_length=36)
+    nonce: str = Field(min_length=32, max_length=128)
+    deployment_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    route_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract: Literal["accessproof.gateway/v1"]
+    observations: list[dict[str, Any]] = Field(min_length=4, max_length=4)
+    customer_route_verified: bool = False
+    ingress_boundary_verified: bool = False
+    retrieval_boundary_verified: bool = False
+    output_boundary_verified: bool = False
+    alternate_route_blocked: bool = False
+
+
+class RouteCutoverEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    challenge_id: str = Field(min_length=36, max_length=36)
+    guard_id: str = Field(min_length=36, max_length=36)
+    nonce: str = Field(min_length=32, max_length=128)
+    deployment_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    route_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # This distinct request MUST be observed through the employee-facing
+    # RAG route *after* the approved routing change, and corroborated with
+    # enrolled Guard Layer 1/2 allow audit events.
+    application_request_id: str = Field(min_length=1, max_length=255)
+    application_http_status: Literal[200]
+    application_response_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision_id: str = Field(min_length=1, max_length=64)
+    # A generic 503 or route not found cannot count as successful denial.
+    # Require both customer observations and exact authenticated Guard events
+    # for negative cases on the *post-cutover* employee-facing route.
+    tamper_request_id: str = Field(min_length=1, max_length=255)
+    tamper_http_status: Literal[503]
+    tamper_response_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    tamper_reason_code: Literal["SOURCE_CONTENT_ATTESTATION_FAILED"]
+    forbidden_canary_observed: Literal[False]
+    gateway_route_enforced: Literal[True]
+    # A second, denied employee-facing RAG request proves that the customer
+    # application is not merely fabricating metadata on a positive response.
+    negative_request_id: str = Field(min_length=1, max_length=255)
+    negative_http_status: Literal[403]
+    negative_response_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    negative_reason_code: Literal["NO_AUTHORIZED_RESOURCES"]
+    negative_forbidden_canary_observed: Literal[False]
+
+
 class AIApplicationVerification(BaseModel):
-    layer1: bool = False
-    layer2: bool = False
-    provenance: bool = False
-    buffering: bool = False
+    # Request IDs are matched to Guard-machine-authenticated audit data. A
+    # checkbox by itself cannot mark a security boundary as verified.
+    positive_request_id: str = Field(min_length=1, max_length=255)
+    denial_request_id: str = Field(min_length=1, max_length=255)
+    provenance_request_id: str = Field(min_length=1, max_length=255)
+    buffering_test_passed: bool = False
+    layer1: bool = True
+    layer2: bool = True
+    provenance: bool = True
+    buffering: bool = True
 
 
 class ResetPasswordRequest(BaseModel):

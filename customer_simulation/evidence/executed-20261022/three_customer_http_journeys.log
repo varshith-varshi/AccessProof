@@ -1,0 +1,13 @@
+.....                                                                    [100%]
+=============================== warnings summary ===============================
+tests/integration/test_customer_lifecycle_over_http.py::test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http[Northstar Technologies-northstar-admin@example.com-generic-python]
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/integration/test_customer_lifecycle_over_http.py::test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http[Northstar Technologies-northstar-admin@example.com-generic-python]
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+5 passed, 2 warnings in 4.33s
+

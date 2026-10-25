@@ -14,6 +14,8 @@ from typing import Callable
 
 import httpx
 
+from packages.connector_sdk.http_target import _pin_https_url
+
 
 @dataclass(frozen=True)
 class OAuthCredentials:
@@ -48,17 +50,36 @@ def refresh_credentials(
     if not credentials.refresh_token:
         raise OAuthRefreshError("REAUTHORIZATION_REQUIRED")
     owns_client = client is None
+    # Production callers use an owned client. Resolve once and pin the TCP
+    # destination before any refresh credential is sent, avoiding SSRF and DNS
+    # rebinding through a customer-supplied generic OAuth endpoint. Injected
+    # clients remain supported for deterministic unit tests only.
+    endpoint = token_endpoint
+    request_headers: dict[str, str] | None = None
+    request_extensions: dict[str, str] | None = None
+    if owns_client:
+        try:
+            endpoint, host, sni = _pin_https_url(token_endpoint)
+        except ValueError as exc:
+            raise OAuthRefreshError("UNTRUSTED_TOKEN_ENDPOINT") from exc
+        request_headers = {"Host": host}
+        request_extensions = {"sni_hostname": sni}
     http = client or httpx.Client(timeout=15, follow_redirects=False, trust_env=False)
     try:
         response: httpx.Response | None = None
         for attempt in range(max(1, attempts)):
             try:
-                response = http.post(token_endpoint, data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": credentials.refresh_token,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                })
+                response = http.post(
+                    endpoint,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": credentials.refresh_token,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                    },
+                    headers=request_headers,
+                    extensions=request_extensions,
+                )
             except httpx.HTTPError as exc:
                 if attempt + 1 >= attempts:
                     raise OAuthRefreshError("DEGRADED") from exc
@@ -84,15 +105,19 @@ def refresh_credentials(
             raise OAuthRefreshError("DEGRADED")
         try:
             payload = response.json()
-            access_token = str(payload["access_token"])
-        except (ValueError, KeyError, TypeError) as exc:
+            if not isinstance(payload, dict):
+                raise ValueError("Invalid OAuth token response")
+            access_token = payload["access_token"]
+            expires_in = int(payload["expires_in"])
+            if not isinstance(access_token, str) or not access_token.strip() or expires_in <= 0:
+                raise ValueError("Invalid access token or expiration")
+        except (ValueError, KeyError, TypeError, OverflowError) as exc:
             raise OAuthRefreshError("DEGRADED") from exc
         rotated = payload.get("refresh_token") or credentials.refresh_token
-        expires_in = payload.get("expires_in")
         refreshed = OAuthCredentials(
             access_token=access_token,
             refresh_token=str(rotated) if rotated else None,
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=int(expires_in)) if expires_in else credentials.expires_at,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
             token_type=str(payload.get("token_type") or credentials.token_type),
             scopes=tuple(str(payload.get("scope") or "").split()) or credentials.scopes,
         )

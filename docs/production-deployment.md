@@ -31,10 +31,11 @@ website DNS records.
 ## Environment
 
 Copy `.env.production.example` to a private `.env.production`, replace every
-placeholder, and do not commit it. `NEXT_PUBLIC_*` values are public build-time
-configuration and must never contain credentials. `API_URL=http://api:8000` stays
-inside Docker; `NEXT_PUBLIC_API_URL=https://api.accessproof.in` is the external
-public API address.
+placeholder, and do not commit it. The active `web-v2` container reaches the API
+at the internal `ACCESSPROOF_API_URL=http://api:8000` and sends
+`ACCESSPROOF_API_HOST` (default `api.accessproof.in`) for the API TrustedHost
+check. The public `NEXT_PUBLIC_API_URL=https://api.accessproof.in` is not used by
+`web-v2`; do not add browser-visible credentials to any environment variable.
 
 Set `ACCESSPROOF_FORWARDED_ALLOW_IPS` to only the private address of the deployed
 Nginx proxy. Do not set it to `*`: doing so would allow an arbitrary client to

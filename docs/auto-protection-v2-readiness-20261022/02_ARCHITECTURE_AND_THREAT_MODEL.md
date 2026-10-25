@@ -1,0 +1,11 @@
+# Trust boundaries and threat model
+
+1. SaaS web UI/admin APIs may configure sources but must NEVER supply PASS evidence, browser-generated audit IDs, 'complete provenance=true' booleans, arbitrary callback URL, or an authorization oracle.
+2. Customer-side RAG supplies employee bearer JWT to its colocated Guard. The Guard verifies signature, issuer, audience, identity mapping, source binding, policy version and source health before the generator receives approved source bytes.
+3. The Python and TypeScript SDKs buffer model output, use only application-owned `source_trace`, reauthorize late resources, reject Guard mode mismatches, and deny untrusted/no provenance in Protect. A generated citation is not trusted source attribution.
+4. Machine enrollment and policy sync are authenticated; actual customer route coverage, every tool/cache input, SSE/WebSocket output and end-to-end response-byte absence are not yet attested. A malicious or simply unwrapped secondary API route can bypass an SDK; prevent 'certified' status until verified.
+5. Microsoft Graph DriveItem sharing records are incomplete for SharePoint native groups/site/ACL inheritance. Read-only SharePoint REST probe does not authorize Guard policy. A signed source-specific certificate is checked by API readiness and Guard data; no certificate is issued by a customer-supplied flag.
+6. Threats to test before release: forged OIDC/email alias, cross-tenant provider IDs, stolen Guard machine key, replayed challenge/consent/ACL revision, opaque cached chunks, policy revocation racing output, app mode downgrade, source credential SSRF, invalid Graph delta, old SDK, response streaming prior to Layer2.
+7. Missing independent test-agent evidence, native effective ACL coverage, expired certificate, wrong source/tenant/drive/root/profile, disabled Guard, unverified mapping, stale source or unfinished policy -> fail closed / Action required.
+
+**Unimplemented protocol:** outbound-only Guard/agent challenge queue with lease, signed nonce and route/build manifest, customer internal test adapter, actual HTTP release observer, signed minimal result and backend audit join, cancellation/retries, complete Guard ACK transition. The current preflight API is NOT a substitute.

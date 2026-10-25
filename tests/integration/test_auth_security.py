@@ -69,3 +69,14 @@ def test_email_verify_password_reset_sessions_and_mfa():
             ).status_code
             == 401
         )
+
+
+def test_login_rejects_unbounded_password_payloads():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as c:
+        response = c.post(
+            "/api/v1/auth/login",
+            json={"email": "nobody@example.com", "password": "x" * 257},
+        )
+    assert response.status_code == 422

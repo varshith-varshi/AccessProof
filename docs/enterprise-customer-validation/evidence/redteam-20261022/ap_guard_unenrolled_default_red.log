@@ -1,0 +1,37 @@
+........F                                                                [100%]
+=================================== FAILURES ===================================
+______ test_missing_deployment_env_must_not_enable_unbound_guard_fallback ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fb5b2a8b680>
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-88/test_missing_deployment_env_mu0')
+
+    def test_missing_deployment_env_must_not_enable_unbound_guard_fallback(
+        monkeypatch, tmp_path,
+    ):
+        import pytest
+        from fastapi import HTTPException
+    
+        policy = PolicyCache(str(tmp_path / "unenrolled-default-deny.db"))
+        policy.install(1, [{
+            "subject_id": "alice", "source_id": "source",
+            "resource_id": "payroll", "decision": "allow",
+        }])
+        policy.mark_sync_success()
+        monkeypatch.setattr(guard_app, "cache", policy)
+        monkeypatch.setattr(guard_app, "guard_id", None)
+        monkeypatch.setattr(guard_app, "guard_credential", None)
+        monkeypatch.delenv("ACCESSPROOF_ENV", raising=False)
+        monkeypatch.delenv("ACCESSPROOF_GUARD_STANDALONE_TEST_MODE", raising=False)
+>       with pytest.raises(HTTPException) as error:
+E       Failed: DID NOT RAISE HTTPException
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:198: Failed
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_missing_deployment_env_must_not_enable_unbound_guard_fallback
+1 failed, 8 passed, 1 warning in 0.45s

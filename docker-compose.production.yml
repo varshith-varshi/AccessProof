@@ -5,6 +5,8 @@ services:
   api:
     image: ${ACCESSPROOF_API_IMAGE:?set ACCESSPROOF_API_IMAGE}
     environment:
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
       ACCESSPROOF_ENV: production
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       REDIS_URL: ${REDIS_URL:?set REDIS_URL}
@@ -43,6 +45,8 @@ services:
   worker:
     image: ${ACCESSPROOF_WORKER_IMAGE:?set ACCESSPROOF_WORKER_IMAGE}
     environment:
+      ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL: ${ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL:-}
+      ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS: ${ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS:-900}
       ACCESSPROOF_ENV: production
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       REDIS_URL: ${REDIS_URL:?set REDIS_URL}
@@ -72,8 +76,10 @@ services:
     image: ${ACCESSPROOF_WEB_IMAGE:?set ACCESSPROOF_WEB_IMAGE}
     environment:
       NODE_ENV: production
-      API_URL: http://api:8000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL}
+      # web-v2 reaches the API through the internal service name. The public
+      # API hostname is used only for the TrustedHost header on that fetch.
+      ACCESSPROOF_API_URL: http://api:8000
+      ACCESSPROOF_API_HOST: ${ACCESSPROOF_API_HOST:-api.accessproof.in}
     depends_on:
       api:
         condition: service_healthy

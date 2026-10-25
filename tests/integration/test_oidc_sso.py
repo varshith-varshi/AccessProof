@@ -199,3 +199,51 @@ def test_browser_oidc_get_callback_sets_session_and_redirects(monkeypatch):
         assert callback.status_code == 303
         assert f"organization_id={org_id}" in callback.headers["location"]
         assert "accessproof_session=" in callback.headers.get("set-cookie", "")
+
+
+def test_oidc_cannot_claim_same_email_from_another_organization(monkeypatch):
+    """An IdP assertion must not attach a global account to a rogue tenant."""
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(app_module, "OidcProviderClient", FakeOidcProvider)
+    with TestClient(app) as client:
+        # This creates the existing user in organization A.
+        first_org, _ = _signup(client)
+        assert first_org
+        # A second customer configures an IdP that asserts the owner's email.
+        second = client.post(
+            "/api/v1/auth/signup",
+            json={
+                "email": "second-owner@example.com",
+                "password": "VeryStrongPass123!",
+                "organization_name": "Second OIDC Org",
+            },
+        ).json()
+        second_headers = {
+            "Authorization": f"Bearer {second['session_token']}",
+            "X-Organization-ID": second["organization_id"],
+        }
+        configured = client.put(
+            "/api/v1/auth/oidc/config",
+            headers=second_headers,
+            json={
+                "issuer_url": "https://idp.example.com",
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "allowed_domains": ["example.com"],
+                "default_role": "VIEWER",
+            },
+        )
+        assert configured.status_code == 200, configured.text
+        FakeOidcProvider.claims = {
+            "sub": "attacker-controlled-subject",
+            "email": "owner@example.com",
+            "email_verified": True,
+        }
+        state = client.post(
+            "/api/v1/auth/oidc/begin", json={"organization_id": second["organization_id"]}
+        ).json()["state"]
+        denied = client.post(
+            "/api/v1/auth/oidc/callback", json={"code": "code", "state": state})
+        assert denied.status_code == 403
+        assert "must be linked" in denied.json()["detail"]

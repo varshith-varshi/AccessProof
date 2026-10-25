@@ -1,4 +1,5 @@
 import asyncio
+import json
 from fastapi.testclient import TestClient
 from apps.api.accessproof_api.app import app
 from apps.api.accessproof_api.db import (
@@ -96,6 +97,9 @@ def test_control_plane_runner_mock_end_to_end():
         assert integrity.status_code == 200 and integrity.json()["verified"] is True
     with SessionLocal() as db:
         assert db.query(Report).filter(Report.run_id == run_id).count() == 1
+        saved_result = json.loads(db.get(DbTestRun, run_id).result_json)
+        assert saved_result["outcome"] == "FAIL"
+        assert saved_result["server_validation"]["passed"] is False
         assert db.query(RunStateTransition).filter(RunStateTransition.run_id == run_id).count() > 0
         assert db.query(EvidenceItem).filter(EvidenceItem.run_id == run_id).count() > 0
 
@@ -161,7 +165,7 @@ def test_expired_lease_recovery_preserves_checkpoint_and_mutation_journal():
                 "provider_id": "mock-resource-1",
                 "name": "secret.txt",
                 "marker": "accessproof-generated",
-                "canary": "AP-CANARY-X",
+                "canary": first_lease["oracle_canary"],
                 "metadata": {},
             },
             "metrics": {

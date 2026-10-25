@@ -23,14 +23,34 @@ function setCookieValues(headers: Headers): string[] {
   return combined ? combined.split(/,(?=\s*[^;,\s]+=)/).map(value => value.trim()) : [];
 }
 
+function safeApiPath(path: string[]): string[] | null {
+  // This route is an API v1 proxy, never a general-purpose upstream proxy.
+  // `encodeURIComponent("..")` remains `..`; relying on encoding would let URL
+  // normalization escape `/api/v1` after Next.js decodes a request path.
+  if (path.length < 2 || path[0] !== "v1") return null;
+  for (const segment of path) {
+    if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\")) {
+      return null;
+    }
+  }
+  return path;
+}
+
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
+  const safePath = safeApiPath(path);
+  if (!safePath) return Response.json({ detail: "Invalid API path." }, { status: 400 });
   const upstream = (process.env.ACCESSPROOF_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
-  const url = new URL(`${upstream}/api/${path.map(encodeURIComponent).join("/")}`);
+  const url = new URL(`${upstream}/api/${safePath.map(encodeURIComponent).join("/")}`);
   request.nextUrl.searchParams.forEach((value, key) => url.searchParams.append(key, value));
 
   const headers = new Headers(request.headers);
   hopByHopHeaders.forEach(header => headers.delete(header));
+  // The API enforces an explicit TrustedHost allow-list.  The internal
+  // Docker service name (for example `api:8000`) is not a public host and
+  // would otherwise be rejected when this server-side proxy calls it.
+  const upstreamHost = process.env.ACCESSPROOF_API_HOST ?? "api.accessproof.in";
+  headers.set("host", upstreamHost);
   headers.delete("x-organization-id");
   const organizationId = request.cookies.get("accessproof_organization")?.value;
   if (organizationId) headers.set("x-organization-id", organizationId);

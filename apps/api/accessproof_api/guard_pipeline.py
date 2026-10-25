@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from sqlalchemy import select, text
@@ -29,6 +30,7 @@ from apps.api.accessproof_api.db import (
     GuardPolicySequence,
     GuardRegistration,
     GuardResource,
+    GuardSubject,
     Organization,
 )
 
@@ -80,6 +82,11 @@ def _apply_mutation(
     if not bool(mutation.get("snapshot_complete", True)) or event.change_type == "sync_incomplete":
         return "SOURCE_SYNC_INCOMPLETE"
 
+    if event.change_type == "subject_status_refresh":
+        # The identity snapshot is authoritative. Never infer account status
+        # from a delayed event payload or mutate an existing grant.
+        return None
+
     if event.change_type in {"membership_upsert", "membership_revoke"}:
         provider_group_id = str(mutation.get("group_id") or "")
         if not provider_group_id:
@@ -93,6 +100,12 @@ def _apply_mutation(
             )
         )
         if membership is not None and membership.provider_revision > event.provider_revision:
+            return "STALE"
+        if (membership is not None and event.change_type == "membership_upsert"
+                and not membership.active
+                and membership.provider_revision == event.provider_revision):
+            # Revoke wins ties against duplicated or out-of-order membership
+            # grant events from the same source observation.
             return "STALE"
         if membership is None:
             membership = GuardGroupMembership(
@@ -127,11 +140,36 @@ def _apply_mutation(
     )
     if grant is not None and grant.provider_revision > event.provider_revision:
         return "STALE"
+    # At the SAME revision, an observed revoke must dominate a delayed ALLOW.
+    # Reject the replay rather than resurrecting a permission grant.
+    if (grant is not None and event.change_type == "grant_upsert"
+            and not grant.active and grant.provider_revision == event.provider_revision):
+        return "STALE"
     if event.change_type == "grant_revoke":
         if grant is not None:
             grant.active = False
             grant.provider_revision = event.provider_revision
             grant.observed_at = _now()
+        else:
+            # Revoke may arrive before grant. Persist a monotonic tombstone;
+            # otherwise a delayed equal-revision upsert creates a new ALLOW.
+            resource = db.get(GuardResource, event.resource_id)
+            if (resource is None or resource.organization_id != event.organization_id
+                    or resource.source_id != event.source_id):
+                return "IDENTITY_UNRESOLVED"
+            db.add(GuardPermissionGrant(
+                organization_id=event.organization_id,
+                source_id=event.source_id,
+                resource_id=event.resource_id,
+                grant_key=grant_key,
+                principal_type="subject",
+                principal_id=event.subject_id,
+                effect="deny",
+                scope=str(mutation.get("scope") or resource.scope or "read"),
+                active=False,
+                provider_revision=event.provider_revision,
+                observed_at=_now(),
+            ))
         return None
 
     principal_type = str(mutation.get("principal_type") or "subject")
@@ -176,12 +214,21 @@ def _apply_mutation(
 def _effective_grants(
     db: Session, event: GuardPermissionEvent, scope: str
 ) -> list[GuardPermissionGrant]:
+    subject = db.get(GuardSubject, event.subject_id)
+    if subject is None or subject.organization_id != event.organization_id or subject.status != "active":
+        return []
     group_ids = list(
         db.scalars(
             select(GuardGroupMembership.group_id).where(
                 GuardGroupMembership.organization_id == event.organization_id,
                 GuardGroupMembership.subject_id == event.subject_id,
                 GuardGroupMembership.active.is_(True),
+                GuardGroupMembership.group_id.in_(
+                    select(GuardGroup.id).where(
+                        GuardGroup.organization_id == event.organization_id,
+                        GuardGroup.status == "active",
+                    )
+                ),
             )
         )
     )
@@ -282,7 +329,11 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
         )
         .with_for_update()
     )
-    if prior is not None and event.provider_revision < prior.source_revision:
+    # Provider ACL change revisions and directory membership timestamps are
+    # independent sequences. Comparing them globally can discard a genuine
+    # Drive revocation that follows a membership event. Staleness is checked
+    # per grant/membership in _apply_mutation, using its own revision domain.
+    if unknown_reason == "STALE":
         event.processing_status = "stale"
         event.error_code = "STALE"
         event.processing_started_at = None
@@ -290,7 +341,11 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
         db.commit()
         return {"status": "stale"}
     grants = _effective_grants(db, event, scope)
-    decision, reason = _decision(grants, unknown_reason)
+    subject = db.get(GuardSubject, event.subject_id)
+    if subject is None or subject.organization_id != event.organization_id or subject.status != "active":
+        decision, reason = "deny", "SUBJECT_INACTIVE"
+    else:
+        decision, reason = _decision(grants, unknown_reason)
     changed = prior is None or prior.decision != decision
     state_version = (prior.state_version if prior else 0) + 1
     if prior is None:
@@ -347,7 +402,7 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
             resource_id=event.resource_id,
             source_id=event.source_id,
             scope=scope,
-            source_revision=event.provider_revision,
+            source_revision=prior.source_revision,
             effective_state_version=state_version,
             reason=reason,
             supersedes_policy_id=previous_policy.id if previous_policy else None,
@@ -401,7 +456,9 @@ def process_guard_event(db: Session, event_id: str) -> dict[str, str]:
     return {"status": "resolved", "policy_id": event.policy_id or "", "decision": decision}
 
 
-def process_guard_event_with_retry(db_factory, event_id: str, attempts: int = 4) -> dict[str, str]:
+def process_guard_event_with_retry(
+    db_factory: Callable[[], Session], event_id: str, attempts: int = 4
+) -> dict[str, str]:
     """Retry transient PostgreSQL serialization/deadlock failures safely.
 
     The transaction is rolled back before each retry; no partially applied

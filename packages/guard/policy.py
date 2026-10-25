@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Iterable
+from typing import Any, Iterable
 
 from .permissions import EffectiveAccessResolver
 
@@ -35,7 +35,7 @@ class AuthorizationPolicy:
 class Guard:
     resolver: EffectiveAccessResolver
     policy: AuthorizationPolicy
-    audit: list[dict] = field(default_factory=list)
+    audit: list[dict[str, Any]] = field(default_factory=list)
 
     def authorize(self, *, subject_id: str | None, application_id: str, resource_ids: Iterable[str]) -> tuple[AccessDecision, list[str]]:
         resources = list(dict.fromkeys(resource_ids))
@@ -54,6 +54,13 @@ class Guard:
         decision = AccessDecision.WOULD_ALLOW if self.policy.mode == AccessMode.SHADOW else AccessDecision.ALLOW
         return self._record(decision, subject_id, application_id, resources, "effective_access_allowed")
 
-    def _record(self, decision, subject_id, application_id, resources, reason):
+    def _record(
+        self,
+        decision: AccessDecision,
+        subject_id: str | None,
+        application_id: str,
+        resources: list[str],
+        reason: str,
+    ) -> tuple[AccessDecision, list[str]]:
         self.audit.append({"decision": decision.value, "subject_id": subject_id, "application_id": application_id, "resource_ids": resources, "reason": reason, "policy_id": self.policy.policy_id, "policy_version": self.policy.version})
         return decision, resources

@@ -32,3 +32,9 @@ def test_blank_and_upgrade_migration_path(tmp_path):
     )
     tables = inspect(create_engine(f"sqlite:///{db}")).get_table_names()
     assert "reports" in tables and "evidence_items" in tables
+    assert "control_plane_reports" in tables
+    # The latest runner oracle must stay mandatory after upgrading a legacy
+    # SQLite schema; a successful migration with a nullable oracle is unsafe.
+    columns = inspect(create_engine(f"sqlite:///{db}")).get_columns("test_runs")
+    oracle = next(column for column in columns if column["name"] == "oracle_canary")
+    assert oracle["nullable"] is False

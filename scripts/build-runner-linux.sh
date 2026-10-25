@@ -27,7 +27,7 @@ Version: $VERSION
 Section: admin
 Priority: optional
 Architecture: $ARCH
-Maintainer: NeuralMatrix <security@neuralmatrix.example>
+Maintainer: AccessProof <admin@accessproof.in>
 Depends: python3 (>= 3.11), python3-tk
 Description: AccessProof private runner
  Outbound-only authorization regression runner for enterprise AI systems.

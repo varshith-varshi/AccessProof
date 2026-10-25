@@ -1,0 +1,39 @@
+.....F                                                                   [100%]
+=================================== FAILURES ===================================
+___ test_unenrolled_production_guard_cannot_fallback_to_unbound_application ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7308f0cbdeb0>
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-80/test_unenrolled_production_gua0')
+
+    def test_unenrolled_production_guard_cannot_fallback_to_unbound_application(
+        monkeypatch, tmp_path,
+    ):
+        from fastapi import HTTPException
+    
+        policy = PolicyCache(str(tmp_path / "legacy-guard-policy.db"))
+        policy.install(1, [{
+            "subject_id": "alice", "source_id": "source", "resource_id": "payroll",
+            "scope": "read", "decision": "allow",
+        }])
+        policy.mark_sync_success()
+        monkeypatch.setattr(guard_app, "cache", policy)
+        monkeypatch.setattr(guard_app, "guard_id", None)
+        monkeypatch.setattr(guard_app, "guard_credential", None)
+        monkeypatch.setattr(guard_app, "mode", "protect")
+        monkeypatch.setenv("ACCESSPROOF_ENV", "production")
+        # No authoritative app/source bindings exist. A stale legacy local grant
+        # must not authorize ANY arbitrary application in production mode.
+        import pytest
+>       with pytest.raises(HTTPException) as error:
+E       Failed: DID NOT RAISE HTTPException
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:119: Failed
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_unenrolled_production_guard_cannot_fallback_to_unbound_application
+1 failed, 5 passed, 1 warning in 0.42s

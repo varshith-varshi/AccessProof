@@ -1,10 +1,26 @@
 from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from packages.connector_sdk.base import SourceAdapter
+from packages.capability_registry import snapshot as capability_registry_snapshot
+from packages.rag_sdk import adapter_registry
+from apps.api.accessproof_api.rag_challenge_verifier import verify_reference_evidence, request_ids
+from apps.api.accessproof_api.source_certification import effective_source_certified
+from apps.api.accessproof_api.protection_state import (
+    PROTECTION_STATES,
+    STATE_MESSAGES,
+    classify_protection_state,
+)
+from apps.api.accessproof_api.route_certification import (
+    describe_route_certificate,
+    reference_route_tested as _reference_challenge_tested,
+    route_configuration_fingerprint as _route_configuration_fingerprint,
+    valid_route_certificate as _valid_route_certificate,
+)
 
-from typing import Any
+from typing import Any, TypedDict
 
 import json
+import asyncio
 from dataclasses import asdict
 import hashlib
 import os
@@ -15,7 +31,7 @@ from threading import Lock
 from uuid import uuid4
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import delete, func, or_, select
@@ -47,6 +63,7 @@ from apps.api.accessproof_api.db import (
     OidcConfiguration,
     OidcLoginState,
     OidcIdentity,
+    MicrosoftConsentState, GoogleSourceOAuthState,
     ScimConfiguration,
     ScimIdentity,
     ScimGroup,
@@ -55,6 +72,7 @@ from apps.api.accessproof_api.db import (
     Project,
     Release,
     Report,
+    ControlPlaneReport,
     RetentionPolicy,
     RunStateTransition,
     Runner,
@@ -65,6 +83,7 @@ from apps.api.accessproof_api.db import (
     SyntheticResourceRecord,
     UsageRecord,
     GuardSubject,
+    GuardIdentityMapping,
     GuardGroup,
     GuardGroupMembership,
     GuardResource,
@@ -76,12 +95,15 @@ from apps.api.accessproof_api.db import (
     GuardEffectiveAccess,
     GuardAuditEvent,
     GuardProtectionDecision,
+    AuthorizationRevision,
     AIApplication,
+    ProtectionActivationRun,
+    RAGRouteChallenge,
     WebhookDelivery,
     WebhookEndpoint,
     Session as DbSession,
     SourceConnection,
-    ProviderSyncCursor,
+    ProviderSyncCursor as ProviderSyncCursorModel,
     TestIdentity,
     TestRun,
     TestSuite,
@@ -117,10 +139,16 @@ from apps.api.accessproof_api.schemas import (
     GuardExchange as GuardExchange,
     GuardHeartbeat as GuardHeartbeat,
     GuardPolicyAck as GuardPolicyAck,
+    GuardIdentityMappingCreate as GuardIdentityMappingCreate,
+    GuardIdentityMappingStatusUpdate as GuardIdentityMappingStatusUpdate,
     GuardAuditBatch as GuardAuditBatch,
     AIApplicationCreate as AIApplicationCreate,
     AIApplicationModeUpdate as AIApplicationModeUpdate,
     AIApplicationVerification as AIApplicationVerification,
+    ControlPlaneReportCreate as ControlPlaneReportCreate,
+    RouteChallengeStart as RouteChallengeStart,
+    RouteChallengeResult as RouteChallengeResult,
+    RouteCutoverEvidence as RouteCutoverEvidence,
     ResetPasswordRequest as ResetPasswordRequest,
     ChangePasswordRequest as ChangePasswordRequest,
     MfaEnableRequest as MfaEnableRequest,
@@ -145,6 +173,15 @@ from packages.crypto.totp import generate_totp_secret, provisioning_uri, verify_
 from packages.crypto.secrets import build_secret_backend, hash_token
 from packages.crypto.signing import Ed25519Signer, verify_manifest
 from packages.auth.oidc import OidcDiscovery, OidcError, OidcProviderClient
+from packages.auth.microsoft_consent import (
+    MicrosoftConsentError, authorization_url as microsoft_consent_url,
+    graph_app_token, tenant_uuid,
+)
+from connectors.microsoft365.adapter import Microsoft365Adapter
+from connectors.google_drive.adapter import GoogleDriveAdapter
+from packages.auth.google_consent import (
+    GoogleConsentError, authorization_url as google_consent_url, exchange_code as exchange_google_code,
+)
 from packages.domain.rbac import Permission, Role
 from packages.domain.scenario import ScenarioDefinition
 from packages.test_engine.regression import (
@@ -181,9 +218,29 @@ from apps.api.accessproof_api.observability import (
     webhook_queue_depth,
     email_queue_depth,
     source_connection_health,
+    authz_decisions,
+    guard_revision_lag,
+    source_freshness,
+    directory_freshness,
+    provider_event_lag,
+    route_certificate_age,
+    protected_route_coverage,
+    cache_reauth,
+    layer2_blocks,
+    revocation_end_to_end,
+    bounded_reason,
     logger,
 )
 from apps.api.accessproof_api.retention import apply_retention, get_or_create_policy
+from apps.api.accessproof_api.event_sync import NotificationRejected, accept_google_notification
+from apps.api.accessproof_api.authorization_revision import (
+    AUTHORIZATION_REVISION_SCHEMA,
+    REVISION_LIMITATIONS,
+    issue_or_reuse_revision,
+    latest_revision,
+    revision_envelope,
+)
+from apps.api.accessproof_api.revocation_timeline import build_timeline as build_revocation_timeline
 from apps.api.accessproof_api.alerts import queue_alert
 from packages.observability.tracing import configure_tracing
 
@@ -279,7 +336,11 @@ def _issue_email_verification(db: OrmSession, user: User, organization_id: str) 
         text_body=(
             f"Welcome to {settings.product_name}.\n\n"
             "Verify your email address to activate your account:\n"
-            f"{settings.public_app_url.rstrip('/')}/verify-email?token={raw}\n\n"
+            # Keep the link aligned with the web-v2 route.  The API endpoint
+            # is `/api/v1/auth/verify-email`, while the user-facing page is
+            # `/verify`; linking to the API path directly leaves users at a
+            # 404 page instead of submitting the token.
+            f"{settings.public_app_url.rstrip('/')}/verify?token={raw}\n\n"
             "If you did not create this account, you can ignore this email."
         ),
     )
@@ -560,6 +621,98 @@ def _refresh_database_metrics(db: OrmSession) -> None:
             or 0
         )
         source_connection_health.labels(status).set(float(count))
+    _refresh_authorization_metrics(db, now)
+
+
+def _refresh_authorization_metrics(db: OrmSession, now: datetime) -> None:
+    """Populate authorization/route gauges from retained evidence.
+
+    A gauge without a sample means no evidence was retained; it is never
+    fabricated as zero. Ages are worst-case values so a single stale source or
+    certificate is visible without exposing tenant or resource identifiers.
+    """
+    acl_ages: dict[str, float] = {}
+    directory_ages: dict[str, float] = {}
+    for cursor, source in db.execute(
+        select(ProviderSyncCursorModel, SourceConnection).join(
+            SourceConnection, SourceConnection.id == ProviderSyncCursorModel.source_id,
+        ).where(
+            ProviderSyncCursorModel.organization_id == SourceConnection.organization_id,
+        )
+    ):
+        if (cursor.status != "connected" or cursor.last_success_at is None
+                or cursor.last_error_code):
+            continue
+        synced_at = _utc(cursor.last_success_at)
+        if synced_at is None:
+            continue
+        age = max(0.0, (now - synced_at).total_seconds())
+        provider = source.provider.lower()
+        if cursor.sync_kind == "acl":
+            acl_ages[provider] = max(acl_ages.get(provider, 0.0), age)
+        elif cursor.sync_kind == "directory":
+            directory_ages[provider] = max(directory_ages.get(provider, 0.0), age)
+    for provider, age in acl_ages.items():
+        source_freshness.labels(provider).set(age)
+    for provider, age in directory_ages.items():
+        directory_freshness.labels(provider).set(age)
+
+    event_lags: dict[str, float] = {}
+    recent_events = db.scalars(select(GuardPermissionEvent).order_by(
+        GuardPermissionEvent.received_at.desc()
+    ).limit(5000)).all()
+    for event in recent_events:
+        observed = _utc(event.observed_at)
+        received = _utc(event.received_at)
+        if observed is None or received is None:
+            continue
+        lag = max(0.0, (received - observed).total_seconds())
+        provider = event.provider.lower()
+        event_lags[provider] = max(event_lags.get(provider, 0.0), lag)
+    for provider, lag in event_lags.items():
+        provider_event_lag.labels(provider).set(lag)
+
+    certificate_ages: list[float] = []
+    eligible = certified = 0
+    applications = db.scalars(select(AIApplication).where(
+        AIApplication.adapter_type == "accessproof-gateway",
+    ).limit(1000)).all()
+    for row in applications:
+        certificate = describe_route_certificate(db, row, now=now)
+        if certificate["age_seconds"] is not None:
+            certificate_ages.append(float(certificate["age_seconds"]))
+        if row.mode in {"protect", "protect_pending"}:
+            eligible += 1
+            if certificate["certified"]:
+                certified += 1
+    if certificate_ages:
+        route_certificate_age.set(max(certificate_ages))
+    if eligible:
+        protected_route_coverage.set(certified / eligible)
+
+    reported_lags: list[float] = []
+    guards = db.scalars(select(GuardRegistration).where(
+        GuardRegistration.active_authorization_revisions_json != "{}",
+    )).all()
+    for guard in guards:
+        try:
+            reported = json.loads(guard.active_authorization_revisions_json or "{}")
+        except ValueError:
+            continue
+        if not isinstance(reported, dict):
+            continue
+        for application_id, report in reported.items():
+            if not isinstance(report, dict) or not isinstance(report.get("revision"), int):
+                continue
+            latest = latest_revision(db, guard.organization_id, application_id)
+            if latest is None or report["revision"] >= latest.revision:
+                continue
+            generated = _utc(latest.generated_at)
+            if generated is None:
+                continue
+            reported_lags.append(max(0.0, (now - generated).total_seconds()))
+    if reported_lags:
+        guard_revision_lag.set(max(reported_lags))
 
 
 @app.get("/metrics")
@@ -639,10 +792,35 @@ def branding() -> dict[str, Any]:
 
 
 @app.post("/api/v1/guard/permission-events", status_code=201)
-def guard_permission_event(payload: GuardEventCreate, actor: Actor = Depends(current_actor), db: OrmSession = Depends(get_db)) -> dict[str, Any]:
-    """Queue one normalized provider event; resolution happens in the worker."""
+def guard_permission_event(
+    payload: GuardEventCreate,
+    x_accessproof_ingest_key: str | None = Header(default=None, alias="X-AccessProof-Ingest-Key"),
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Privileged, authenticated diagnostics ingress; provider sync uses internal DB writes.
+
+    A normal SaaS session, even OWNER, is not evidence of a provider ACL.
+    Production must provision a distinct high-entropy ingest key to enable
+    this endpoint. There is deliberately no development fallback secret.
+    """
+    expected_ingest_key = os.getenv("ACCESSPROOF_PERMISSION_EVENT_INGEST_KEY", "")
+    if len(expected_ingest_key) < 32:
+        raise HTTPException(503, "PROVIDER_EVENT_INGESTION_DISABLED")
+    if not x_accessproof_ingest_key or not secrets.compare_digest(
+        x_accessproof_ingest_key, expected_ingest_key
+    ):
+        raise HTTPException(403, "PROVIDER_EVENT_AUTHENTICATION_REQUIRED")
     organization_id = actor.membership.organization_id
     set_tenant_context(db, organization_id)
+    source = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == payload.source_id,
+        SourceConnection.organization_id == organization_id,
+    ))
+    if source is None:
+        raise HTTPException(404, "Permission source not found")
+    if source.provider.lower() != payload.provider.lower():
+        raise HTTPException(422, "Provider does not match permission source")
     existing = db.scalar(select(GuardPermissionEvent).where(GuardPermissionEvent.organization_id == organization_id, GuardPermissionEvent.dedupe_key == payload.dedupe_key))
     if existing:
         return {"id": existing.id, "deduplicated": True, "status": existing.processing_status}
@@ -703,11 +881,55 @@ def guard_permission_event(payload: GuardEventCreate, actor: Actor = Depends(cur
 
 
 @app.get("/api/v1/guard/permission-events")
-def guard_permission_events(actor: Actor = Depends(current_actor), db: OrmSession = Depends(get_db)) -> list[dict[str, Any]]:
+def guard_permission_events(actor: Actor = Depends(require(Permission.AUDIT_READ)), db: OrmSession = Depends(get_db)) -> list[dict[str, Any]]:
     organization_id = actor.membership.organization_id
     set_tenant_context(db, organization_id)
     rows = db.scalars(select(GuardPermissionEvent).where(GuardPermissionEvent.organization_id == organization_id).order_by(GuardPermissionEvent.received_at.desc()).limit(100)).all()
     return [{"id": r.id, "source_id": r.source_id, "provider": r.provider, "subject_id": r.subject_id, "resource_id": r.resource_id, "change_type": r.change_type, "provider_revision": r.provider_revision, "status": r.processing_status, "dedupe_key": r.dedupe_key, "error_code": r.error_code, "policy_id": r.policy_id} for r in rows]
+
+
+@app.post("/api/v1/provider-events/google-drive", status_code=204)
+async def google_drive_event_notification(request: Request, db: OrmSession = Depends(get_db)) -> Response:
+    """Receive a Google watch hint and enqueue authoritative ACL synchronization.
+
+    This endpoint intentionally has no user authentication: Google calls it.
+    Channel binding, encrypted token comparison, source binding, expiry, and
+    durable deduplication establish whether the callback is accepted.
+    """
+    content_length = request.headers.get("content-length")
+    try:
+        if content_length is not None and int(content_length) > 8_192:
+            raise HTTPException(413, "NOTIFICATION_TOO_LARGE")
+    except ValueError:
+        raise HTTPException(400, "INVALID_CONTENT_LENGTH")
+    # Streaming inspection prevents chunked or missing-Content-Length
+    # requests from allocating an unbounded body before the 8 KiB limit.
+    received = 0
+    non_whitespace = False
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > 8_192:
+            raise HTTPException(413, "NOTIFICATION_TOO_LARGE")
+        if chunk.strip():
+            non_whitespace = True
+    if non_whitespace:
+        # Google Drive channel notifications use headers; accepting a body here
+        # creates an ambiguous untrusted authorization input.
+        raise HTTPException(400, "UNEXPECTED_NOTIFICATION_BODY")
+    try:
+        accept_google_notification(
+            db, headers=request.headers, decrypt_token=_secret_box.decrypt,
+        )
+        db.commit()
+    except NotificationRejected as exc:
+        db.rollback()
+        # Deliberately use a stable code, not channel details or secret state.
+        raise HTTPException(401, str(exc)) from exc
+    except Exception:
+        db.rollback()
+        # Returning retryable failure prevents an accepted-but-lost revocation hint.
+        raise HTTPException(503, "NOTIFICATION_ENQUEUE_UNAVAILABLE")
+    return Response(status_code=204)
 
 
 @app.post("/api/v1/guards", status_code=201)
@@ -730,6 +952,33 @@ def create_guard(
     _audit(db, actor, row.organization_id, "guard.created", "guard", row.id)
     db.commit()
     return {"id": row.id, "name": row.name, "status": row.status, "environment": row.environment}
+
+
+@app.get("/api/v1/guards/download")
+def download_guard_installer(
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+) -> FileResponse:
+    """Authenticated delivery of the Guard runtime bundle.
+
+    The release is built into the API image, not read from a caller-controlled
+    filename or an untrusted URL. Never include secrets or local .env files.
+    """
+    from pathlib import Path
+    release_version = os.getenv("ACCESSPROOF_GUARD_RELEASE_VERSION", "0.1.0")
+    parts = release_version.split(".")
+    if len(parts) != 3 or any(not part.isdigit() or not part for part in parts):
+        raise HTTPException(503, "GUARD_RELEASE_VERSION_INVALID")
+    filename = f"accessproof-guard-{release_version}.tar.gz"
+    base = Path(os.getenv("ACCESSPROOF_GUARD_RELEASE_DIR", "/app/guard-releases"))
+    release = base / filename
+    if not release.is_file():
+        raise HTTPException(503, "GUARD_PACKAGE_NOT_PUBLISHED")
+    return FileResponse(
+        path=release,
+        filename=filename,
+        media_type="application/gzip",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.get("/api/v1/guards")
@@ -814,7 +1063,7 @@ def exchange_guard(payload: GuardExchange, db: OrmSession = Depends(get_db)) -> 
     now = datetime.now(timezone.utc)
     enrollment = db.scalar(select(GuardEnrollment).where(
         GuardEnrollment.token_hash == hash_token(payload.enrollment_token)
-    ))
+    ).with_for_update())
     if enrollment is None or enrollment.used_at or enrollment.revoked_at:
         raise HTTPException(401, "Invalid enrollment token")
     expires_at = enrollment.expires_at if enrollment.expires_at.tzinfo else enrollment.expires_at.replace(tzinfo=timezone.utc)
@@ -887,11 +1136,72 @@ def guard_heartbeat(
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
     guard = _authenticate_guard(db, payload.guard_id, authorization)
+    if "active_authorization_revisions" in payload.model_fields_set:
+        reported_revisions: dict[str, dict[str, object]] = {}
+        for application_id, report in payload.active_authorization_revisions.items():
+            application = db.scalar(select(AIApplication).where(
+                AIApplication.organization_id == guard.organization_id,
+                AIApplication.application_id == application_id,
+                AIApplication.guard_id == guard.id,
+            ))
+            if application is None:
+                raise HTTPException(403, "AUTHORIZATION_REVISION_APPLICATION_NOT_BOUND")
+            issued = db.scalar(select(AuthorizationRevision).where(
+                AuthorizationRevision.organization_id == guard.organization_id,
+                AuthorizationRevision.application_id == application_id,
+                AuthorizationRevision.revision == report.revision,
+                AuthorizationRevision.revision_hash == report.revision_hash,
+            ))
+            if issued is None:
+                raise HTTPException(409, "AUTHORIZATION_REVISION_NOT_ISSUED")
+            reported_revisions[application_id] = {
+                "revision": report.revision, "revision_hash": report.revision_hash,
+            }
+        guard.active_authorization_revisions_json = json.dumps(
+            reported_revisions, sort_keys=True
+        )
+    reported_policy_version = int(payload.active_policy_version)
+    if reported_policy_version < int(guard.active_policy_version or 0):
+        raise HTTPException(409, "Guard policy version cannot move backwards")
+    if reported_policy_version > int(guard.active_policy_version or 0):
+        installed = db.scalar(
+            select(GuardPolicyDistribution.id)
+            .join(GuardPolicy, GuardPolicy.id == GuardPolicyDistribution.policy_id)
+            .where(
+                GuardPolicyDistribution.organization_id == guard.organization_id,
+                GuardPolicyDistribution.guard_id == guard.id,
+                GuardPolicyDistribution.status == "installed",
+                GuardPolicy.version == reported_policy_version,
+            )
+            .limit(1)
+        )
+        if installed is None:
+            raise HTTPException(409, "Guard policy version was not distributed and installed")
     guard.last_heartbeat_at = datetime.now(timezone.utc)
     guard.last_policy_sync_at = guard.last_heartbeat_at
     guard.version = payload.version
-    guard.active_policy_version = payload.active_policy_version
+    guard.active_policy_version = reported_policy_version
     guard.health = "degraded" if payload.degraded_conditions else payload.cache_status
+    # Do not report Protect as active until this specific machine reports
+    # having installed the application's Protect binding.
+    guard_can_confirm_protect = (
+        payload.cache_status == "healthy"
+        and not payload.degraded_conditions
+        and payload.active_policy_version > 0
+    )
+    for application_id, active_mode in payload.active_applications.items():
+        row = db.scalar(select(AIApplication).where(
+            AIApplication.organization_id == guard.organization_id,
+            AIApplication.guard_id == guard.id,
+            AIApplication.application_id == application_id,
+        ))
+        if (row is not None and row.mode == "protect_pending" and active_mode == "protect"
+                and guard_can_confirm_protect and all(
+                    check["ok"] for check in _automatic_activation_checklist(db, row)
+                )):
+            row.mode = "protect"
+            _audit(db, None, row.organization_id, "PROTECT_ACTIVATED", "ai_application", row.id,
+                   {"guard_id": guard.id})
     db.commit()
     return {"ok": True}
 
@@ -909,11 +1219,108 @@ def guard_policies(
     latest = int(db.scalar(select(func.max(GuardPolicy.version)).where(
         GuardPolicy.organization_id == guard.organization_id
     )) or 0)
+    # Source health is evaluated at every machine sync, independent of policy
+    # version. Guard must not trust an old ALLOW when Drive ACL polling fails.
+    max_acl_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900")))
+    max_directory_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400")))
+    source_cursors = {
+        (row.source_id, row.sync_kind): row
+        for row in db.scalars(select(ProviderSyncCursorModel).where(
+            ProviderSyncCursorModel.organization_id == guard.organization_id,
+            ProviderSyncCursorModel.sync_kind.in_(["acl", "directory"]),
+        ))
+    }
+    now = datetime.now(timezone.utc)
+
+    def source_acl_healthy(source_id: str | None) -> bool:
+        # Both document grants and group/employee membership must be fresh.
+        # A valid ACL read with an expired directory snapshot is not safe.
+        if source_id is None:
+            return False
+        bound_source = db.scalar(select(SourceConnection).where(
+            SourceConnection.id == source_id,
+            SourceConnection.organization_id == guard.organization_id,
+        ))
+        if bound_source is None:
+            return False
+        # Microsoft Graph sharing records are never sufficient. Only a
+        # source-bound, independently issued, fresh provider-live certificate
+        # for this exact profile can permit a Protect binding.
+        if bound_source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"}:
+            try:
+                certificate_credentials = json.loads(_secret_box.decrypt(bound_source.encrypted_credentials or ""))
+            except Exception:
+                # Corrupted/undecryptable source secrets cannot certify access.
+                return False
+            if not effective_source_certified(db, bound_source, certificate_credentials):
+                return False
+        for kind, threshold in (("acl", max_acl_age), ("directory", max_directory_age)):
+            cursor = source_cursors.get((source_id, kind))
+            if cursor is None or cursor.status != "connected" or cursor.last_success_at is None:
+                return False
+            checked_at = cursor.last_success_at
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=timezone.utc)
+            age = (now - checked_at).total_seconds()
+            if not 0 <= age <= threshold:
+                return False
+        return True
+
+    # Bindings are delivered even when the policy version is unchanged.
+    bound_rows = list(db.scalars(select(AIApplication).where(
+        AIApplication.organization_id == guard.organization_id,
+        AIApplication.guard_id == guard.id,
+        AIApplication.source_id.is_not(None),
+    )).all())
+    bound_applications = [
+        {"application_id": row.application_id, "source_id": row.source_id,
+         "source_acl_healthy": source_acl_healthy(row.source_id),
+         "mode": "protect" if row.mode == "protect_pending" else row.mode}
+        for row in bound_rows
+    ]
+    # A revision is issued only when stable authorization state changes. It
+    # binds every subsequent Guard decision to this exact source/policy state.
+    authorization_revisions = [
+        revision_envelope(issue_or_reuse_revision(db, row, signer=_report_signer))
+        for row in bound_rows
+    ]
+    if authorization_revisions:
+        db.commit()
+    # The Guard receives only verified mappings for its own organization.  It
+    # resolves a JWT principal locally and never sends employee tokens to us.
+    mappings = [
+        {
+            "source_id": row.source_id,
+            "issuer": row.oidc_issuer,
+            "subject": row.oidc_subject,
+            "tenant_id": row.oidc_tenant_id or "",
+            "source_subject_id": subject.provider_subject_id,
+        }
+        for row, subject, source in db.execute(
+            select(GuardIdentityMapping, GuardSubject, SourceConnection)
+            .join(GuardSubject, GuardSubject.id == GuardIdentityMapping.source_subject_id)
+            .join(SourceConnection, SourceConnection.id == GuardIdentityMapping.source_id)
+            .where(
+                GuardIdentityMapping.organization_id == guard.organization_id,
+                GuardIdentityMapping.status == "VERIFIED",
+                GuardIdentityMapping.revoked_at.is_(None),
+                GuardSubject.organization_id == guard.organization_id,
+                GuardSubject.status == "active",
+                SourceConnection.organization_id == guard.organization_id,
+            )
+        )
+        # Older or corrupted mappings must not link source A's identity to
+        # source B's policy graph, even when an immutable ID string collides.
+        if subject.provider == (
+            "microsoft365" if source.provider.lower() in {"sharepoint", "onedrive", "microsoft365"}
+            else source.provider.lower()
+        )
+    ]
     if full_snapshot:
         states = db.scalars(select(GuardEffectiveAccess).where(
             GuardEffectiveAccess.organization_id == guard.organization_id
         )).all()
-        return {"kind": "full", "version": latest, "decisions": [
+        return {"kind": "full", "version": latest, "applications": bound_applications, "identity_mappings": mappings, "authorization_revisions": authorization_revisions, "decisions": [
             {"subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id, "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id),
              "scope": row.scope, "decision": row.decision, "reason": row.reason}
             for row in states
@@ -922,12 +1329,144 @@ def guard_policies(
         GuardPolicy.organization_id == guard.organization_id,
         GuardPolicy.version > after_version,
     ).order_by(GuardPolicy.version.asc())).all()
-    return {"kind": "incremental", "version": latest, "policies": [
+    return {"kind": "incremental", "version": latest, "applications": bound_applications, "identity_mappings": mappings, "authorization_revisions": authorization_revisions, "policies": [
         {"version": row.version, "subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id,
          "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id), "scope": row.scope, "decision": row.decision,
          "reason": row.reason}
         for row in rows
     ]}
+
+
+@app.get("/api/v1/guards/{guard_id}/policy-notifications")
+async def guard_policy_notification(
+    guard_id: str,
+    after_version: int = 0,
+    wait_seconds: int = 20,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Authenticated outbound long-poll wake-up for an enrolled Guard.
+
+    This delivers no policy data. A Guard treats it only as a signal to call
+    the normal policy endpoint, preserving the existing signature/version and
+    atomic-installation checks.
+    """
+    guard = _authenticate_guard(db, guard_id, authorization)
+    if after_version < 0 or wait_seconds < 0 or wait_seconds > 25:
+        raise HTTPException(422, "INVALID_NOTIFICATION_WAIT")
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        latest = int(db.scalar(select(func.max(GuardPolicy.version)).where(
+            GuardPolicy.organization_id == guard.organization_id
+        )) or 0)
+        if latest > after_version:
+            return {"event_type": "POLICY_UPDATE_AVAILABLE", "guard_id": guard.id, "policy_version": latest}
+        if time.monotonic() >= deadline:
+            return {"event_type": "KEEPALIVE", "guard_id": guard.id, "policy_version": latest}
+        await asyncio.sleep(0.25)
+
+
+def _identity_mapping_payload(row: GuardIdentityMapping, subject: GuardSubject) -> dict[str, Any]:
+    return {
+        "id": row.id, "source_id": row.source_id, "oidc_issuer": row.oidc_issuer,
+        "oidc_subject": row.oidc_subject, "oidc_tenant_id": row.oidc_tenant_id or None,
+        "source_subject_id": row.source_subject_id,
+        "source_subject": {
+            "id": subject.id, "stable_id": subject.provider_subject_id,
+            "name": subject.display_name or subject.primary_email or subject.provider_subject_id,
+        },
+        "status": row.status, "method": row.method,
+        "verified_at": row.verified_at.isoformat() if row.verified_at else None,
+        "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+    }
+
+
+@app.get("/api/v1/current/identity-mappings")
+def list_current_identity_mappings(
+    actor: Actor = Depends(require(Permission.RESULT_READ)), db: OrmSession = Depends(get_db)
+) -> list[dict[str, Any]]:
+    return [
+        _identity_mapping_payload(row, subject)
+        for row, subject in db.execute(
+            select(GuardIdentityMapping, GuardSubject)
+            .join(GuardSubject, GuardSubject.id == GuardIdentityMapping.source_subject_id)
+            .where(GuardIdentityMapping.organization_id == actor.membership.organization_id)
+            .order_by(GuardIdentityMapping.updated_at.desc(), GuardIdentityMapping.id.desc())
+        )
+    ]
+
+
+@app.post("/api/v1/current/identity-mappings", status_code=201)
+def create_current_identity_mapping(
+    payload: GuardIdentityMappingCreate,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)), db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    org_id = actor.membership.organization_id
+    # Issuers are opaque exact strings; a trailing slash is security-significant.
+    if payload.oidc_issuer != payload.oidc_issuer.strip() or not payload.oidc_issuer.startswith("https://"):
+        raise HTTPException(422, "OIDC issuer must be an exact HTTPS issuer URL")
+    source = db.scalar(select(SourceConnection).where(SourceConnection.id == payload.source_id, SourceConnection.organization_id == org_id))
+    subject = db.scalar(select(GuardSubject).where(GuardSubject.id == payload.source_subject_id, GuardSubject.organization_id == org_id, GuardSubject.status == "active"))
+    if source is None or subject is None:
+        raise HTTPException(404, "Permission source or active source identity not found")
+    source_provider = ("microsoft365"
+        if source.provider.lower() in {"sharepoint", "onedrive", "microsoft365"}
+        else source.provider.lower())
+    if subject.provider != source_provider:
+        raise HTTPException(422, "Source identity does not belong to this source provider")
+    tenant = payload.oidc_tenant_id or ""
+    row = db.scalar(select(GuardIdentityMapping).where(
+        GuardIdentityMapping.organization_id == org_id,
+        GuardIdentityMapping.source_id == source.id,
+        GuardIdentityMapping.oidc_issuer == payload.oidc_issuer,
+        GuardIdentityMapping.oidc_subject == payload.oidc_subject,
+        GuardIdentityMapping.oidc_tenant_id == tenant,
+    ))
+    now = datetime.now(timezone.utc)
+    if row is None:
+        row = GuardIdentityMapping(
+            organization_id=org_id, source_id=source.id, oidc_issuer=payload.oidc_issuer,
+            oidc_subject=payload.oidc_subject, oidc_tenant_id=tenant,
+            source_subject_id=subject.id, status="VERIFIED", method=payload.method,
+            verified_by_user_id=actor.user.id, verified_at=now,
+        )
+        db.add(row)
+    else:
+        row.source_subject_id = subject.id
+        row.status, row.method, row.verified_by_user_id = "VERIFIED", payload.method, actor.user.id
+        row.verified_at, row.revoked_at = now, None
+    _audit(db, actor, org_id, "identity_mapping.verified", "identity_mapping", row.id,
+           {"source_id": source.id, "issuer": payload.oidc_issuer, "method": payload.method})
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Identity mapping conflicts with an existing verified mapping") from exc
+    db.refresh(row)
+    return _identity_mapping_payload(row, subject)
+
+
+@app.patch("/api/v1/current/identity-mappings/{mapping_id}")
+def update_current_identity_mapping(
+    mapping_id: str, payload: GuardIdentityMappingStatusUpdate,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)), db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(GuardIdentityMapping).where(
+        GuardIdentityMapping.id == mapping_id,
+        GuardIdentityMapping.organization_id == actor.membership.organization_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "Identity mapping not found")
+    subject = db.get(GuardSubject, row.source_subject_id)
+    if subject is None:
+        raise HTTPException(409, "Mapped source identity no longer exists")
+    now = datetime.now(timezone.utc)
+    row.status = payload.status
+    row.revoked_at = now if payload.status == "REVOKED" else None
+    _audit(db, actor, row.organization_id, "identity_mapping.status_changed", "identity_mapping", row.id,
+           {"status": payload.status, "source_id": row.source_id})
+    db.commit()
+    return _identity_mapping_payload(row, subject)
 
 
 @app.post("/api/v1/guards/policies/ack")
@@ -978,8 +1517,25 @@ def upload_guard_audit_events(
 ) -> dict[str, int]:
     """Accept bounded, metadata-only Guard audit batches idempotently."""
     guard = _authenticate_guard(db, payload.guard_id, authorization)
+    now = datetime.now(timezone.utc)
     accepted = 0
     for item in payload.events:
+        if (item.authorization_revision is None) != (item.authorization_revision_hash is None):
+            raise HTTPException(422, "AUTHORIZATION_REVISION_BINDING_INCOMPLETE")
+        occurred_at = item.occurred_at
+        if occurred_at is not None:
+            occurred_at = occurred_at.replace(tzinfo=timezone.utc) if occurred_at.tzinfo is None else occurred_at
+            if occurred_at > now + timedelta(minutes=5):
+                raise HTTPException(422, "AUDIT_OCCURRED_AT_IN_FUTURE")
+        if item.authorization_revision_hash is not None:
+            revision = db.scalar(select(AuthorizationRevision).where(
+                AuthorizationRevision.organization_id == guard.organization_id,
+                AuthorizationRevision.application_id == item.application_id,
+                AuthorizationRevision.revision == item.authorization_revision,
+                AuthorizationRevision.revision_hash == item.authorization_revision_hash,
+            ))
+            if revision is None:
+                raise HTTPException(422, "AUTHORIZATION_REVISION_UNKNOWN")
         # The unique constraint is the authority here.  The nested savepoint
         # makes concurrent replays harmless without discarding other items in
         # the same batch.
@@ -997,14 +1553,76 @@ def upload_guard_audit_events(
                     result=item.result,
                     reason=item.reason,
                     policy_version=item.policy_version,
+                    authorization_revision=item.authorization_revision,
+                    authorization_revision_hash=item.authorization_revision_hash,
                     resources_json=json.dumps(sorted(set(item.resource_ids))),
+                    occurred_at=occurred_at or now,
                 ))
                 db.flush()
         except IntegrityError:
             continue
         accepted += 1
+        reason = bounded_reason(item.reason)
+        authz_decisions.labels(item.layer, item.result, reason).inc()
+        if item.result in {"block", "would_block"}:
+            if item.layer == "layer2":
+                layer2_blocks.labels(reason).inc()
+            if reason.startswith("CACHE_"):
+                cache_reauth.labels(item.result).inc()
+        if item.layer == "layer1" and item.result in {"block", "would_block"}:
+            _observe_revocation_end_to_end(
+                db, guard, item.application_id, occurred_at or now, item.event_id,
+            )
     db.commit()
     return {"accepted": accepted}
+
+
+def _observe_revocation_end_to_end(
+    db: OrmSession, guard: GuardRegistration, application_id: str,
+    denial_at: datetime, event_id: str,
+) -> None:
+    """Measure provider-observed change to first Guard denial, once.
+
+    The measurement is recorded only when the denial is the first blocking
+    Layer 1 audit for that application after a retained revocation event.
+    """
+    application = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == guard.organization_id,
+        AIApplication.application_id == application_id,
+        AIApplication.guard_id == guard.id,
+    ))
+    if application is None or application.source_id is None:
+        return
+    revocation = db.scalar(select(GuardPermissionEvent).where(
+        GuardPermissionEvent.organization_id == guard.organization_id,
+        GuardPermissionEvent.source_id == application.source_id,
+        GuardPermissionEvent.change_type.in_((
+            "grant_revoke", "membership_revoke", "user_disable", "revoke",
+        )),
+        GuardPermissionEvent.completed_at.is_not(None),
+        GuardPermissionEvent.completed_at <= denial_at,
+    ).order_by(GuardPermissionEvent.completed_at.desc()).limit(1))
+    if revocation is None or revocation.completed_at is None:
+        return
+    completed = _utc(revocation.completed_at)
+    earlier = db.scalar(select(GuardAuditEvent.id).where(
+        GuardAuditEvent.organization_id == guard.organization_id,
+        GuardAuditEvent.guard_id == guard.id,
+        GuardAuditEvent.application_id == application_id,
+        GuardAuditEvent.layer == "layer1",
+        GuardAuditEvent.result.in_(("block", "would_block")),
+        GuardAuditEvent.event_id != event_id,
+        GuardAuditEvent.created_at >= completed,
+        GuardAuditEvent.created_at <= denial_at,
+    ).limit(1))
+    if earlier is not None:
+        return
+    observed = _utc(revocation.observed_at)
+    if observed is None:
+        return
+    elapsed = (denial_at - observed).total_seconds()
+    if 0 <= elapsed <= 7 * 24 * 3600:
+        revocation_end_to_end.observe(elapsed)
 
 
 @app.post("/api/v1/auth/signup", status_code=201)
@@ -1055,7 +1673,15 @@ def login(
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(401, "Invalid credentials")
     if not user.email_verified:
-        raise HTTPException(403, "Please verify your email before signing in.")
+        # Keep unverified accounts blocked, but make recovery self-service:
+        # every authenticated login attempt rotates the old token and queues a
+        # fresh verification message.  The normal login rate limit still
+        # applies, and `_issue_email_verification` invalidates prior tokens.
+        membership = db.scalar(select(Membership).where(Membership.user_id == user.id))
+        if membership:
+            _issue_email_verification(db, user, membership.organization_id)
+            db.commit()
+        raise HTTPException(403, "Please verify your email. A new verification link was sent.")
     memberships = list(db.scalars(select(Membership).where(Membership.user_id == user.id)))
     if not memberships:
         raise HTTPException(403, "No organization membership")
@@ -1284,8 +1910,12 @@ def _complete_oidc(
     payload: OidcCallbackRequest, response: Response, db: OrmSession
 ) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
+    # Lock the one-time state row before exchanging the authorization code so
+    # concurrent callbacks cannot both consume a valid login transaction.
     state_row = db.scalar(
-        select(OidcLoginState).where(OidcLoginState.state_hash == hash_token(payload.state))
+        select(OidcLoginState)
+        .where(OidcLoginState.state_hash == hash_token(payload.state))
+        .with_for_update()
     )
     if state_row is None or state_row.used_at is not None:
         raise HTTPException(400, "Invalid or already-used OIDC state")
@@ -1300,6 +1930,11 @@ def _complete_oidc(
     config = db.get(OidcConfiguration, state_row.organization_id)
     if config is None:
         raise HTTPException(400, "OIDC configuration no longer exists")
+    # Persist consumption before the network exchange. PostgreSQL row locking
+    # serializes callers; this explicit commit also preserves one-time behavior
+    # for SQLite/dev deployments where SELECT FOR UPDATE is a no-op.
+    state_row.used_at = now
+    db.commit()
     try:
         discovery = OidcDiscovery(**json.loads(config.discovery_json))
         nonce = _secret_box.decrypt(state_row.encrypted_nonce)
@@ -1324,8 +1959,8 @@ def _complete_oidc(
     email = str(claims.get(config.email_claim) or "").strip().lower()
     if not subject or not email or "@" not in email:
         raise HTTPException(403, "OIDC identity is missing required subject/email claims")
-    if claims.get("email_verified") is False:
-        raise HTTPException(403, "OIDC provider reports an unverified email")
+    if claims.get("email_verified") is not True:
+        raise HTTPException(403, "OIDC provider must assert a verified email")
     allowed_domains = set(json.loads(config.allowed_domains_json or "[]"))
     if allowed_domains and email.rsplit("@", 1)[1] not in allowed_domains:
         raise HTTPException(403, "OIDC email domain is not allowed for this organization")
@@ -1339,8 +1974,25 @@ def _complete_oidc(
     )
     user = db.get(User, identity.user_id) if identity else None
     if user is None:
-        user = db.scalar(select(User).where(User.email == email))
-        if user is None:
+        # An IdP in one organization must never claim a globally-existing user
+        # merely by asserting that person's email. Existing members can link
+        # their account through their organization; a collision from another
+        # tenant is rejected rather than becoming an implicit account takeover.
+        existing_user = db.scalar(select(User).where(User.email == email))
+        if existing_user is not None:
+            existing_membership = db.scalar(
+                select(Membership).where(
+                    Membership.user_id == existing_user.id,
+                    Membership.organization_id == config.organization_id,
+                )
+            )
+            if existing_membership is None:
+                raise HTTPException(
+                    403,
+                    "OIDC identity must be linked by an existing organization member",
+                )
+            user = existing_user
+        else:
             user = User(
                 email=email,
                 password_hash=hash_password(secrets.token_urlsafe(48)),
@@ -1348,15 +2000,14 @@ def _complete_oidc(
             )
             db.add(user)
             db.flush()
-        if identity is None:
-            db.add(
-                OidcIdentity(
-                    organization_id=config.organization_id,
-                    user_id=user.id,
-                    issuer=config.issuer_url,
-                    subject=subject,
-                )
+        db.add(
+            OidcIdentity(
+                organization_id=config.organization_id,
+                user_id=user.id,
+                issuer=config.issuer_url,
+                subject=subject,
             )
+        )
     membership = db.scalar(
         select(Membership).where(
             Membership.user_id == user.id, Membership.organization_id == config.organization_id
@@ -1369,8 +2020,18 @@ def _complete_oidc(
             role=_oidc_role_for_claims(config, claims),
         )
         db.add(membership)
+    # Do not silently bypass a locally configured second factor. Organizations
+    # using local MFA must configure their IdP to emit an MFA authentication
+    # method reference before SSO can create a session for that user.
+    local_mfa = db.scalar(
+        select(MfaMethod).where(MfaMethod.user_id == user.id, MfaMethod.enabled.is_(True))
+    )
+    if local_mfa:
+        amr = claims.get("amr")
+        methods = {str(value).lower() for value in (amr if isinstance(amr, list) else [amr])}
+        if not methods.intersection({"mfa", "otp", "hwk", "swk"}):
+            raise HTTPException(403, "OIDC authentication did not satisfy the required MFA policy")
     user.email_verified = True
-    state_row.used_at = now
     db.commit()
 
     token = create_session(
@@ -1515,10 +2176,12 @@ def reset_password(
     _limit_auth_request(request, "reset-password", limit=10, window_seconds=15 * 60)
     now = datetime.now(timezone.utc)
     row = db.scalar(
-        select(OneTimeToken).where(
+        select(OneTimeToken)
+        .where(
             OneTimeToken.token_hash == hash_token(payload.token),
             OneTimeToken.purpose == "password_reset",
         )
+        .with_for_update()
     )
     if not row or row.used_at is not None:
         raise HTTPException(400, "Invalid reset token")
@@ -1546,7 +2209,15 @@ def change_password(
 ) -> dict[str, Any]:
     if not verify_password(payload.current_password, actor.user.password_hash):
         raise HTTPException(401, "Current password is incorrect")
+    now = datetime.now(timezone.utc)
     actor.user.password_hash = hash_password(payload.new_password)
+    # Password changes invalidate all sessions, including this one. The caller
+    # must authenticate again with the new secret, preventing stolen sessions
+    # from surviving an account-recovery event.
+    for session in db.scalars(
+        select(DbSession).where(DbSession.user_id == actor.user.id, DbSession.revoked_at.is_(None))
+    ):
+        session.revoked_at = now
     db.commit()
     return {"changed": True}
 
@@ -1645,7 +2316,13 @@ def mfa_disable(
     if not valid:
         hashes = json.loads(row.recovery_hashes_json)
         candidate = hash_token(payload.code)
-        valid = candidate in hashes
+        if candidate in hashes:
+            # Recovery codes are one-time credentials regardless of whether
+            # they are used for login or to disable MFA. A successful disable
+            # must consume the code before MFA can be re-enabled.
+            hashes.remove(candidate)
+            row.recovery_hashes_json = json.dumps(hashes)
+            valid = True
     if not valid:
         raise HTTPException(400, "Invalid MFA or recovery code")
     row.enabled = False
@@ -2131,27 +2808,27 @@ def current_dashboard(
     application_count = len(application_ids)
 
     activity: list[dict[str, Any]] = []
-    for event in db.scalars(select(AuditEvent).where(
+    for audit_event in db.scalars(select(AuditEvent).where(
         AuditEvent.organization_id == org_id,
         AuditEvent.action.in_(_CURRENT_ACTIVITY_ACTIONS),
     ).order_by(AuditEvent.created_at.desc()).limit(50)):
-        event_type, severity, summary = _CURRENT_ACTIVITY_ACTIONS[event.action]
-        metadata = json.loads(event.metadata_json or "{}")
+        event_type, severity, summary = _CURRENT_ACTIVITY_ACTIONS[audit_event.action]
+        metadata = json.loads(audit_event.metadata_json or "{}")
         activity.append({
-            "id": event.id, "type": event_type, "severity": severity,
-            "timestamp": event.created_at.isoformat(), "summary": summary,
+            "id": audit_event.id, "type": event_type, "severity": severity,
+            "timestamp": audit_event.created_at.isoformat(), "summary": summary,
             "guard_id": metadata.get("guard_id") if isinstance(metadata, dict) else None,
             "policy_version": metadata.get("version") if isinstance(metadata, dict) else None,
         })
-    for event in db.scalars(select(GuardAuditEvent).where(
+    for guard_audit_event in db.scalars(select(GuardAuditEvent).where(
         GuardAuditEvent.organization_id == org_id,
         GuardAuditEvent.result.in_(["block", "would_block"]),
     ).order_by(GuardAuditEvent.created_at.desc()).limit(50)):
         activity.append({
-            "id": event.id, "type": "LAYER2_BLOCK" if "PROVENANCE" in event.reason else "LAYER1_BLOCK",
-            "severity": "warning", "timestamp": event.created_at.isoformat(),
-            "summary": "Guard blocked an AI request", "guard_id": event.guard_id,
-            "application_id": event.application_id, "policy_version": event.policy_version,
+            "id": guard_audit_event.id, "type": "LAYER2_BLOCK" if "PROVENANCE" in guard_audit_event.reason else "LAYER1_BLOCK",
+            "severity": "warning", "timestamp": guard_audit_event.created_at.isoformat(),
+            "summary": "Guard blocked an AI request", "guard_id": guard_audit_event.guard_id,
+            "application_id": guard_audit_event.application_id, "policy_version": guard_audit_event.policy_version,
         })
     # Protection decisions are durable current-product authorization events.
     # A Guard audit upload may arrive later, so show the decision promptly.
@@ -2167,6 +2844,27 @@ def current_dashboard(
             "application_id": decision.application_id, "policy_version": decision.policy_version,
         })
     activity.sort(key=lambda item: item["timestamp"], reverse=True)
+    snapshot = _protection_snapshot(db, org_id)
+    decision_since = now - timedelta(hours=24)
+    decision_window = {
+        "layer1": {"allow": 0, "block": 0, "would_allow": 0, "would_block": 0},
+        "layer2": {"allow": 0, "block": 0, "would_allow": 0, "would_block": 0},
+    }
+    observed_decisions = 0
+    for layer, result, count in db.execute(select(
+        GuardAuditEvent.layer, GuardAuditEvent.result, func.count(GuardAuditEvent.id),
+    ).where(
+        GuardAuditEvent.organization_id == org_id,
+        GuardAuditEvent.created_at >= decision_since,
+    ).group_by(GuardAuditEvent.layer, GuardAuditEvent.result)).all():
+        layer_key = "layer2" if layer == "layer2" else "layer1"
+        if result in decision_window[layer_key]:
+            decision_window[layer_key][result] += int(count)
+            observed_decisions += int(count)
+    latest_decision = _utc(db.scalar(select(func.max(GuardAuditEvent.created_at)).where(
+        GuardAuditEvent.organization_id == org_id,
+    )))
+    totals = snapshot["totals"]
     return {
         "ai_applications": application_count,
         "guards_online": guards_online,
@@ -2174,6 +2872,21 @@ def current_dashboard(
         "permission_sources": source_count,
         "blocked_requests": blocked_count,
         "recent_activity": activity[:25],
+        "protection": {
+            "applications_registered": totals["applications_registered"],
+            "applications_protected_verified": totals["applications_protected_verified"],
+            "applications_not_verified": totals["applications_not_verified"],
+            "applications_unsupported": totals["applications_unsupported"],
+            "guards": totals["guards"],
+            "sources_fresh": totals["sources_fresh"],
+            "sources_total": totals["sources_total"],
+            "decisions_24h": {
+                **decision_window,
+                "telemetry": "OBSERVED" if observed_decisions else "NO_DATA",
+                "total": observed_decisions,
+            },
+            "latest_decision_at": latest_decision.isoformat() if latest_decision else None,
+        },
     }
 
 
@@ -2197,9 +2910,76 @@ def current_protection_decisions(
     } for row in rows]
 
 
+class GuardEvidence(TypedDict):
+    positive: bool
+    denial: bool
+    provenance: bool
+    requests: dict[str, set[str]]
+
+
+def _verified_guard_evidence(
+    db: OrmSession, row: AIApplication, *, max_age_days: int = 7,
+) -> GuardEvidence:
+    """Derive proof from machine-authenticated Guard audit events, not UI flags.
+
+    These records prove Guard endpoints ran; they cannot by themselves prove
+    that arbitrary customer RAG code always uses the SDK boundary. Buffering
+    and end-to-end invocation remain explicit operator-attested checks.
+    """
+    if not row.guard_id:
+        return {
+            "positive": False,
+            "denial": False,
+            "provenance": False,
+            "requests": {"positive": set(), "denial": set(), "provenance": set()},
+        }
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    events = list(db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == row.organization_id,
+        GuardAuditEvent.guard_id == row.guard_id,
+        GuardAuditEvent.application_id == row.application_id,
+        GuardAuditEvent.created_at >= cutoff,
+        GuardAuditEvent.policy_version > 0,
+    )).all())
+    by_request: dict[str, list[GuardAuditEvent]] = {}
+    for event in events:
+        by_request.setdefault(event.request_id, []).append(event)
+    positive: set[str] = set()
+    denial: set[str] = set()
+    provenance: set[str] = set()
+    for request_id, records in by_request.items():
+        layer1_allow = [r for r in records if r.layer == "layer1" and r.result in ("allow", "would_allow")]
+        layer2_allow = [r for r in records if r.layer == "layer2" and r.result in ("allow", "would_allow")
+                        and r.reason == "TRUSTED_PROVENANCE_VALID"]
+        if any(a.decision_id and a.decision_id == b.decision_id and a.subject_id == b.subject_id
+               for a in layer1_allow for b in layer2_allow):
+            positive.add(request_id)
+        if any(r.layer == "layer1" and r.result in ("block", "would_block") for r in records):
+            denial.add(request_id)
+        if any(r.layer == "layer2" and r.result in ("block", "would_block")
+               and r.reason in ("PROVENANCE_ESCAPE", "PROVENANCE_MISSING") for r in records):
+            provenance.add(request_id)
+    return {"positive": bool(positive), "denial": bool(denial),
+            "provenance": bool(provenance),
+            "requests": {"positive": positive, "denial": denial, "provenance": provenance}}
+
+
 def _application_checks(db: OrmSession, row: AIApplication, organization_id: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc)
     checks: list[dict[str, Any]] = []
+    adapter = next((item for item in adapter_registry() if item["id"] == row.adapter_type), None)
+    protects_retrieval = bool(
+        adapter
+        and adapter["contract_version"] == row.adapter_contract_version
+        and adapter["pre_generation_filtering"]
+        and adapter["output_verification"]
+        and adapter["protect_mode"]
+    )
+    checks.append({
+        "code": "ENFORCEMENT_ADAPTER_CONFIGURED",
+        "ok": protects_retrieval,
+        "reason": None if protects_retrieval else "This adapter does not provide a verified Layer 1 and Layer 2 Protect boundary.",
+    })
     guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
     source = db.get(SourceConnection, row.source_id) if row.source_id else None
     heartbeat_ok = bool(guard and guard.last_heartbeat_at and (now - (guard.last_heartbeat_at.replace(tzinfo=timezone.utc) if guard.last_heartbeat_at.tzinfo is None else guard.last_heartbeat_at)).total_seconds() <= settings.runner_offline_seconds)
@@ -2220,20 +3000,77 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     source_connected = bool(source and source.status == "connected" and source.last_validated_at is not None)
     checks.append({"code": "PERMISSION_SOURCE_CONFIGURED", "ok": source is not None and source.encrypted_credentials is not None, "reason": None if source and source.encrypted_credentials else "Configure a permission source."})
     checks.append({"code": "PERMISSION_SOURCE_TRUSTED", "ok": source_connected, "reason": None if source_connected else "Connect and validate a permission source."})
-    acl_cursor = db.scalar(select(ProviderSyncCursor).where(
-        ProviderSyncCursor.organization_id == organization_id,
-        ProviderSyncCursor.source_id == (source.id if source else ""),
-        ProviderSyncCursor.sync_kind == "acl",
+    microsoft_preview = bool(source and source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"})
+    if microsoft_preview:
+        # Per-source eligibility. No public API issues these certificates:
+        # this cannot be satisfied with mock Graph responses, an admin toggle
+        # or a healthy Guard heartbeat.
+        certified = False
+        try:
+            certificate_credentials = json.loads(_secret_box.decrypt(source.encrypted_credentials or "")) if source else {}
+            certified = effective_source_certified(db, source, certificate_credentials) if source else False
+        except Exception:
+            # Encryption backend/key failures are never positive ACL proof.
+            certified = False
+        checks.append({
+            "code": "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
+            "ok": certified,
+            "reason": None if certified else "This exact Microsoft tenant, source, library/drive and permission profile still require independent live-provider certification. Graph sharing records do not prove effective rights.",
+        })
+    acl_cursor = db.scalar(select(ProviderSyncCursorModel).where(
+        ProviderSyncCursorModel.organization_id == organization_id,
+        ProviderSyncCursorModel.source_id == source.id,
+        ProviderSyncCursorModel.sync_kind == "acl",
     )) if source else None
-    acl_trusted = bool(acl_cursor and acl_cursor.status == "connected" and acl_cursor.last_success_at is not None and not acl_cursor.last_error_code)
-    checks.append({"code": "PERMISSION_SOURCE_SYNCED", "ok": acl_trusted, "reason": None if acl_trusted else "Complete a trusted permission synchronization."})
-    checks.append({"code": "PERMISSION_SOURCE_USABLE", "ok": source_connected and acl_trusted, "reason": None if source_connected and acl_trusted else "Connect and synchronize a permission source."})
-    oidc_ok = settings.env == "production" and bool(os.getenv("ACCESSPROOF_GUARD_IDENTITY_MODE", "oidc") == "oidc" and os.getenv("ACCESSPROOF_GUARD_JWT_ISSUER") and os.getenv("ACCESSPROOF_GUARD_JWT_AUDIENCE"))
+    directory_cursor = db.scalar(select(ProviderSyncCursorModel).where(
+        ProviderSyncCursorModel.organization_id == organization_id,
+        ProviderSyncCursorModel.source_id == source.id,
+        ProviderSyncCursorModel.sync_kind == "directory",
+    )) if source else None
+
+    def sync_healthy(cursor: ProviderSyncCursorModel | None, *, max_age_seconds: int) -> bool:
+        if cursor is None or cursor.status != "connected" or cursor.last_success_at is None or cursor.last_error_code:
+            return False
+        checked = cursor.last_success_at
+        if checked.tzinfo is None:
+            checked = checked.replace(tzinfo=timezone.utc)
+        return 0 <= (now - checked).total_seconds() <= max_age_seconds
+
+    acl_trusted = sync_healthy(acl_cursor, max_age_seconds=max(
+        60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900"))
+    ))
+    directory_trusted = sync_healthy(directory_cursor, max_age_seconds=max(
+        60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400"))
+    ))
+    checks.append({"code": "PERMISSION_SOURCE_SYNCED", "ok": acl_trusted,
+                   "reason": None if acl_trusted else "Complete a recent, trusted permission synchronization."})
+    checks.append({"code": "PERMISSION_DIRECTORY_SYNCED", "ok": directory_trusted,
+                   "reason": None if directory_trusted else "Synchronize source employees and groups with the necessary provider directory permissions."})
+    usable = source_connected and acl_trusted and directory_trusted
+    checks.append({"code": "PERMISSION_SOURCE_USABLE", "ok": usable,
+                   "reason": None if usable else "Connect and synchronize both document permissions and the employee directory."})
+    # OIDC is configured on the *customer-side Guard*, not the SaaS API.
+    # Only accept its authenticated healthy heartbeat as a configuration
+    # signal. Actual token verification is tested separately in the pilot.
+    oidc_ok = settings.env != "production" or bool(guard and guard.health == "healthy" and heartbeat_ok)
     checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok, "reason": None if oidc_ok else "Production OIDC/JWKS identity verification is incomplete."})
-    checks.append({"code": "LAYER1_INTEGRATION_CONFIRMED", "ok": row.layer1_verified_at is not None, "reason": None if row.layer1_verified_at else "Complete the authenticated Layer 1 verification."})
-    checks.append({"code": "LAYER2_INTEGRATION_CONFIRMED", "ok": row.layer2_verified_at is not None, "reason": None if row.layer2_verified_at else "Complete the buffered Layer 2 verification."})
-    checks.append({"code": "PROVENANCE_READY", "ok": row.provenance_verified_at is not None, "reason": None if row.provenance_verified_at else "Confirm structured provenance handling."})
-    checks.append({"code": "BUFFERED_RESPONSE_GATE_READY", "ok": row.buffering_verified_at is not None, "reason": None if row.buffering_verified_at else "Confirm response buffering before release."})
+    evidence = _verified_guard_evidence(db, row)
+    machine_route_verified = _valid_route_certificate(db, row)
+    # Reference-route machine evidence independently proves attestation
+    # tamper rejection and in-flight Layer 2 revocation. These checks are
+    # not interchangeable with the metadata-only legacy SDK's manual IDs.
+    layer1_ok = machine_route_verified or (row.layer1_verified_at is not None and bool(evidence["positive"]) and bool(evidence["denial"]))
+    layer2_ok = machine_route_verified or (row.layer2_verified_at is not None and bool(evidence["positive"]) and bool(evidence["provenance"]))
+    checks.append({"code": "LAYER1_INTEGRATION_CONFIRMED", "ok": layer1_ok,
+                   "reason": None if layer1_ok else "Recent Guard-audited allow and denial test requests required."})
+    checks.append({"code": "LAYER2_INTEGRATION_CONFIRMED", "ok": layer2_ok,
+                   "reason": None if layer2_ok else "Recent Guard-audited Layer 2 allow and provenance-block tests required."})
+    provenance_ok = machine_route_verified or (row.provenance_verified_at is not None and bool(evidence["provenance"]))
+    checks.append({"code": "PROVENANCE_READY", "ok": provenance_ok,
+                   "reason": None if provenance_ok else "Submit Guard-audited negative provenance evidence."})
+    buffering_ok = machine_route_verified or (row.buffering_verified_at is not None and layer2_ok)
+    checks.append({"code": "BUFFERED_RESPONSE_GATE_READY", "ok": buffering_ok,
+                   "reason": None if buffering_ok else "Run a real RAG buffering test and supply operator attestation with Guard audit IDs."})
     return checks
 
 
@@ -2244,20 +3081,38 @@ def create_current_ai_application(
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
     org_id = actor.membership.organization_id
+    adapter = next((item for item in adapter_registry() if item["id"] == payload.adapter_type), None)
+    if adapter is None or adapter["contract_version"] != payload.adapter_contract_version:
+        raise HTTPException(422, "The adapter and contract version must match a reviewed AccessProof adapter.")
     guard = db.get(GuardRegistration, payload.guard_id) if payload.guard_id else None
     if payload.guard_id and (guard is None or guard.organization_id != org_id):
         raise HTTPException(404, "Guard not found")
     source = db.get(SourceConnection, payload.source_id) if payload.source_id else None
     if payload.source_id and (source is None or source.organization_id != org_id):
         raise HTTPException(404, "Permission source not found")
-    row = AIApplication(organization_id=org_id, application_id=payload.application_id, name=payload.name, guard_id=payload.guard_id, source_id=payload.source_id)
+    row = AIApplication(
+        organization_id=org_id,
+        application_id=payload.application_id,
+        name=payload.name,
+        guard_id=payload.guard_id,
+        source_id=payload.source_id,
+        adapter_type=payload.adapter_type,
+        adapter_contract_version=payload.adapter_contract_version,
+    )
     db.add(row)
     try:
         db.commit()
     except Exception as exc:
         db.rollback()
         raise HTTPException(409, "An application with this ID already exists.") from exc
-    return {"id": row.id, "application_id": row.application_id, "name": row.name, "mode": row.mode}
+    return {
+        "id": row.id,
+        "application_id": row.application_id,
+        "name": row.name,
+        "mode": row.mode,
+        "adapter_type": row.adapter_type,
+        "adapter_contract_version": row.adapter_contract_version,
+    }
 
 
 @app.get("/api/v1/current/ai-applications")
@@ -2275,7 +3130,9 @@ def list_current_ai_applications(
         "mode": row.mode,
         "guard_id": row.guard_id,
         "source_id": row.source_id,
-        "readiness": _application_checks(db, row, actor.membership.organization_id),
+        "adapter_type": row.adapter_type,
+        "adapter_contract_version": row.adapter_contract_version,
+        "readiness": _automatic_activation_checklist(db, row),
     } for row in rows]
 
 
@@ -2288,8 +3145,848 @@ def current_ai_application_readiness(
     row = db.scalar(select(AIApplication).where(AIApplication.organization_id == actor.membership.organization_id, AIApplication.application_id == application_id))
     if row is None:
         raise HTTPException(404, "AI application not found")
-    checks = _application_checks(db, row, actor.membership.organization_id)
+    checks = _automatic_activation_checklist(db, row)
     return {"application_id": application_id, "ready": all(bool(check["ok"]) for check in checks), "checks": checks, "mode": row.mode}
+
+
+def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[dict[str, Any]]:
+    checks = _application_checks(db, row, row.organization_id)
+    # This is a *reference-only* machine result, not generic zero-code proof.
+    # Challenge verification separately matches all four real-response probes
+    # to uploaded authenticated Guard audit decisions. Never count an
+    # installer label, manual request IDs, or a stale/changed config.
+    reference_tested = _reference_challenge_tested(db, row)
+    reference_cutover = _valid_route_certificate(db, row)
+    checks.append({
+        "code": "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED", "ok": reference_tested,
+        "reason": None if reference_tested else
+        "An enrolled Guard must upload nonce-bound Gateway HTTP and matching Guard audit evidence.",
+    })
+    checks.append({
+        "code": "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED", "ok": reference_cutover,
+        "reason": None if reference_cutover else
+        "The employee-facing customer RAG route must be re-tested after its explicitly approved deployment cutover and matched with fresh Guard Layer 1/2 audit events.",
+    })
+    return checks
+
+
+def _activation_status(db: OrmSession, row: AIApplication) -> dict[str, Any]:
+    # SessionLocal uses autoflush=False: the verified status must be visible
+    # to SQL certification lookups *within this transaction*, before deciding
+    # whether Guard Protect acknowledgment is eligible.
+    db.flush()
+    checks = _automatic_activation_checklist(db, row)
+    run = db.scalar(select(ProtectionActivationRun).where(
+        ProtectionActivationRun.organization_id == row.organization_id,
+        ProtectionActivationRun.application_row_id == row.id,
+    ))
+    failed = next((check for check in checks if not check["ok"]), None)
+    # `mode=protect` is a legacy database state and does not prove the new
+    # route-challenge protocol; never present it as certified/active here.
+    return {
+        "application_id": row.application_id,
+        "state": "protection_needs_attention" if row.mode == "protect" and failed else
+                 "protected" if row.mode == "protect" else
+                 "validating" if row.mode == "protect_pending" else
+                 "action_required" if run is not None else "protection_not_enabled",
+        "checks": checks,
+        "reason_code": str((failed or {}).get("code") or "PROTECTION_NOT_CERTIFIED"),
+        "message": str((failed or {}).get("reason") or "Integration verification is incomplete."),
+        "last_checked_at": run.last_checked_at.isoformat() if run else None,
+        "run_id": run.id if run else None,
+        "guard_acknowledged": row.mode == "protect" and failed is None,
+        "route_certificate": describe_route_certificate(db, row),
+    }
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
+
+
+def _age_seconds(value: datetime | None, now: datetime) -> int | None:
+    checked = _utc(value)
+    if checked is None:
+        return None
+    return max(0, int((now - checked).total_seconds()))
+
+
+def _guard_health_state(guard: GuardRegistration | None, now: datetime) -> str:
+    if guard is None:
+        return "not_bound"
+    if guard.revoked_at is not None:
+        return "revoked"
+    if guard.enrolled_at is None:
+        return "not_enrolled"
+    age = _age_seconds(guard.last_heartbeat_at, now)
+    if age is not None and age <= settings.runner_offline_seconds:
+        return "online"
+    return "offline"
+
+
+def _source_sync_age(
+    db: OrmSession, source: SourceConnection | None, sync_kind: str, now: datetime
+) -> int | None:
+    if source is None:
+        return None
+    cursor = db.scalar(select(ProviderSyncCursorModel).where(
+        ProviderSyncCursorModel.organization_id == source.organization_id,
+        ProviderSyncCursorModel.source_id == source.id,
+        ProviderSyncCursorModel.sync_kind == sync_kind,
+    ))
+    if cursor is None or cursor.last_success_at is None:
+        return None
+    return _age_seconds(cursor.last_success_at, now)
+
+
+def _acl_freshness_limit() -> int:
+    return max(60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900")))
+
+
+def _directory_freshness_limit() -> int:
+    return max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400")))
+
+
+def _route_certification_expired(db: OrmSession, row: AIApplication, now: datetime) -> bool:
+    if row.adapter_type != "accessproof-gateway":
+        return False
+    latest = db.scalar(select(RAGRouteChallenge).where(
+        RAGRouteChallenge.organization_id == row.organization_id,
+        RAGRouteChallenge.application_row_id == row.id,
+        RAGRouteChallenge.verified_at.is_not(None),
+        RAGRouteChallenge.status.in_(("tested", "cutover_verified")),
+    ).order_by(RAGRouteChallenge.verified_at.desc()))
+    if latest is None:
+        return False
+    verified = _utc(latest.verified_at)
+    return bool(verified and verified < now - timedelta(hours=24))
+
+
+def _decision_telemetry(
+    db: OrmSession, organization_id: str, application_ids: list[str], now: datetime
+) -> tuple[dict[str, dict[str, Any]], dict[str, datetime]]:
+    """Aggregate metadata-only Guard decisions without inventing zero telemetry."""
+    counts: dict[str, dict[str, Any]] = {}
+    latest: dict[str, datetime] = {}
+    if not application_ids:
+        return counts, latest
+    since = now - timedelta(hours=24)
+    grouped = db.execute(select(
+        GuardAuditEvent.application_id,
+        GuardAuditEvent.layer,
+        GuardAuditEvent.result,
+        func.count(GuardAuditEvent.id),
+    ).where(
+        GuardAuditEvent.organization_id == organization_id,
+        GuardAuditEvent.application_id.in_(application_ids),
+        GuardAuditEvent.created_at >= since,
+    ).group_by(
+        GuardAuditEvent.application_id, GuardAuditEvent.layer, GuardAuditEvent.result,
+    )).all()
+    for application_id, layer, result, count in grouped:
+        bucket = counts.setdefault(application_id, {
+            "telemetry": "OBSERVED", "window_hours": 24,
+            "layer1": {"allow": 0, "block": 0, "would_allow": 0, "would_block": 0},
+            "layer2": {"allow": 0, "block": 0, "would_allow": 0, "would_block": 0},
+        })
+        layer_key = "layer2" if layer == "layer2" else "layer1"
+        if result in bucket[layer_key]:
+            bucket[layer_key][result] += int(count)
+    for application_id, last_seen in db.execute(select(
+        GuardAuditEvent.application_id, func.max(GuardAuditEvent.created_at),
+    ).where(
+        GuardAuditEvent.organization_id == organization_id,
+        GuardAuditEvent.application_id.in_(application_ids),
+    ).group_by(GuardAuditEvent.application_id)).all():
+        seen = _utc(last_seen)
+        if seen is not None:
+            latest[application_id] = seen
+    return counts, latest
+
+
+def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]:
+    """Tenant-scoped truth surface used by both Protection and Overview."""
+    now = datetime.now(timezone.utc)
+    rows = list(db.scalars(select(AIApplication).where(
+        AIApplication.organization_id == organization_id,
+    ).order_by(AIApplication.created_at.desc()).limit(200)).all())
+    application_ids = [row.application_id for row in rows]
+    decision_counts, latest_decisions = _decision_telemetry(db, organization_id, application_ids, now)
+    guards = list(db.scalars(select(GuardRegistration).where(
+        GuardRegistration.organization_id == organization_id,
+    )).all())
+    sources = list(db.scalars(select(SourceConnection).where(
+        SourceConnection.organization_id == organization_id,
+    )).all())
+    guard_by_id = {guard.id: guard for guard in guards}
+    source_by_id = {source.id: source for source in sources}
+    acl_limit, directory_limit = _acl_freshness_limit(), _directory_freshness_limit()
+
+    applications: list[dict[str, Any]] = []
+    for row in rows:
+        checks = _automatic_activation_checklist(db, row)
+        adapter = next((item for item in adapter_registry() if item["id"] == row.adapter_type), None)
+        protect_capable = bool(
+            adapter
+            and adapter["contract_version"] == row.adapter_contract_version
+            and adapter["pre_generation_filtering"]
+            and adapter["output_verification"]
+            and adapter["protect_mode"]
+        )
+        guard = guard_by_id.get(row.guard_id) if row.guard_id else None
+        source = source_by_id.get(row.source_id) if row.source_id else None
+        guard_health = _guard_health_state(guard, now)
+        source_connected = bool(source is not None and source.status in {"connected", "validated"})
+        acl_age = _source_sync_age(db, source, "acl", now)
+        directory_age = _source_sync_age(db, source, "directory", now)
+        certification_expired = _route_certification_expired(db, row, now)
+        effective_state = classify_protection_state(
+            checks,
+            row.mode,
+            adapter_protect_capable=protect_capable,
+            has_guard=guard is not None,
+            has_source=source is not None,
+            guard_revoked=bool(guard is not None and guard.revoked_at is not None),
+            source_disconnected=source is not None and not source_connected,
+            certification_expired=certification_expired,
+        )
+        failed_checks = [
+            {"code": check["code"], "reason": check.get("reason")}
+            for check in checks if not check.get("ok")
+        ]
+        telemetry = decision_counts.get(row.application_id)
+        revision = latest_revision(db, organization_id, row.application_id)
+        applications.append({
+            "application_id": row.application_id,
+            "name": row.name,
+            "mode": row.mode,
+            "effective_state": effective_state,
+            "state_message": STATE_MESSAGES[effective_state],
+            "reason_code": failed_checks[0]["code"] if failed_checks else effective_state,
+            "authorization_revision": ({
+                "schema": AUTHORIZATION_REVISION_SCHEMA,
+                "revision": revision.revision,
+                "revision_hash": revision.revision_hash,
+                "generated_at": revision.generated_at.isoformat() if revision.generated_at else None,
+                "source_observed_at": revision.source_observed_at.isoformat() if revision.source_observed_at else None,
+            } if revision else None),
+            "adapter": {
+                "type": row.adapter_type,
+                "contract_version": row.adapter_contract_version,
+                "protect_capable": protect_capable,
+            },
+            "guard": {
+                "id": guard.id if guard else None,
+                "name": guard.name if guard else None,
+                "health": guard_health,
+                "heartbeat_age_seconds": _age_seconds(guard.last_heartbeat_at, now) if guard else None,
+                "policy_version": guard.active_policy_version if guard else None,
+            },
+            "source": {
+                "id": source.id if source else None,
+                "name": source.name if source else None,
+                "provider": source.provider if source else None,
+                "status": source.status if source else None,
+                "acl_sync_age_seconds": acl_age,
+                "directory_sync_age_seconds": directory_age,
+                "acl_fresh": acl_age is not None and acl_age <= acl_limit,
+                "directory_fresh": directory_age is not None and directory_age <= directory_limit,
+            },
+            "route_certification": {
+                "required": row.adapter_type == "accessproof-gateway",
+                "expired": certification_expired,
+                **describe_route_certificate(db, row, now=now),
+            },
+            "decision_telemetry": telemetry or {
+                "telemetry": "NO_DATA", "window_hours": 24,
+                "layer1": None, "layer2": None,
+            },
+            "latest_decision_at": (
+                latest_decisions[row.application_id].isoformat()
+                if row.application_id in latest_decisions else None
+            ),
+            "failed_checks": failed_checks,
+            "checks": checks,
+        })
+
+    state_counts = {state: 0 for state in PROTECTION_STATES}
+    for application in applications:
+        state_counts[application["effective_state"]] += 1
+    guard_buckets = {"online": 0, "offline": 0, "not_enrolled": 0, "revoked": 0}
+    for guard in guards:
+        bucket = _guard_health_state(guard, now)
+        if bucket in guard_buckets:
+            guard_buckets[bucket] += 1
+    def source_is_fresh(source: SourceConnection) -> bool:
+        if source.status not in {"connected", "validated"}:
+            return False
+        acl_age = _source_sync_age(db, source, "acl", now)
+        directory_age = _source_sync_age(db, source, "directory", now)
+        return (
+            acl_age is not None and acl_age <= acl_limit
+            and directory_age is not None and directory_age <= directory_limit
+        )
+
+    sources_fresh = sum(1 for source in sources if source_is_fresh(source))
+    return {
+        "generated_at": now.isoformat(),
+        "state_counts": state_counts,
+        "totals": {
+            "applications_registered": len(applications),
+            "applications_protected_verified": state_counts["PROTECTED_VERIFIED"],
+            "applications_not_verified": len(applications) - state_counts["PROTECTED_VERIFIED"],
+            "applications_unsupported": state_counts["UNSUPPORTED"],
+            "guards_total": len(guards),
+            "guards_online": guard_buckets["online"],
+            "guards": guard_buckets,
+            "sources_total": len(sources),
+            "sources_fresh": sources_fresh,
+            "sources_stale": len(sources) - sources_fresh,
+        },
+        "applications": applications,
+    }
+
+
+@app.get("/api/v1/current/protection/overview")
+def current_protection_overview(
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Backend-derived per-application protection truth for the active tenant.
+
+    Unknown or missing telemetry is returned as an explicit state; no static UI
+    value, mode flag, or Guard-online signal can promote an application here.
+    """
+    return _protection_snapshot(db, actor.membership.organization_id)
+
+
+@app.get("/api/v1/current/capabilities")
+def current_capabilities(
+    _actor: Actor = Depends(require(Permission.RESULT_READ)),
+) -> dict[str, Any]:
+    """Canonical product support registry; never a per-tenant certificate."""
+    return capability_registry_snapshot()
+
+
+@app.get("/api/v1/current/authorization-revisions")
+def current_authorization_revisions(
+    application_id: str | None = None,
+    limit: int = 50,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Tenant-scoped authorization revision ledger with independent verification."""
+    bounded = max(1, min(limit, 200))
+    query = select(AuthorizationRevision).where(
+        AuthorizationRevision.organization_id == actor.membership.organization_id,
+    )
+    if application_id:
+        query = query.where(AuthorizationRevision.application_id == application_id)
+    rows = list(db.scalars(query.order_by(
+        AuthorizationRevision.generated_at.desc(),
+        AuthorizationRevision.revision.desc(),
+    ).limit(bounded)).all())
+    revisions = []
+    for row in rows:
+        envelope = revision_envelope(row)
+        revisions.append({
+            **envelope,
+            "verification": {
+                "signature_valid": verify_manifest(envelope["payload"], envelope["signature"]),
+                "chain_linked": row.revision == 1 or row.previous_revision_hash is not None,
+                "evidence_level": "DIRECTLY_OBSERVED_BY_ACCESSPROOF",
+            },
+        })
+    return {
+        "schema": AUTHORIZATION_REVISION_SCHEMA,
+        "revisions": revisions,
+        "limitations": REVISION_LIMITATIONS,
+    }
+
+
+@app.get("/api/v1/current/revocation-timeline")
+def current_revocation_timeline(
+    application_id: str,
+    limit: int = 20,
+    actor: Actor = Depends(require(Permission.AUDIT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Six-timestamp, privacy-safe timeline from retained evidence only."""
+    try:
+        return build_revocation_timeline(
+            db, organization_id=actor.membership.organization_id,
+            application_id=application_id, limit=limit,
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/protection/status")
+def current_ai_application_protection_status(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    return _activation_status(db, row)
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/protection/enable", status_code=202)
+@app.post("/api/v1/current/ai-applications/{application_id}/protection/retry", status_code=202)
+def current_ai_application_automated_preflight(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    if row.mode == "protect":
+        # Do not alter an existing protecting installation while the new
+        # verification protocol is incomplete; health is still reported.
+        return _activation_status(db, row)
+    checks = _automatic_activation_checklist(db, row)
+    now = datetime.now(timezone.utc)
+    current_guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
+    fingerprint = _route_configuration_fingerprint(
+        row, int(current_guard.active_policy_version or 0) if current_guard else 0
+    )
+    run = db.scalar(select(ProtectionActivationRun).where(
+        ProtectionActivationRun.organization_id == row.organization_id,
+        ProtectionActivationRun.application_row_id == row.id,
+    ).with_for_update())
+    if run is None:
+        run = ProtectionActivationRun(
+            organization_id=row.organization_id, application_row_id=row.id,
+            requested_by_user_id=actor.user.id, state="action_required",
+            guard_id=row.guard_id, source_id=row.source_id,
+            configuration_fingerprint=fingerprint,
+            checks_json=json.dumps(checks, sort_keys=True),
+            reason_code="CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED",
+            created_at=now, last_checked_at=now,
+        )
+        db.add(run)
+    else:
+        run.requested_by_user_id = actor.user.id
+        run.guard_id, run.source_id = row.guard_id, row.source_id
+        run.configuration_fingerprint = fingerprint
+        run.checks_json = json.dumps(checks, sort_keys=True)
+        run.state = "action_required"
+        run.reason_code = "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"
+        run.last_checked_at = now
+    if all(check["ok"] for check in checks) and row.mode == "shadow":
+        row.mode = "protect_pending"
+        run.state = "awaiting_guard_ack"
+        run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
+    _audit(db, actor, row.organization_id, "PROTECTION_PREFLIGHT_REQUESTED", "ai_application", row.id, {
+        "result": "action_required", "failed_check_codes": [c["code"] for c in checks if not c["ok"]],
+    })
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent first-click duplicate cannot create multiple runs. The
+        # unique tenant/application key is authoritative; retry only the read.
+        db.rollback()
+    return _activation_status(db, row)
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/protection/challenge", status_code=201)
+def issue_current_reference_rag_challenge(
+    application_id: str,
+    payload: RouteChallengeStart,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Issue one use, operator-bound nonce for the enrolled customer-side agent.
+
+    The challenge is only defined for an explicit signed-manifest Gateway
+    reference route. Issuing it does not certify installation or enable any
+    customer application automatically.
+    """
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
+    if (row.adapter_type != "accessproof-gateway" or row.source_id is None
+            or guard is None or guard.organization_id != row.organization_id
+            or guard.revoked_at is not None or guard.enrolled_at is None
+            or guard.active_policy_version < 1):
+        raise HTTPException(409, "REGISTERED_REFERENCE_GATEWAY_WITH_ENROLLED_GUARD_REQUIRED")
+    if row.mode == "protect":
+        raise HTTPException(409, "ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION")
+    now = datetime.now(timezone.utc)
+    # Mark previous unconsumed nonce unusable. A new issue invalidates it.
+    for prior in db.scalars(select(RAGRouteChallenge).where(
+        RAGRouteChallenge.organization_id == row.organization_id,
+        RAGRouteChallenge.application_row_id == row.id,
+        RAGRouteChallenge.status == "issued",
+    )):
+        prior.status = "superseded"
+    nonce = secrets.token_urlsafe(40)
+    while True:
+        digest = hashlib.sha256(nonce.encode()).hexdigest()
+        if db.scalar(select(RAGRouteChallenge.id).where(RAGRouteChallenge.nonce_digest == digest)) is None:
+            break
+        nonce = secrets.token_urlsafe(40)
+    record = RAGRouteChallenge(
+        organization_id=row.organization_id,
+        application_row_id=row.id,
+        guard_id=guard.id,
+        source_id=row.source_id,
+        nonce_digest=digest,
+        configuration_fingerprint=_route_configuration_fingerprint(row, guard.active_policy_version),
+        deployment_sha256=payload.deployment_sha256,
+        route_sha256=payload.route_sha256,
+        expires_at=now + timedelta(minutes=10),
+        created_at=now,
+        status="issued",
+        result_json="{}",
+    )
+    db.add(record)
+    db.flush()
+    # Pending mode enforces Guard protect on the test route. However a Guard
+    # heartbeat MUST NOT mark this protected until the evidence gate passes.
+    if row.mode == "shadow":
+        row.mode = "protect_pending"
+    _audit(db, actor, row.organization_id, "RAG_ROUTE_CHALLENGE_ISSUED", "ai_application", row.id, {
+        "challenge_id": record.id, "guard_id": guard.id,
+    })
+    db.commit()
+    return {
+        "challenge_id": record.id, "nonce": nonce,
+        "guard_id": guard.id, "application_id": row.application_id,
+        "expires_at": record.expires_at.isoformat(),
+        "request_ids": request_ids(nonce),
+        "state": "issued", "production_certification": False,
+        "message": "Run only against the approved, isolated synthetic reference route; Guard machine audit evidence is required.",
+    }
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/protection/challenge")
+def latest_current_reference_rag_challenge(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    record = db.scalar(select(RAGRouteChallenge).where(
+        RAGRouteChallenge.organization_id == row.organization_id,
+        RAGRouteChallenge.application_row_id == row.id,
+    ).order_by(RAGRouteChallenge.created_at.desc(), RAGRouteChallenge.id.desc()))
+    return {
+        "application_id": row.application_id,
+        "state": record.status if record is not None else "not_requested",
+        "challenge_id": record.id if record is not None else None,
+        "verified_at": record.verified_at.isoformat() if record is not None and record.verified_at else None,
+        "certified_for_reference_route": _valid_route_certificate(db, row),
+        "production_certification": False,
+    }
+
+
+@app.post("/api/v1/guards/{guard_id}/rag-challenges/{challenge_id}/submit", status_code=202)
+def submit_enrolled_guard_rag_challenge(
+    guard_id: str,
+    challenge_id: str,
+    payload: RouteChallengeResult,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Replay-resistant, bound machine results corroborated by Guard audits.
+
+    A mere client-reported success is not enough: all four Guard decision
+    sequences must exist and agree with the observed HTTP responses. This
+    certifies only the declared Gateway reference boundary, not arbitrary RAG.
+    """
+    guard = _authenticate_guard(db, guard_id, authorization)
+    if payload.guard_id != guard.id or payload.challenge_id != challenge_id:
+        raise HTTPException(403, "GUARD_CHALLENGE_BINDING_MISMATCH")
+    record = db.scalar(select(RAGRouteChallenge).where(
+        RAGRouteChallenge.id == challenge_id,
+        RAGRouteChallenge.guard_id == guard.id,
+        RAGRouteChallenge.organization_id == guard.organization_id,
+    ).with_for_update())
+    if record is None:
+        raise HTTPException(404, "Reference challenge not found")
+    now = datetime.now(timezone.utc)
+    expires_at = record.expires_at.replace(tzinfo=timezone.utc) if record.expires_at.tzinfo is None else record.expires_at
+    if record.status != "issued" or now >= expires_at:
+        raise HTTPException(409, "CHALLENGE_EXPIRED_CONSUMED_OR_SUPERSEDED")
+    if hashlib.sha256(payload.nonce.encode()).hexdigest() != record.nonce_digest:
+        raise HTTPException(403, "INVALID_CHALLENGE_NONCE")
+    row = db.get(AIApplication, record.application_row_id)
+    if (row is None or row.organization_id != guard.organization_id
+            or row.guard_id != guard.id or row.source_id != record.source_id
+            or row.adapter_type != "accessproof-gateway"
+            or guard.revoked_at or guard.active_policy_version < 1
+            or _route_configuration_fingerprint(row, guard.active_policy_version)
+            != record.configuration_fingerprint):
+        raise HTTPException(409, "CHALLENGE_DEPLOYMENT_OR_POLICY_CHANGED")
+    if (payload.deployment_sha256 != record.deployment_sha256
+            or payload.route_sha256 != record.route_sha256):
+        raise HTTPException(409, "CHALLENGE_DEPLOYMENT_FINGERPRINT_MISMATCH")
+    # This Guard-bound agent must actually have probed each boundary. An
+    # arbitrary remote browser cannot submit the results with an admin cookie.
+    if not all((
+        payload.customer_route_verified, payload.ingress_boundary_verified,
+        payload.retrieval_boundary_verified, payload.output_boundary_verified,
+        payload.alternate_route_blocked,
+    )):
+        raise HTTPException(409, "COMPLETE_CUSTOMER_BOUNDARY_EVIDENCE_REQUIRED")
+    requested = list(request_ids(payload.nonce).values())
+    events = list(db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == guard.organization_id,
+        GuardAuditEvent.guard_id == guard.id,
+        GuardAuditEvent.application_id == row.application_id,
+        GuardAuditEvent.request_id.in_(requested),
+        GuardAuditEvent.created_at >= record.created_at,
+        GuardAuditEvent.policy_version > 0,
+    )).all())
+    verified, reason = verify_reference_evidence(
+        nonce=payload.nonce, observations=payload.observations,
+        guard_events=events, source_id=record.source_id,
+        guard_policy_version=guard.active_policy_version,
+    )
+    if not verified:
+        raise HTTPException(409, {"code": reason})
+    record.status = "tested"
+    record.verified_at = now
+    record.result_json = json.dumps({
+        "contract": payload.contract,
+        "route_sha256": payload.route_sha256,
+        "deployment_sha256": payload.deployment_sha256,
+        "observations": [
+            {"name": item["name"], "request_id": item["request_id"],
+             "http_status": item["http_status"], "response_sha256": item["response_sha256"]}
+            for item in payload.observations
+        ],
+        "matched_guard_events": len(events),
+    }, sort_keys=True)
+    # SessionLocal uses autoflush=False: the verified status must be visible
+    # to SQL certification lookups *within this transaction*, before deciding
+    # whether Guard Protect acknowledgment is eligible.
+    db.flush()
+    checks = _automatic_activation_checklist(db, row)
+    run = db.scalar(select(ProtectionActivationRun).where(
+        ProtectionActivationRun.organization_id == row.organization_id,
+        ProtectionActivationRun.application_row_id == row.id,
+    ))
+    if run:
+        run.last_checked_at = now
+        run.checks_json = json.dumps(checks, sort_keys=True)
+        if all(check["ok"] for check in checks):
+            run.state = "awaiting_guard_ack"
+            run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
+            row.mode = "protect_pending"
+        else:
+            run.state = "action_required"
+            run.reason_code = next(check["code"] for check in checks if not check["ok"])
+    _audit(db, None, guard.organization_id, "RAG_ROUTE_CHALLENGE_VERIFIED", "ai_application", row.id, {
+        "challenge_id": record.id, "guard_id": guard.id, "guard_event_count": len(events),
+        "result": "reference_verified", "pending_source_or_guard_checks": not all(check["ok"] for check in checks),
+    })
+    db.commit()
+    return {
+        "state": "tested_awaiting_customer_cutover", "challenge_id": record.id,
+        "guard_audits_matched": len(events),
+        "protection_ready": all(check["ok"] for check in checks),
+        "production_certification": False,
+        "pending_guard_acknowledgment": False,
+    }
+
+
+@app.get("/api/v1/guards/{guard_id}/rag-challenges/{challenge_id}")
+def get_enrolled_guard_rag_challenge(
+    guard_id: str, challenge_id: str,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Machine-only, bounded reference challenge state; no source secrets."""
+    guard = _authenticate_guard(db, guard_id, authorization)
+    record = db.scalar(select(RAGRouteChallenge).where(
+        RAGRouteChallenge.id == challenge_id,
+        RAGRouteChallenge.guard_id == guard.id,
+        RAGRouteChallenge.organization_id == guard.organization_id,
+    ))
+    if record is None:
+        raise HTTPException(404, "Reference challenge not found")
+    row = db.get(AIApplication, record.application_row_id)
+    if row is None or row.organization_id != guard.organization_id:
+        raise HTTPException(404, "Bound application not found")
+    return {
+        "challenge_id": record.id, "state": record.status,
+        "guard_id": guard.id, "application_id": row.application_id,
+        "deployment_sha256": record.deployment_sha256,
+        "route_sha256": record.route_sha256,
+        "verified_at": record.verified_at.isoformat() if record.verified_at else None,
+        "production_certification": False,
+    }
+
+
+@app.post("/api/v1/guards/{guard_id}/rag-challenges/{challenge_id}/cutover", status_code=202)
+def acknowledge_enrolled_guard_customer_cutover(
+    guard_id: str,
+    challenge_id: str,
+    payload: RouteCutoverEvidence,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Do not label Protect active until the actual employee-facing route was tested.
+
+    Only the bound enrolled machine may submit; corroborate a distinct,
+    post-cutover Guard allow/allow sequence with the caller's observed
+    employee-route response decision ID. Still requires all provider
+    freshness/identity readiness checks and a subsequent Guard acknowledgment.
+    """
+    guard = _authenticate_guard(db, guard_id, authorization)
+    if payload.guard_id != guard.id or payload.challenge_id != challenge_id:
+        raise HTTPException(403, "CUTOVER_MACHINE_BINDING_MISMATCH")
+    record = db.scalar(select(RAGRouteChallenge).where(
+        RAGRouteChallenge.id == challenge_id,
+        RAGRouteChallenge.organization_id == guard.organization_id,
+        RAGRouteChallenge.guard_id == guard.id,
+    ).with_for_update())
+    if record is None:
+        raise HTTPException(404, "Gateway reference challenge not found")
+    now = datetime.now(timezone.utc)
+    checked = record.verified_at
+    if checked and checked.tzinfo is None:
+        checked = checked.replace(tzinfo=timezone.utc)
+    if record.status != "tested" or checked is None or now - checked > timedelta(minutes=30):
+        raise HTTPException(409, "CUTOVER_REQUIRES_FRESH_SUCCESSFUL_TEST")
+    if hashlib.sha256(payload.nonce.encode()).hexdigest() != record.nonce_digest:
+        raise HTTPException(403, "CUTOVER_NONCE_INVALID")
+    if (payload.deployment_sha256 != record.deployment_sha256
+            or payload.route_sha256 != record.route_sha256):
+        raise HTTPException(409, "CUTOVER_DEPLOYMENT_MISMATCH")
+    row = db.get(AIApplication, record.application_row_id)
+    if (row is None or row.organization_id != guard.organization_id
+            or row.guard_id != guard.id or row.source_id != record.source_id
+            or guard.revoked_at or guard.active_policy_version < 1
+            or _route_configuration_fingerprint(row, guard.active_policy_version)
+            != record.configuration_fingerprint):
+        raise HTTPException(409, "CUTOVER_SOURCE_GUARD_OR_POLICY_CHANGED")
+    expected_request_id = "ap-cutover-" + record.nonce_digest[:24]
+    denied_request_id = expected_request_id + "-deny"
+    tamper_request_id = expected_request_id + "-tamper"
+    if (payload.application_request_id != expected_request_id
+            or payload.negative_request_id != denied_request_id
+            or payload.tamper_request_id != tamper_request_id):
+        raise HTTPException(409, "CUSTOMER_ROUTE_REQUEST_ID_NOT_BOUND")
+    events = list(db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == guard.organization_id,
+        GuardAuditEvent.guard_id == guard.id,
+        GuardAuditEvent.application_id == row.application_id,
+        GuardAuditEvent.request_id == expected_request_id,
+        GuardAuditEvent.created_at >= record.verified_at,
+        GuardAuditEvent.policy_version > 0,
+    )).all())
+    layer1 = [item for item in events if item.layer == "layer1" and item.result == "allow"]
+    layer2 = [item for item in events if item.layer == "layer2" and item.result == "allow"
+              and item.reason == "TRUSTED_PROVENANCE_VALID"]
+    if (not payload.decision_id or not any(
+        a.decision_id == b.decision_id == payload.decision_id
+        and a.subject_id == b.subject_id
+        for a in layer1 for b in layer2
+    )):
+        raise HTTPException(409, "CUSTOMER_CUTOVER_GUARD_AUDIT_MISMATCH")
+    # Independently corroborate the denied employee-facing request from the
+    # same enrolled Guard. A working positive route is not bypass resistance.
+    negative_events = list(db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == guard.organization_id,
+        GuardAuditEvent.guard_id == guard.id,
+        GuardAuditEvent.application_id == row.application_id,
+        GuardAuditEvent.request_id == denied_request_id,
+        GuardAuditEvent.created_at >= record.verified_at,
+        GuardAuditEvent.policy_version > 0,
+    )).all())
+    if not any(e.layer == "layer1" and e.result == "block"
+               and e.decision_id and e.subject_id for e in negative_events):
+        raise HTTPException(409, "CUSTOMER_CUTOVER_DENIED_USER_NOT_GUARD_AUDITED")
+    tamper_events = list(db.scalars(select(GuardAuditEvent).where(
+        GuardAuditEvent.organization_id == guard.organization_id,
+        GuardAuditEvent.guard_id == guard.id,
+        GuardAuditEvent.application_id == row.application_id,
+        GuardAuditEvent.request_id == tamper_request_id,
+        GuardAuditEvent.created_at >= record.verified_at,
+        GuardAuditEvent.policy_version > 0,
+    )).all())
+    # The tampered manifest must be rejected *after* authenticated Layer 1
+    # allowed the synthetic resource; a disconnected Guard or generic 503
+    # must not count as attestation enforcement proof.
+    if (not any(e.layer == "layer1" and e.result == "allow"
+                and e.decision_id and e.subject_id for e in tamper_events)
+            or any(e.layer == "layer2" and e.result == "allow"
+                   for e in tamper_events)):
+        raise HTTPException(409, "CUSTOMER_CUTOVER_TAMPER_NOT_GUARD_AUDITED")
+    record.status = "cutover_verified"
+    record.cutover_at = now
+    previous = json.loads(record.result_json or "{}")
+    previous["customer_cutover"] = {
+        "request_id": expected_request_id,
+        "response_sha256": payload.application_response_sha256,
+        "decision_id": payload.decision_id,
+        "http_status": payload.application_http_status,
+        "verified_guard_events": len(events),
+        "negative_request_id": denied_request_id,
+        "negative_response_sha256": payload.negative_response_sha256,
+        "negative_guard_events": len(negative_events),
+        "tamper_request_id": tamper_request_id,
+        "tamper_response_sha256": payload.tamper_response_sha256,
+        "tamper_guard_events": len(tamper_events),
+    }
+    record.result_json = json.dumps(previous, sort_keys=True)
+    db.flush()
+    checks = _automatic_activation_checklist(db, row)
+    current_run = db.scalar(select(ProtectionActivationRun).where(
+        ProtectionActivationRun.organization_id == row.organization_id,
+        ProtectionActivationRun.application_row_id == row.id,
+    ))
+    if current_run:
+        current_run.checks_json = json.dumps(checks, sort_keys=True)
+        current_run.last_checked_at = now
+        if all(check["ok"] for check in checks):
+            current_run.state = "awaiting_guard_ack"
+            current_run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
+            row.mode = "protect_pending"
+        else:
+            current_run.state = "action_required"
+            current_run.reason_code = next(check["code"] for check in checks if not check["ok"])
+    _audit(db, None, row.organization_id, "RAG_CUSTOMER_ROUTE_CUTOVER_VERIFIED", "ai_application", row.id, {
+        "challenge_id": record.id, "guard_id": guard.id, "matched_events": len(events),
+        "result": "customer_reference_route_verified",
+    })
+    db.commit()
+    return {
+        "state": "customer_cutover_verified",
+        "challenge_id": record.id,
+        "guard_audits_matched": len(events),
+        "guard_acknowledgment_required": True,
+        "protection_ready": all(check["ok"] for check in checks),
+        "production_certification": False,
+    }
+
+
+@app.get("/api/v1/current/adapters")
+def list_current_adapters(
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+) -> list[dict[str, object]]:
+    """Return reviewed adapter metadata; customer code is never loaded here."""
+    return adapter_registry()
 
 
 @app.post("/api/v1/current/ai-applications/{application_id}/verification")
@@ -2302,6 +3999,23 @@ def verify_current_ai_application(
     row = db.scalar(select(AIApplication).where(AIApplication.organization_id == actor.membership.organization_id, AIApplication.application_id == application_id))
     if row is None:
         raise HTTPException(404, "AI application not found")
+    evidence = _verified_guard_evidence(db, row)
+    request_sets = evidence["requests"]
+    valid = (
+        row.guard_id is not None
+        and row.source_id is not None
+        and payload.buffering_test_passed
+        and payload.positive_request_id in request_sets["positive"]
+        and payload.denial_request_id in request_sets["denial"]
+        and payload.provenance_request_id in request_sets["provenance"]
+        and len({payload.positive_request_id, payload.denial_request_id,
+                 payload.provenance_request_id}) == 3
+    )
+    if not valid:
+        raise HTTPException(409, {
+            "code": "VERIFICATION_EVIDENCE_REQUIRED",
+            "message": "Run distinct positive-control, denial and provenance-block tests through the actual Guard, then attest that the customer RAG buffers responses before release.",
+        })
     now = datetime.now(timezone.utc)
     if payload.layer1:
         row.layer1_verified_at = now
@@ -2326,13 +4040,18 @@ def update_current_ai_application_mode(
     if row is None:
         raise HTTPException(404, "AI application not found")
     if payload.mode == "protect":
-        readiness = _application_checks(db, row, actor.membership.organization_id)
+        # A legacy browser-submitted trio of audit IDs is not proof that the
+        # registered RAG route buffers output. Require the new challenge
+        # protocol even when old manual evidence fields are populated.
+        readiness = _automatic_activation_checklist(db, row)
         failed = [check["code"] for check in readiness if not check["ok"]]
         if failed:
             raise HTTPException(409, {"code": "PROTECT_NOT_READY", "failed_checks": failed})
     previous = row.mode
-    row.mode = payload.mode
-    _audit(db, actor, row.organization_id, "PROTECT_ENABLED" if payload.mode == "protect" else "PROTECT_DISABLED", "ai_application", row.id, {"previous_mode": previous})
+    row.mode = "protect_pending" if payload.mode == "protect" else "shadow"
+    _audit(db, actor, row.organization_id,
+           "PROTECT_REQUESTED" if payload.mode == "protect" else "PROTECT_DISABLED",
+           "ai_application", row.id, {"previous_mode": previous})
     db.commit()
     return {"application_id": row.application_id, "mode": row.mode}
 
@@ -2452,6 +4171,10 @@ def _reconcile_scim_identity_role(
                 user_id=identity.user_id, organization_id=config.organization_id, role=resolved_role
             )
         )
+    elif membership.role == Role.OWNER.value and resolved_role != Role.OWNER.value:
+        # SCIM group mappings may never silently demote the workspace owner.
+        # Ownership remains an explicit human transfer operation.
+        raise HTTPException(409, "SCIM cannot change an OWNER role")
     else:
         membership.role = resolved_role
 
@@ -3529,6 +5252,69 @@ def disable_mutations(
     return {"mutations_disabled": True}
 
 
+def _enforce_microsoft_tenant_boundary(
+    db: OrmSession, organization_id: str, provider: str,
+    credentials: dict[str, Any], *, replace_source_id: str | None = None,
+) -> None:
+    """Reject ambiguous Microsoft source identity graphs across Entra tenants.
+
+    GuardSubject / GuardGroup IDs are scoped to (organization, provider) in
+    this schema, not per Entra tenant. Until a fully migrated multi-tenant
+    identity graph exists, mixing Microsoft tenants in one organization is
+    unsafe and must not be silently allowed.
+    """
+    if provider.lower() not in {"microsoft365", "sharepoint", "onedrive"}:
+        return
+    # Legacy source records may be created as unconfigured drafts. They are
+    # never eligible for authorization until valid credentials are supplied.
+    if not credentials:
+        return
+    from uuid import UUID
+    raw = credentials.get("tenant_id") or credentials.get("tenant_hint")
+    try:
+        tenant = str(UUID(str(raw)))
+        if tenant == "00000000-0000-0000-0000-000000000000":
+            raise ValueError("Null tenant")
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(422, "Microsoft Entra tenant UUID is required") from exc
+    if credentials.get("tenant_id") and credentials.get("tenant_hint"):
+        if str(credentials["tenant_hint"]).lower() != str(credentials["tenant_id"]).lower():
+            raise HTTPException(422, "Conflicting Microsoft Entra tenant IDs")
+    credentials["tenant_id"] = tenant
+    credentials["tenant_hint"] = tenant
+    if replace_source_id:
+        previous_source = db.scalar(select(SourceConnection).where(
+            SourceConnection.id == replace_source_id,
+            SourceConnection.organization_id == organization_id,
+        ))
+        if previous_source is None:
+            raise HTTPException(404, "Source not found")
+        if credentials.get("test_root_item_id") != previous_source.boundary:
+            raise HTTPException(409, "Cannot silently change an approved Microsoft folder boundary")
+        previous = (json.loads(_secret_box.decrypt(previous_source.encrypted_credentials))
+                    if previous_source.encrypted_credentials else {})
+        if previous.get("drive_id") and previous.get("drive_id") != credentials.get("drive_id"):
+            raise HTTPException(409, "Cannot silently switch the Microsoft drive")
+    for source in db.scalars(select(SourceConnection).where(
+        SourceConnection.organization_id == organization_id,
+        SourceConnection.provider.in_(["microsoft365", "sharepoint", "onedrive"]),
+    )):
+        if source.id == replace_source_id:
+            previous = json.loads(_secret_box.decrypt(source.encrypted_credentials)) if source.encrypted_credentials else {}
+            original_tenant = previous.get("tenant_id") or previous.get("tenant_hint")
+            if original_tenant and str(original_tenant).lower() != tenant:
+                raise HTTPException(409, "Changing the Microsoft tenant would invalidate mapped employee identities")
+            continue
+        if not source.encrypted_credentials:
+            continue
+        old = json.loads(_secret_box.decrypt(source.encrypted_credentials))
+        old_tenant = old.get("tenant_id") or old.get("tenant_hint")
+        # Existing tenant-less sources must be explicitly reconciled rather
+        # than trusting potentially colliding previously synchronized IDs.
+        if not old_tenant or str(old_tenant).lower() != tenant:
+            raise HTTPException(409, "Microsoft tenant conflicts with an existing source in this organization")
+
+
 @app.post("/api/v1/sources", status_code=201)
 def create_source(
     payload: SourceCreate,
@@ -3546,6 +5332,8 @@ def create_source(
         or 0
     )
     _enforce_count_entitlement(db, project.organization_id, "source_connections", int(count))
+    credentials = dict(payload.credentials)
+    _enforce_microsoft_tenant_boundary(db, project.organization_id, payload.provider, credentials)
     row = SourceConnection(
         organization_id=project.organization_id,
         project_id=project.id,
@@ -3553,8 +5341,8 @@ def create_source(
         name=payload.name,
         boundary=payload.boundary,
         mutation_acknowledged=payload.mutation_acknowledged,
-        encrypted_credentials=_secret_box.encrypt(json.dumps(payload.credentials))
-        if payload.credentials
+        encrypted_credentials=_secret_box.encrypt(json.dumps(credentials))
+        if credentials
         else None,
     )
     db.add(row)
@@ -3598,6 +5386,12 @@ def create_current_source(
     credentials = dict(payload.credentials)
     if payload.provider == "google-drive":
         credentials.setdefault("test_root_folder_id", payload.boundary)
+    elif payload.provider in {"microsoft365", "sharepoint", "onedrive"}:
+        if (not credentials.get("drive_id")
+                or credentials.get("test_root_item_id", payload.boundary) != payload.boundary):
+            raise HTTPException(422, "Microsoft source requires drive_id and matching root item")
+        credentials.setdefault("test_root_item_id", payload.boundary)
+    _enforce_microsoft_tenant_boundary(db, organization_id, payload.provider, credentials)
     row = SourceConnection(
         organization_id=organization_id,
         project_id=workspace.id,
@@ -3613,6 +5407,264 @@ def create_current_source(
     _audit(db, actor, organization_id, "source.created", "source", row.id, {"provider": payload.provider})
     db.commit()
     return _source_payload(row)
+
+
+def _google_consent_fingerprint(source: SourceConnection) -> str:
+    """Never accept a token for a source whose approved boundary changed."""
+    return hashlib.sha256(json.dumps({
+        "source_id": source.id, "organization_id": source.organization_id,
+        "provider": source.provider, "root": source.boundary,
+    }, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+@app.post("/api/v1/current/sources/{source_id}/google-oauth/begin")
+def begin_google_source_oauth(
+    source_id: str,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, str]:
+    source = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == source_id,
+        SourceConnection.organization_id == actor.membership.organization_id,
+        SourceConnection.provider == "google-drive",
+    ))
+    if source is None:
+        raise HTTPException(404, "Google Drive source not found")
+    client_id = os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "").strip()
+    client_secret = os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        raise HTTPException(503, "Google OAuth is not configured on the control plane")
+    raw_state = secrets.token_urlsafe(48)
+    verifier = secrets.token_urlsafe(64)
+    redirect_uri = f"{settings.api_public_url.rstrip('/')}/api/v1/current/sources/google-oauth/callback"
+    try:
+        url = google_consent_url(
+            client_id=client_id, redirect_uri=redirect_uri,
+            state=raw_state, verifier=verifier,
+        )
+    except GoogleConsentError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    db.add(GoogleSourceOAuthState(
+        organization_id=source.organization_id, source_id=source.id,
+        initiated_by_user_id=actor.user.id,
+        state_hash=hash_token(raw_state),
+        encrypted_verifier=_secret_box.encrypt(verifier),
+        config_fingerprint=_google_consent_fingerprint(source),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    ))
+    _audit(db, actor, source.organization_id, "source.google_oauth_started", "source", source.id)
+    db.commit()
+    return {"authorization_url": url}
+
+
+@app.get("/api/v1/current/sources/google-oauth/callback")
+async def complete_google_source_oauth(
+    state: str = "", code: str = "", error: str | None = None,
+    db: OrmSession = Depends(get_db),
+) -> RedirectResponse:
+    failure = f"{settings.public_app_url.rstrip('/')}/sources?google=consent-failed"
+    success = f"{settings.public_app_url.rstrip('/')}/sources?google=consent-complete"
+    if not state or len(state) > 256:
+        raise HTTPException(400, "Google OAuth state missing or invalid")
+    now = datetime.now(timezone.utc)
+    claim = db.scalar(select(GoogleSourceOAuthState).where(
+        GoogleSourceOAuthState.state_hash == hash_token(state),
+    ).with_for_update())
+    if claim is None or claim.consumed_at is not None:
+        raise HTTPException(400, "Google OAuth state invalid or already consumed")
+    expiry = claim.expires_at.replace(tzinfo=claim.expires_at.tzinfo or timezone.utc)
+    if expiry <= now:
+        raise HTTPException(400, "Google OAuth state expired")
+    # Always consume even failed callbacks, before any outbound credential exchange.
+    claim.consumed_at = now
+    db.commit()
+    source = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == claim.source_id,
+        SourceConnection.organization_id == claim.organization_id,
+        SourceConnection.provider == "google-drive",
+    ))
+    admin = db.scalar(select(Membership).where(
+        Membership.organization_id == claim.organization_id,
+        Membership.user_id == claim.initiated_by_user_id,
+        Membership.role.in_(["OWNER", "ADMIN"]),
+    ))
+    if (source is None or admin is None or error or not code or len(code) > 4096
+            or _google_consent_fingerprint(source) != claim.config_fingerprint):
+        return RedirectResponse(failure, status_code=303)
+    try:
+        tokens = await asyncio.to_thread(
+            exchange_google_code,
+            code=code,
+            client_id=os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "").strip(),
+            client_secret=os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "").strip(),
+            redirect_uri=f"{settings.api_public_url.rstrip('/')}/api/v1/current/sources/google-oauth/callback",
+            verifier=_secret_box.decrypt(claim.encrypted_verifier),
+        )
+        adapter = GoogleDriveAdapter(
+            access_token=tokens["access_token"], test_root_folder_id=source.boundary,
+        )
+        try:
+            identity = await adapter.validate_connection()
+        finally:
+            await adapter._client.aclose()
+        # Root-bound validation is necessary but does not certify all employee
+        # and Google Group ACL semantics. Directory/ACL sync remains required.
+        existing = json.loads(_secret_box.decrypt(source.encrypted_credentials)) if source.encrypted_credentials else {}
+        existing.update(tokens)
+        existing["test_root_folder_id"] = source.boundary
+        source.encrypted_credentials = _secret_box.encrypt(json.dumps(existing, sort_keys=True))
+        source.status, source.last_error, source.last_validated_at = "connected", None, now
+        source.provider_identity_json = json.dumps({
+            "provider": identity.provider, "tenant": identity.tenant,
+            "boundary": identity.boundary, "metadata": identity.metadata,
+        }, sort_keys=True)
+        db.commit()
+    except Exception:
+        db.rollback()
+        # Never persist an unvalidated provider token or partial consent state.
+        return RedirectResponse(failure, status_code=303)
+    return RedirectResponse(success, status_code=303)
+
+
+def _microsoft_consent_fingerprint(source: SourceConnection, credentials: dict[str, Any]) -> str:
+    """Bind consent to the exact currently approved source resource."""
+    fields = {
+        "source_id": source.id,
+        "organization_id": source.organization_id,
+        "provider": source.provider.lower(),
+        "tenant_id": credentials.get("tenant_id"),
+        "drive_id": credentials.get("drive_id"),
+        "root_item_id": credentials.get("test_root_item_id"),
+    }
+    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+@app.post("/api/v1/current/sources/{source_id}/microsoft-admin-consent/begin")
+def begin_microsoft_source_admin_consent(
+    source_id: str,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, str]:
+    """Start a short-lived, trusted Microsoft admin-consent redirect."""
+    row = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == source_id,
+        SourceConnection.organization_id == actor.membership.organization_id,
+        SourceConnection.provider.in_(["microsoft365", "sharepoint", "onedrive"]),
+    ))
+    if row is None:
+        raise HTTPException(404, "Microsoft source not found")
+    client_id = os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_ID", "").strip()
+    if not client_id or not os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "").strip():
+        raise HTTPException(503, "Microsoft administrator consent is not configured on the control plane")
+    config = json.loads(_secret_box.decrypt(row.encrypted_credentials)) if row.encrypted_credentials else {}
+    try:
+        tenant = tenant_uuid(config.get("tenant_id"))
+    except MicrosoftConsentError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    raw_state = secrets.token_urlsafe(48)
+    redirect_uri = f"{settings.api_public_url.rstrip('/')}/api/v1/current/sources/microsoft-admin-consent/callback"
+    try:
+        url = microsoft_consent_url(
+            tenant_id=tenant, client_id=client_id,
+            redirect_uri=redirect_uri, state=raw_state,
+        )
+    except MicrosoftConsentError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    db.add(MicrosoftConsentState(
+        organization_id=row.organization_id,
+        source_id=row.id,
+        initiated_by_user_id=actor.user.id,
+        state_hash=hash_token(raw_state),
+        config_fingerprint=_microsoft_consent_fingerprint(row, config),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    ))
+    _audit(db, actor, row.organization_id, "source.microsoft_consent_started", "source", row.id)
+    db.commit()
+    return {"authorization_url": url}
+
+
+@app.get("/api/v1/current/sources/microsoft-admin-consent/callback")
+async def complete_microsoft_source_admin_consent(
+    state: str = "",
+    tenant: str = "",
+    admin_consent: str = "",
+    error: str | None = None,
+    db: OrmSession = Depends(get_db),
+) -> RedirectResponse:
+    """One-time state, exact tenant, Graph drive preflight, then encrypted save."""
+    failure = f"{settings.public_app_url.rstrip('/')}/sources?microsoft=consent-failed"
+    success = f"{settings.public_app_url.rstrip('/')}/sources?microsoft=consent-complete"
+    if not state or len(state) > 256:
+        raise HTTPException(400, "Invalid Microsoft consent state")
+    now = datetime.now(timezone.utc)
+    claim = db.scalar(select(MicrosoftConsentState).where(
+        MicrosoftConsentState.state_hash == hash_token(state),
+    ).with_for_update())
+    if claim is None or claim.consumed_at is not None:
+        raise HTTPException(400, "Microsoft consent state was already consumed or is invalid")
+    expiry = claim.expires_at.replace(tzinfo=claim.expires_at.tzinfo or timezone.utc)
+    if expiry <= now:
+        raise HTTPException(400, "Microsoft consent state has expired")
+    source = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == claim.source_id,
+        SourceConnection.organization_id == claim.organization_id,
+    ))
+    # Consume even failure callbacks to block replay and state fixation.
+    claim.consumed_at = now
+    db.commit()
+    if source is None or error or admin_consent.lower() != "true":
+        return RedirectResponse(failure, status_code=303)
+    prior = json.loads(_secret_box.decrypt(source.encrypted_credentials)) if source.encrypted_credentials else {}
+    consent_admin = db.scalar(select(Membership).where(
+        Membership.organization_id == claim.organization_id,
+        Membership.user_id == claim.initiated_by_user_id,
+        Membership.role.in_(["OWNER", "ADMIN"]),
+    ))
+    if (consent_admin is None
+            or source.provider.lower() not in {"microsoft365", "sharepoint", "onedrive"}
+            or _microsoft_consent_fingerprint(source, prior) != claim.config_fingerprint):
+        return RedirectResponse(failure, status_code=303)
+    try:
+        expected_tenant = tenant_uuid(prior.get("tenant_id"))
+        if tenant_uuid(tenant) != expected_tenant:
+            return RedirectResponse(failure, status_code=303)
+        client_id = os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_ID", "").strip()
+        client_secret = os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "").strip()
+        token, token_expiry = graph_app_token(
+            tenant_id=expected_tenant, client_id=client_id, client_secret=client_secret,
+        )
+        adapter = Microsoft365Adapter(
+            access_token=token, drive_id=str(prior["drive_id"]),
+            test_root_item_id=str(prior["test_root_item_id"]),
+            tenant_hint=expected_tenant,
+        )
+        try:
+            identity = await adapter.validate_connection()
+        finally:
+            await adapter._client.aclose()
+    except Exception:
+        # Consent does not establish that an app can read the configured drive.
+        source.status = "not_configured"
+        source.last_error = "MICROSOFT_CONSENT_OR_DRIVE_VALIDATION_FAILED"
+        db.commit()
+        return RedirectResponse(failure, status_code=303)
+    prior.update({
+        "tenant_id": expected_tenant, "tenant_hint": expected_tenant,
+        "access_token": token, "expires_at": token_expiry.isoformat(),
+        "client_id": client_id, "client_secret": client_secret,
+        "token_endpoint": f"https://login.microsoftonline.com/{expected_tenant}/oauth2/v2.0/token",
+        "grant_type": "client_credentials",
+    })
+    source.encrypted_credentials = _secret_box.encrypt(json.dumps(prior, sort_keys=True))
+    source.status = "connected"
+    source.last_validated_at = now
+    source.last_error = None
+    source.provider_identity_json = json.dumps({
+        "provider": identity.provider, "tenant": expected_tenant,
+        "boundary": identity.boundary, "metadata": identity.metadata,
+    }, sort_keys=True)
+    db.commit()
+    return RedirectResponse(success, status_code=303)
 
 
 @app.get("/api/v1/current/sources")
@@ -3847,9 +5899,13 @@ def rotate_source_credential(
     )
     if not row:
         raise HTTPException(404, "Source not found")
+    credentials = dict(payload.credentials)
+    _enforce_microsoft_tenant_boundary(
+        db, row.organization_id, row.provider, credentials, replace_source_id=row.id
+    )
     row.encrypted_credentials = (
-        _secret_box.encrypt(json.dumps(payload.credentials, sort_keys=True))
-        if payload.credentials
+        _secret_box.encrypt(json.dumps(credentials, sort_keys=True))
+        if credentials
         else None
     )
     row.status = "not_configured"
@@ -3880,10 +5936,14 @@ async def reauthorize_source(
         raise HTTPException(404, "Source not found")
     if not payload.credentials:
         raise HTTPException(422, "Replacement credentials are required")
+    credentials = dict(payload.credentials)
+    _enforce_microsoft_tenant_boundary(
+        db, row.organization_id, row.provider, credentials, replace_source_id=row.id
+    )
     # Validate the replacement before changing the encrypted record. A failed
     # reauthorization therefore preserves the known working credential.
     try:
-        candidate = create_source_adapter(row.provider, payload.credentials)
+        candidate = create_source_adapter(row.provider, credentials)
         identity = await candidate.validate_connection()
         capabilities = await candidate.discover_capabilities()
     except Exception as exc:
@@ -3892,13 +5952,13 @@ async def reauthorize_source(
         http_client = getattr(locals().get("candidate"), "_client", None) or getattr(locals().get("candidate"), "client", None)
         if http_client is not None:
             await http_client.aclose()
-    row.encrypted_credentials = _secret_box.encrypt(json.dumps(payload.credentials, sort_keys=True))
+    row.encrypted_credentials = _secret_box.encrypt(json.dumps(credentials, sort_keys=True))
     row.status = "connected"
     row.last_validated_at = datetime.now(timezone.utc)
     row.last_capability_refresh_at = row.last_validated_at
     row.capabilities_json = json.dumps({key.value: value.value for key, value in capabilities.capabilities.items()}, sort_keys=True)
     row.provider_identity_json = json.dumps({"provider": identity.provider, "tenant": identity.tenant, "account": identity.account, "boundary": identity.boundary, "metadata": identity.metadata}, sort_keys=True)
-    row.granted_scopes_json = json.dumps(_configured_scopes(payload.credentials), sort_keys=True)
+    row.granted_scopes_json = json.dumps(_configured_scopes(credentials), sort_keys=True)
     row.missing_scopes_json = json.dumps([key.value for key, value in capabilities.capabilities.items() if value.value in {"MISSING_SCOPE", "PLAN_RESTRICTED"}], sort_keys=True)
     row.last_error = None
     _audit(db, actor, row.organization_id, "source.reauthorized", "source", row.id)
@@ -4196,9 +6256,32 @@ def compare_releases(
             .order_by(TestRun.created_at.desc())
             .limit(1)
         )
-        if candidate is None:
-            continue
         scenario = ScenarioDefinition.model_validate_json(suite.scenario_json)
+        if candidate is None:
+            # A release decision must account for every configured suite.  A
+            # missing REQUIRED run is never silently removed from the gate,
+            # even when callers choose not to block on ordinary inconclusives.
+            candidate_measurement = ScenarioMeasurement(
+                suite_id=suite.id,
+                suite_name=suite.name,
+                severity=scenario.severity.value,
+                release=payload.candidate_release,
+                outcome="INCONCLUSIVE",
+                stable_latency_seconds=None,
+            )
+            comparisons.append(
+                compare_measurements(
+                    None,
+                    candidate_measurement,
+                    maximum_absolute_regression_seconds=payload.maximum_absolute_regression_seconds,
+                    maximum_percentage_regression=payload.maximum_percentage_regression,
+                    block_on_inconclusive=(
+                        payload.block_on_inconclusive
+                        or scenario.severity.value == "REQUIRED"
+                    ),
+                )
+            )
+            continue
         candidate_result = json.loads(candidate.result_json or "{}")
         c_derived = candidate_result.get("derived") or {}
         candidate_measurement = ScenarioMeasurement(
@@ -4360,6 +6443,7 @@ def create_run(
         denied_principal_json=json.dumps(payload.denied_principal, sort_keys=True),
         release=payload.release,
         git_sha=payload.git_sha,
+        oracle_canary=f"AP-CANARY-{uuid4()}",
     )
     db.add(run)
     db.flush()
@@ -4559,6 +6643,356 @@ def list_runs(
 # route. Starlette evaluates routes in declaration order, and otherwise a request
 # for ``<id>.sarif.json`` is consumed by the generic JSON route as run_id
 # ``<id>.sarif`` and incorrectly returns 404.
+_CONTROL_PLANE_REPORT_TTL_DAYS = 30
+_CONTROL_PLANE_REPORT_STORAGE_LIMIT = 200
+_CONTROL_PLANE_REPORT_SCHEMA = "accessproof.control_plane_report/v1"
+
+
+def _subject_reference(subject_id: str) -> str:
+    """Pseudo-reference for report correlation without exporting raw identities."""
+    return hashlib.sha256(subject_id.encode("utf-8")).hexdigest()[:16]
+
+
+def _provider_evidence_by_source(
+    db: OrmSession, sources: list[SourceConnection]
+) -> dict[str, str]:
+    evidence: dict[str, str] = {}
+    for source in sources:
+        if (source.provider or "").lower() not in {"microsoft365", "sharepoint", "onedrive"}:
+            evidence[source.id] = "NOT_OBSERVED"
+            continue
+        try:
+            credentials = json.loads(_secret_box.decrypt(source.encrypted_credentials or ""))
+            certified = effective_source_certified(db, source, credentials)
+        except Exception:
+            certified = False
+        evidence[source.id] = (
+            "CONFIRMED_INDEPENDENTLY_AGAINST_PROVIDER" if certified else "NOT_OBSERVED"
+        )
+    return evidence
+
+
+def _build_control_plane_report(
+    db: OrmSession,
+    *,
+    organization_id: str,
+    report_type: str,
+    report_id: str,
+    generated_by_user_id: str,
+    now: datetime,
+    expires_at: datetime,
+) -> dict[str, Any]:
+    """Assemble an evidence export from persisted tenant state only.
+
+    The payload deliberately distinguishes control-plane observations,
+    machine-asserted Guard evidence, provider-confirmed permission evidence,
+    and facts that were never observed.
+    """
+    snapshot = _protection_snapshot(db, organization_id)
+    guards = list(db.scalars(select(GuardRegistration).where(
+        GuardRegistration.organization_id == organization_id,
+    ).order_by(GuardRegistration.created_at.desc()).limit(200)).all())
+    sources = list(db.scalars(select(SourceConnection).where(
+        SourceConnection.organization_id == organization_id,
+    ).order_by(SourceConnection.name.asc()).limit(200)).all())
+    provider_evidence = _provider_evidence_by_source(db, sources)
+    decision_since = now - timedelta(hours=24)
+    decision_counts = {
+        "layer1": {"allow": 0, "block": 0, "would_allow": 0, "would_block": 0},
+        "layer2": {"allow": 0, "block": 0, "would_allow": 0, "would_block": 0},
+    }
+    observed_decisions = 0
+    for layer, result, count in db.execute(select(
+        GuardAuditEvent.layer, GuardAuditEvent.result, func.count(GuardAuditEvent.id),
+    ).where(
+        GuardAuditEvent.organization_id == organization_id,
+        GuardAuditEvent.created_at >= decision_since,
+    ).group_by(GuardAuditEvent.layer, GuardAuditEvent.result)).all():
+        layer_key = "layer2" if layer == "layer2" else "layer1"
+        if result in decision_counts[layer_key]:
+            decision_counts[layer_key][result] += int(count)
+            observed_decisions += int(count)
+    recent_decisions = []
+    if report_type == "AUTHORIZATION_ACTIVITY":
+        for event in db.scalars(select(GuardAuditEvent).where(
+            GuardAuditEvent.organization_id == organization_id,
+        ).order_by(GuardAuditEvent.created_at.desc()).limit(100)).all():
+            recent_decisions.append({
+                "id": event.id,
+                "decision_id": event.decision_id,
+                "application_id": event.application_id,
+                "subject_ref": _subject_reference(event.subject_id),
+                "layer": event.layer,
+                "result": event.result,
+                "reason": event.reason,
+                "policy_version": event.policy_version,
+                "authorization_revision": event.authorization_revision,
+                "authorization_revision_hash": event.authorization_revision_hash,
+                "resource_count": len(json.loads(event.resources_json or "[]")),
+                "occurred_at": (event.occurred_at or event.created_at).isoformat(),
+            })
+    all_provider_confirmed = bool(sources) and all(
+        level == "CONFIRMED_INDEPENDENTLY_AGAINST_PROVIDER"
+        for level in provider_evidence.values()
+    )
+    applications = snapshot["applications"] if report_type in {
+        "APPLICATION_COVERAGE", "GUARD_HEALTH",
+    } else []
+    evidence_levels = {
+        "control_plane_state": "DIRECTLY_OBSERVED_BY_ACCESSPROOF",
+        "guard_decisions": "ASSERTED_BY_CUSTOMER_MACHINE" if observed_decisions else "NOT_OBSERVED",
+        "provider_effective_permissions": (
+            "CONFIRMED_INDEPENDENTLY_AGAINST_PROVIDER" if all_provider_confirmed
+            else "NOT_OBSERVED"
+        ),
+        "revocation_to_first_denial_timing": "NOT_OBSERVED",
+    }
+    payload: dict[str, Any] = {
+        "schema": _CONTROL_PLANE_REPORT_SCHEMA,
+        "report_id": report_id,
+        "report_type": report_type,
+        "organization_id": organization_id,
+        "generated_by_user_id": generated_by_user_id,
+        "generated_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "product": settings.product_name,
+        "signer_role": "accessproof-control-plane",
+        "data_cutoff": now.isoformat(),
+        "scope": {
+            "tenant_scoped": True,
+            "applications": [row["application_id"] for row in snapshot["applications"]],
+            "guards": [guard.id for guard in guards],
+            "sources": [source.id for source in sources],
+        },
+        "evidence_levels": evidence_levels,
+        "summary": {
+            "applications_registered": snapshot["totals"]["applications_registered"],
+            "applications_protected_verified": snapshot["totals"]["applications_protected_verified"],
+            "applications_not_verified": snapshot["totals"]["applications_not_verified"],
+            "guards_online": snapshot["totals"]["guards_online"],
+            "guards_total": snapshot["totals"]["guards_total"],
+            "sources_fresh": snapshot["totals"]["sources_fresh"],
+            "sources_total": snapshot["totals"]["sources_total"],
+            "decisions_24h": {
+                **decision_counts,
+                "telemetry": "OBSERVED" if observed_decisions else "NO_DATA",
+                "total": observed_decisions,
+            },
+        },
+        "applications": applications,
+        "guards": [{
+            "id": guard.id,
+            "name": guard.name,
+            "environment": guard.environment,
+            "version": guard.version,
+            "health": _guard_health_state(guard, now),
+            "active_policy_version": guard.active_policy_version,
+            "heartbeat_age_seconds": _age_seconds(guard.last_heartbeat_at, now),
+            "enrolled_at": guard.enrolled_at.isoformat() if guard.enrolled_at else None,
+            "revoked_at": guard.revoked_at.isoformat() if guard.revoked_at else None,
+        } for guard in guards],
+        "sources": [{
+            "id": source.id,
+            "name": source.name,
+            "provider": source.provider,
+            "status": source.status,
+            "last_validated_at": source.last_validated_at.isoformat() if source.last_validated_at else None,
+            "acl_sync_age_seconds": _source_sync_age(db, source, "acl", now),
+            "directory_sync_age_seconds": _source_sync_age(db, source, "directory", now),
+            "provider_access_evidence": provider_evidence[source.id],
+        } for source in sources],
+        "decisions": {
+            "aggregate_24h": {
+                **decision_counts,
+                "telemetry": "OBSERVED" if observed_decisions else "NO_DATA",
+                "total": observed_decisions,
+            },
+            "recent": recent_decisions,
+        },
+        "limitations": [
+            "Control-plane observations are directly recorded by AccessProof for this tenant only.",
+            "Guard decisions are asserted by the enrolled customer-side Guard; the control plane has not independently replayed them.",
+            "Provider effective permissions are confirmed only for sources explicitly labelled CONFIRMED_INDEPENDENTLY_AGAINST_PROVIDER.",
+            "Revocation-to-first-denial timing is not measured unless a separate measured experiment is attached.",
+            "No prompts, document contents, answers, tokens, raw employee identifiers, or source boundaries are included.",
+            "An APPLICATION_COVERAGE entry is not a route certificate; PROTECTED_VERIFIED reflects current backend checks and expires.",
+        ],
+    }
+    return payload
+
+
+def _control_plane_report_summary(row: ControlPlaneReport) -> dict[str, Any]:
+    payload = json.loads(row.payload_json)
+    return {
+        "id": row.id,
+        "report_type": row.report_type,
+        "generated_at": row.generated_at.isoformat(),
+        "expires_at": row.expires_at.isoformat(),
+        "report_hash": row.report_hash,
+        "key_id": row.signing_key_id,
+        "evidence_levels": payload.get("evidence_levels", {}),
+        "summary": payload.get("summary", {}),
+    }
+
+
+def _control_plane_report_or_404(
+    db: OrmSession, report_id: str, organization_id: str
+) -> ControlPlaneReport:
+    row = db.scalar(select(ControlPlaneReport).where(
+        ControlPlaneReport.id == report_id,
+        ControlPlaneReport.organization_id == organization_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "Report not found")
+    return row
+
+
+def _verify_control_plane_report(row: ControlPlaneReport, now: datetime) -> dict[str, Any]:
+    payload = json.loads(row.payload_json)
+    manifest = json.loads(row.signed_manifest_json)
+    signature_valid = verify_manifest(payload, manifest)
+    scope_valid = bool(
+        payload.get("schema") == _CONTROL_PLANE_REPORT_SCHEMA
+        and payload.get("report_id") == row.id
+        and payload.get("report_type") == row.report_type
+        and payload.get("organization_id") == row.organization_id
+    )
+    expires = _utc(row.expires_at)
+    expired = bool(expires is not None and expires <= now)
+    return {
+        "report_id": row.id,
+        "report_type": row.report_type,
+        "verified": signature_valid and scope_valid and not expired,
+        "signature_valid": signature_valid,
+        "scope_valid": scope_valid,
+        "expired": expired,
+        "generated_at": row.generated_at.isoformat(),
+        "expires_at": row.expires_at.isoformat(),
+        "report_hash": row.report_hash,
+        "key_id": row.signing_key_id,
+        "evidence_levels": payload.get("evidence_levels", {}),
+        "limitations": payload.get("limitations", []),
+    }
+
+
+@app.post("/api/v1/current/reports", status_code=201)
+def create_control_plane_report(
+    payload: ControlPlaneReportCreate,
+    actor: Actor = Depends(require(Permission.REPORT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    org_id = actor.membership.organization_id
+    existing = int(db.scalar(select(func.count(ControlPlaneReport.id)).where(
+        ControlPlaneReport.organization_id == org_id,
+    )) or 0)
+    if existing >= _CONTROL_PLANE_REPORT_STORAGE_LIMIT:
+        raise HTTPException(
+            429,
+            {
+                "code": "REPORT_STORAGE_LIMIT",
+                "message": "The tenant report retention limit has been reached; export and remove old reports through the approved retention workflow.",
+            },
+        )
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=_CONTROL_PLANE_REPORT_TTL_DAYS)
+    report_id = str(uuid4())
+    report_payload = _build_control_plane_report(
+        db,
+        organization_id=org_id,
+        report_type=payload.report_type,
+        report_id=report_id,
+        generated_by_user_id=actor.user.id,
+        now=now,
+        expires_at=expires_at,
+    )
+    manifest = _report_signer.sign(report_payload).as_dict()
+    row = ControlPlaneReport(
+        id=report_id,
+        organization_id=org_id,
+        report_type=payload.report_type,
+        generated_by_user_id=actor.user.id,
+        generated_at=now,
+        expires_at=expires_at,
+        payload_json=json.dumps(report_payload, sort_keys=True),
+        report_hash=manifest["payload_sha256"],
+        signing_key_id=manifest["key_id"],
+        signature=manifest["signature"],
+        signing_public_key=manifest["public_key"],
+        signed_manifest_json=json.dumps(manifest, sort_keys=True),
+    )
+    db.add(row)
+    _audit(db, actor, org_id, "report.generated", "control_plane_report", report_id, {
+        "report_type": payload.report_type,
+    })
+    db.commit()
+    return {
+        "report": report_payload,
+        "signature": manifest,
+        "verification": _verify_control_plane_report(row, now),
+    }
+
+
+@app.get("/api/v1/current/reports")
+def list_control_plane_reports(
+    actor: Actor = Depends(require(Permission.REPORT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    rows = db.scalars(select(ControlPlaneReport).where(
+        ControlPlaneReport.organization_id == actor.membership.organization_id,
+    ).order_by(ControlPlaneReport.generated_at.desc()).limit(100)).all()
+    return [_control_plane_report_summary(row) for row in rows]
+
+
+@app.get("/api/v1/current/reports/{report_id}")
+def read_control_plane_report(
+    report_id: str,
+    actor: Actor = Depends(require(Permission.REPORT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = _control_plane_report_or_404(db, report_id, actor.membership.organization_id)
+    return {
+        "report": json.loads(row.payload_json),
+        "signature": json.loads(row.signed_manifest_json),
+        "verification": _verify_control_plane_report(row, datetime.now(timezone.utc)),
+    }
+
+
+@app.get("/api/v1/current/reports/{report_id}/verify")
+def verify_control_plane_report(
+    report_id: str,
+    actor: Actor = Depends(require(Permission.REPORT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = _control_plane_report_or_404(db, report_id, actor.membership.organization_id)
+    return _verify_control_plane_report(row, datetime.now(timezone.utc))
+
+
+@app.get("/api/v1/current/reports/{report_id}/download")
+def download_control_plane_report(
+    report_id: str,
+    actor: Actor = Depends(require(Permission.REPORT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> Response:
+    row = _control_plane_report_or_404(db, report_id, actor.membership.organization_id)
+    _audit(db, actor, row.organization_id, "report.downloaded", "control_plane_report", row.id, {
+        "report_type": row.report_type,
+    })
+    db.commit()
+    body = {
+        "report": json.loads(row.payload_json),
+        "signature": json.loads(row.signed_manifest_json),
+    }
+    return Response(
+        json.dumps(body, indent=2, sort_keys=True),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="accessproof-{row.report_type.lower()}-{row.id}.json"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @app.get("/api/v1/reports/{run_id}.sarif.json")
 def report_sarif(
     run_id: str,
@@ -4668,7 +7102,14 @@ def report_integrity(
     verified = verify_manifest(payload, manifest)
     return {
         "run_id": run.id,
+        # `verified` is retained for API compatibility and means only that the
+        # persisted payload still matches the server signature. It does not
+        # claim a control-plane observer executed private provider/target calls.
         "verified": verified,
+        "integrity_verified": verified,
+        "execution_independently_verified": False,
+        "verification_scope": "server-signed runner attestation with consistency validation",
+        "server_validation": payload.get("server_validation"),
         "report_hash": report.report_hash,
         "algorithm": manifest.get("algorithm"),
         "key_id": manifest.get("key_id"),
@@ -4787,7 +7228,7 @@ def exchange_runner(payload: RunnerExchange, db: OrmSession = Depends(get_db)) -
     row = db.scalar(
         select(RunnerRegistration).where(
             RunnerRegistration.token_hash == hash_token(payload.registration_token)
-        )
+        ).with_for_update()
     )
     if not row or row.used_at is not None or row.revoked_at is not None:
         raise HTTPException(401, "Invalid registration token")
@@ -5148,6 +7589,45 @@ def _parse_checkpoint_dt(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+def _require_valid_pass_evidence(run: TestRun, suite: TestSuite, result: dict[str, Any], checkpoint: dict[str, Any] | None) -> None:
+    """Reject a green verdict that lacks the minimum engine evidence contract.
+
+    A private runner executes provider calls in the customer's network, so the
+    control plane cannot pretend it independently observed those calls.  It can,
+    however, bind the run oracle and reject internally inconsistent or empty
+    claims before it stores an immutable runner attestation.
+    """
+    if result.get("run_id") != run.id:
+        raise HTTPException(422, "PASS result run_id does not match the leased run")
+    scenario = ScenarioDefinition.model_validate_json(suite.scenario_json)
+    if result.get("source_ground_truth") != "DENIED":
+        raise HTTPException(422, "PASS requires confirmed source denial")
+    if float(result.get("expected_slo_seconds", -1)) != float(scenario.maximum_slo_seconds):
+        raise HTTPException(422, "PASS SLO does not match the server-side suite")
+    if not isinstance(checkpoint, dict) or not checkpoint.get("source_confirmed"):
+        raise HTTPException(422, "PASS requires a persisted source-confirmed checkpoint")
+    checkpoint_resource = checkpoint.get("resource") or {}
+    if checkpoint_resource.get("canary") != run.oracle_canary:
+        raise HTTPException(422, "PASS checkpoint does not match the server-issued run oracle")
+    observations = result.get("observations")
+    if not isinstance(observations, list) or len(observations) < scenario.stability.required_clean_observations:
+        raise HTTPException(422, "PASS requires the configured number of clean observations")
+    for observation in observations:
+        if not isinstance(observation, dict) or observation.get("exposed") is not False:
+            raise HTTPException(422, "PASS cannot contain exposure or malformed observations")
+        response_digest = observation.get("response_hash")
+        if not isinstance(response_digest, str) or len(response_digest) != 64 or any(c not in "0123456789abcdef" for c in response_digest):
+            raise HTTPException(422, "PASS observations require response hashes")
+    derived = result.get("derived") or {}
+    stable_latency = derived.get("stable_propagation_latency_seconds")
+    if not isinstance(stable_latency, (int, float)) or stable_latency < 0 or stable_latency > scenario.maximum_slo_seconds:
+        raise HTTPException(422, "PASS requires a stable propagation latency within the server-side SLO")
+    timeline = result.get("timeline")
+    states = {item.get("state") for item in timeline if isinstance(item, dict)} if isinstance(timeline, list) else set()
+    if not {"VERIFYING_SOURCE_GROUND_TRUTH", "VERIFYING_STABLE_DENIAL", "PASSED"}.issubset(states):
+        raise HTTPException(422, "PASS timeline is missing required verification states")
+
+
 @app.post("/api/v1/runners/checkpoint")
 def runner_checkpoint(
     payload: RunnerCheckpointUpdate,
@@ -5170,6 +7650,10 @@ def runner_checkpoint(
     if checkpoint.get("run_id") not in {None, run.id}:
         raise HTTPException(422, "Checkpoint run_id mismatch")
     checkpoint["run_id"] = run.id
+    resource = checkpoint.get("resource")
+    if resource is not None:
+        if not isinstance(resource, dict) or resource.get("canary") != run.oracle_canary:
+            raise HTTPException(422, "Checkpoint resource does not match the server-issued run oracle")
     phase = str(checkpoint.get("phase") or "unknown")
     row = db.get(RunnerCheckpoint, run.id)
     if row is None:
@@ -5204,9 +7688,23 @@ def runner_checkpoint(
             except (TypeError, ValueError, json.JSONDecodeError):
                 pass
         journal = db.scalar(
-            select(MutationJournal).where(MutationJournal.operation_id == str(operation_id))
+            select(MutationJournal)
+            .where(
+                MutationJournal.operation_id == str(operation_id),
+                MutationJournal.organization_id == run.organization_id,
+                MutationJournal.project_id == run.project_id,
+                MutationJournal.run_id == run.id,
+            )
+            .with_for_update()
         )
         if journal is None:
+            # Operation IDs are runner-provided idempotency keys. A key owned by
+            # another tenant/run must never be reused to mutate its journal row.
+            collision = db.scalar(
+                select(MutationJournal.id).where(MutationJournal.operation_id == str(operation_id))
+            )
+            if collision is not None:
+                raise HTTPException(409, "Mutation operation ID is already bound to another run")
             journal = MutationJournal(
                 organization_id=run.organization_id,
                 project_id=run.project_id,
@@ -5363,6 +7861,7 @@ def runner_lease(
             "allowed_principal": allowed_principal,
             "denied_principal": denied_principal,
             "checkpoint": checkpoint_payload,
+            "oracle_canary": run.oracle_canary,
         }
     }
 
@@ -5394,6 +7893,26 @@ def runner_complete(
         )
     if outcome not in {"PASS", "FAIL", "INCONCLUSIVE", "ERROR", "PRECONDITION_FAILURE", "CANCELED"}:
         raise HTTPException(422, "Invalid outcome")
+    suite = db.get(TestSuite, run.suite_id)
+    checkpoint_row = db.get(RunnerCheckpoint, run.id)
+    checkpoint = json.loads(checkpoint_row.checkpoint_json) if checkpoint_row else None
+    if outcome == "PASS":
+        if suite is None:
+            raise HTTPException(409, "Run suite is unavailable")
+        _require_valid_pass_evidence(run, suite, payload.result, checkpoint)
+    # This assertion is intentionally precise: the server signs a runner
+    # attestation after consistency validation, not a claim that it observed
+    # the customer's private provider or target network itself.
+    payload.result["server_validation"] = {
+        "contract": "runner-attested-v1",
+        # Only a PASS that survived the strict server evidence validation
+        # above may be described as having passed. Signed FAIL, ERROR or
+        # INCONCLUSIVE reports must never claim a green result.
+        "passed": outcome == "PASS",
+        "server_issued_oracle_bound": bool(
+            checkpoint and (checkpoint.get("resource") or {}).get("canary") == run.oracle_canary
+        ),
+    }
     run.outcome = outcome
     run.state = {
         "PASS": "PASSED",

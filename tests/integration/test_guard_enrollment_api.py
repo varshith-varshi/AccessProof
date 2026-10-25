@@ -40,11 +40,13 @@ def test_guard_enrollment_is_single_use_and_machine_credentials_are_separate():
         assert client.post("/api/v1/guards/exchange", json={"enrollment_token": token, "version": "1.0.0"}).status_code == 401
         # A web session is never accepted as a Guard machine credential.
         assert client.post("/api/v1/guards/heartbeat", headers={"Authorization": f"Bearer {account['session_token']}"}, json={"guard_id": guard_id, "version": "1.0.0"}).status_code == 401
+        # A machine credential cannot claim an arbitrary policy version; it
+        # must first acknowledge an actual control-plane distribution.
         heartbeat = client.post("/api/v1/guards/heartbeat", headers={"Authorization": f"Bearer {credential}"}, json={"guard_id": guard_id, "version": "1.0.0", "active_policy_version": 7})
-        assert heartbeat.status_code == 200
+        assert heartbeat.status_code == 409
         listed = client.get("/api/v1/guards", headers=_headers(account)).json()
         assert listed[0]["status"] == "enrolled"
-        assert listed[0]["active_policy_version"] == 7
+        assert listed[0]["active_policy_version"] == 0
         other_guard = client.post("/api/v1/guards", headers=_headers(account), json={"name": "other"}).json()["id"]
         assert client.post("/api/v1/guards/heartbeat", headers={"Authorization": f"Bearer {credential}"}, json={"guard_id": other_guard, "version": "1.0.0"}).status_code == 401
         assert client.post(f"/api/v1/guards/{guard_id}/revoke", headers=_headers(account)).status_code == 200
@@ -99,3 +101,26 @@ def test_guard_audit_upload_is_machine_only_and_idempotent():
         assert client.post("/api/v1/guards/audit-events", headers={"Authorization": f"Bearer {account['session_token']}"}, json=payload).status_code == 401
         with SessionLocal() as db:
             assert len(list(db.scalars(select(GuardAuditEvent)))) == 1
+
+
+def test_machine_guard_policy_notification_is_authenticated_and_version_bound():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        account = _signup(client, "notify-admin@example.com")
+        guard_id = client.post("/api/v1/guards", headers=_headers(account), json={"name": "g"}).json()["id"]
+        token = client.post(f"/api/v1/guards/{guard_id}/enrollments", headers=_headers(account), json={}).json()["enrollment_token"]
+        credential = client.post("/api/v1/guards/exchange", json={"enrollment_token": token, "version": "1"}).json()["guard_credential"]
+        with SessionLocal() as db:
+            subject = GuardSubject(organization_id=account["organization_id"], provider="google-drive", provider_subject_id="notify-user")
+            resource = GuardResource(organization_id=account["organization_id"], source_id="drive", provider_resource_id="notify-file")
+            db.add_all([subject, resource])
+            db.flush()
+            db.add(GuardPolicy(organization_id=account["organization_id"], policy_key="notify", version=3, decision="deny", subject_id=subject.id, resource_id=resource.id, source_id="drive", scope="read", reason="REVOKED"))
+            db.commit()
+        headers = {"Authorization": f"Bearer {credential}"}
+        response = client.get(f"/api/v1/guards/{guard_id}/policy-notifications", headers=headers, params={"after_version": 2, "wait_seconds": 0})
+        assert response.status_code == 200
+        assert response.json()["event_type"] == "POLICY_UPDATE_AVAILABLE"
+        assert response.json()["policy_version"] == 3
+        assert client.get(f"/api/v1/guards/{guard_id}/policy-notifications", headers={"Authorization": f"Bearer {account['session_token']}"}, params={"wait_seconds": 0}).status_code == 401

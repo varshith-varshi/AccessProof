@@ -194,6 +194,43 @@ class OidcLoginState(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class MicrosoftConsentState(Base):
+    """One-time source consent state; no tokens or raw state are stored."""
+
+    __tablename__ = "microsoft_consent_states"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("source_connections.id", ondelete="CASCADE"), index=True
+    )
+    initiated_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    config_fingerprint: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GoogleSourceOAuthState(Base):
+    """One-time tenant/source-bound Google consent transaction with PKCE."""
+
+    __tablename__ = "google_source_oauth_states"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="CASCADE"), index=True)
+    initiated_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    encrypted_verifier: Mapped[str] = mapped_column(Text)
+    config_fingerprint: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class OidcIdentity(Base):
     __tablename__ = "oidc_identities"
     __table_args__ = (
@@ -319,6 +356,23 @@ class SourceConnection(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class SourceEffectiveCertification(Base):
+    """Signed, scope-specific live provider proof; not writable via customer API."""
+    __tablename__ = "source_effective_certifications"
+    __table_args__ = (UniqueConstraint("organization_id", "source_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="CASCADE"), index=True)
+    provider_profile: Mapped[str] = mapped_column(String(80))
+    scope_digest: Mapped[str] = mapped_column(String(64))
+    evidence_digest: Mapped[str] = mapped_column(String(64))
+    verifier_version: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), default="unverified")
+    certified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    signature: Mapped[str] = mapped_column(String(64))
+
+
 class ProviderSyncCursor(Base):
     """Tenant-scoped durable progress for a provider synchronization stream.
 
@@ -429,6 +483,9 @@ class TestRun(Base):
     denied_principal_json: Mapped[str] = mapped_column(Text, default="{}")
     release: Mapped[str] = mapped_column(String(200), default="manual")
     git_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Server-issued oracle material binds checkpoints and final evidence to this run.
+    # It is never accepted from the runner or a browser client.
+    oracle_canary: Mapped[str] = mapped_column(String(80), nullable=False, default=lambda: f"AP-CANARY-{uuid4()}")
     state: Mapped[str] = mapped_column(String(40), default="CREATED")
     outcome: Mapped[str | None] = mapped_column(String(40), nullable=True)
     result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -486,6 +543,32 @@ class Report(Base):
     signing_public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     signed_manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ControlPlaneReport(Base):
+    """Immutable, tenant-scoped, signed evidence export.
+
+    This is separate from legacy synthetic-run ``Report`` rows: its payload is
+    derived from current control-plane state and machine-uploaded Guard audit
+    metadata, never from a test run.
+    """
+    __tablename__ = "control_plane_reports"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    report_type: Mapped[str] = mapped_column(String(50), index=True)
+    generated_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    payload_json: Mapped[str] = mapped_column(Text)
+    report_hash: Mapped[str] = mapped_column(String(64))
+    signing_key_id: Mapped[str] = mapped_column(String(200))
+    signature: Mapped[str] = mapped_column(Text)
+    signing_public_key: Mapped[str] = mapped_column(Text)
+    signed_manifest_json: Mapped[str] = mapped_column(Text)
 
 
 class Runner(Base):
@@ -690,6 +773,48 @@ class UsageRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ProviderEventSubscription(Base):
+    """A provider watch channel bound to exactly one tenant source."""
+    __tablename__ = "provider_event_subscriptions"
+    __table_args__ = (UniqueConstraint("provider", "channel_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(50), index=True)
+    channel_type: Mapped[str] = mapped_column(String(50), default="acl")
+    channel_id: Mapped[str] = mapped_column(String(255))
+    provider_resource_id: Mapped[str] = mapped_column(String(1024))
+    encrypted_channel_token: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_notification_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_successful_processing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ProviderEventJournal(Base):
+    """Durable provider notification hint; never itself an authorization record."""
+    __tablename__ = "provider_event_journal"
+    __table_args__ = (UniqueConstraint("organization_id", "dedupe_key"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="CASCADE"), index=True)
+    subscription_id: Mapped[str] = mapped_column(ForeignKey("provider_event_subscriptions.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(50), index=True)
+    event_type: Mapped[str] = mapped_column(String(50))
+    provider_message_number: Mapped[str] = mapped_column(String(128))
+    dedupe_key: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30), default="received", index=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+
 class GuardSubject(Base):
     __tablename__ = "guard_subjects"
     __table_args__ = (UniqueConstraint("organization_id", "provider", "provider_subject_id"),)
@@ -701,6 +826,36 @@ class GuardSubject(Base):
     primary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class GuardIdentityMapping(Base):
+    """Verified bridge from an employee OIDC principal to a source identity.
+
+    A mapping deliberately uses immutable issuer/subject values and a resolved
+    source-side subject.  Mutable email addresses are presentation metadata,
+    never proof of authorization.
+    """
+    __tablename__ = "guard_identity_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id", "source_id", "oidc_issuer", "oidc_subject", "oidc_tenant_id",
+            name="uq_guard_identity_mapping_principal",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="CASCADE"), index=True)
+    oidc_issuer: Mapped[str] = mapped_column(String(1000), index=True)
+    oidc_subject: Mapped[str] = mapped_column(String(500), index=True)
+    oidc_tenant_id: Mapped[str | None] = mapped_column(String(255), nullable=True, default="")
+    source_subject_id: Mapped[str] = mapped_column(ForeignKey("guard_subjects.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="VERIFIED", index=True)
+    method: Mapped[str] = mapped_column(String(50), default="admin_verified")
+    verified_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -717,6 +872,8 @@ class GuardResource(Base):
     scope: Mapped[str] = mapped_column(String(100), default="read")
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Independent from delta-feed sync time: durable fair ACL reconciliation.
+    last_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class GuardPermissionEvent(Base):
@@ -819,8 +976,50 @@ class GuardAuditEvent(Base):
     result: Mapped[str] = mapped_column(String(30))
     reason: Mapped[str] = mapped_column(String(255))
     policy_version: Mapped[int] = mapped_column(default=0)
+    authorization_revision: Mapped[int | None] = mapped_column(nullable=True)
+    authorization_revision_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     resources_json: Mapped[str] = mapped_column(Text, default="[]")
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuthorizationRevisionSequence(Base):
+    """Tenant/application-scoped allocator for monotonic authorization revisions."""
+    __tablename__ = "authorization_revision_sequences"
+    __table_args__ = (UniqueConstraint("organization_id", "application_row_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    next_revision: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AuthorizationRevision(Base):
+    """Signed binding of one application decision boundary to exact source state.
+
+    ``state_hash`` covers only stable authorization inputs. A control-plane poll
+    that observes the same state reuses the existing revision; any ACL,
+    directory, policy, route or binding change allocates a new monotonic one.
+    """
+    __tablename__ = "authorization_revisions"
+    __table_args__ = (UniqueConstraint("organization_id", "application_row_id", "revision"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    application_id: Mapped[str] = mapped_column(String(255), index=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    guard_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    revision: Mapped[int] = mapped_column()
+    state_hash: Mapped[str] = mapped_column(String(64), index=True)
+    revision_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    previous_revision_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    signing_key_id: Mapped[str] = mapped_column(String(200))
+    signature: Mapped[str] = mapped_column(Text)
+    signing_public_key: Mapped[str] = mapped_column(Text)
+    signed_manifest_json: Mapped[str] = mapped_column(Text)
+    source_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class GuardRegistration(Base):
@@ -836,6 +1035,7 @@ class GuardRegistration(Base):
     last_policy_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     health: Mapped[str] = mapped_column(String(30), default="not_enrolled")
+    active_authorization_revisions_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     credential_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -852,11 +1052,60 @@ class AIApplication(Base):
     mode: Mapped[str] = mapped_column(String(20), default="shadow")
     guard_id: Mapped[str | None] = mapped_column(ForeignKey("guard_registrations.id", ondelete="SET NULL"), nullable=True, index=True)
     source_id: Mapped[str | None] = mapped_column(ForeignKey("source_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    adapter_type: Mapped[str] = mapped_column(String(50), default="generic-python", server_default="generic-python")
+    adapter_contract_version: Mapped[str] = mapped_column(String(50), default="accessproof.rag/v1", server_default="accessproof.rag/v1")
     layer1_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     layer2_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provenance_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     buffering_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ProtectionActivationRun(Base):
+    """Durable, tenant-bound automatic preflight state; not authorization proof.
+
+    Never mark a run active until a separate machine-authenticated customer RAG
+    challenge and enrolled Guard Protect acknowledgement protocol is available.
+    """
+    __tablename__ = "protection_activation_runs"
+    __table_args__ = (UniqueConstraint("organization_id", "application_row_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    requested_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    state: Mapped[str] = mapped_column(String(32), default="action_required")
+    guard_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    configuration_fingerprint: Mapped[str] = mapped_column(String(64))
+    checks_json: Mapped[str] = mapped_column(Text, default="[]")
+    reason_code: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RAGRouteChallenge(Base):
+    """Nonce-bound machine-submitted reference-route evidence.
+
+    Certification must still be paired with exact Guard audit decisions and
+    current source readiness; this record alone grants no Protect access.
+    """
+    __tablename__ = "rag_route_challenges"
+    __table_args__ = (UniqueConstraint("organization_id", "application_row_id", "nonce_digest"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    guard_id: Mapped[str] = mapped_column(ForeignKey("guard_registrations.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(String(36))
+    nonce_digest: Mapped[str] = mapped_column(String(64), unique=True)
+    configuration_fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), default="issued")
+    deployment_sha256: Mapped[str] = mapped_column(String(64))
+    route_sha256: Mapped[str] = mapped_column(String(64))
+    result_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cutover_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class GuardEnrollment(Base):

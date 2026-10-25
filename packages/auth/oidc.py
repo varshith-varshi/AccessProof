@@ -33,7 +33,9 @@ class OidcProviderClient:
         timeout_seconds: float = 15.0,
         transport: httpx.BaseTransport | None = None,
     ):
-        self.issuer_url = issuer_url.rstrip("/")
+        # OIDC issuer comparison is exact.  Do not normalize trailing slashes:
+        # the issuer string is part of the cryptographic token contract.
+        self.issuer_url = issuer_url
         validate_cloud_url(self.issuer_url)
         self._client = httpx.Client(
             timeout=timeout_seconds, follow_redirects=False, trust_env=False, transport=transport
@@ -61,8 +63,9 @@ class OidcProviderClient:
         return payload
 
     def discovery(self) -> OidcDiscovery:
-        payload = self._get_json(f"{self.issuer_url}/.well-known/openid-configuration")
-        issuer = str(payload.get("issuer") or "").rstrip("/")
+        discovery_url = self.issuer_url + ("" if self.issuer_url.endswith("/") else "/") + ".well-known/openid-configuration"
+        payload = self._get_json(discovery_url)
+        issuer = payload.get("issuer")
         if issuer != self.issuer_url:
             raise OidcError("OIDC discovery issuer does not match configured issuer")
         values = {

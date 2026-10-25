@@ -13,3 +13,7 @@ build
 .ruff_cache
 apps/web/test-results
 apps/web/playwright-report
+dist
+*.zip
+**/test-results
+**/playwright-report

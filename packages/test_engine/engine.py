@@ -262,6 +262,7 @@ class PermissionRegressionEngine:
         scenario: ScenarioDefinition,
         resume_checkpoint: dict[str, Any] | None = None,
         run_id_override: str | UUID | None = None,
+        oracle_canary: str | None = None,
     ) -> EngineResult:
         resume = dict(resume_checkpoint or {})
         self._active_principal_external_id = allowed.external_id
@@ -275,6 +276,8 @@ class PermissionRegressionEngine:
         observations = _restore_observations(resume.get("observations"))
         timeline = _restore_timeline(resume.get("timeline"))
         resource = _restore_resource(resume.get("resource"))
+        if oracle_canary and resource is not None and resource.canary != oracle_canary:
+            raise ValueError("Checkpoint resource canary does not match the server-issued run oracle")
         interrupted = False
         mutation_operation_id = resume.get("mutation_operation_id") or str(uuid4())
         mutation_provider_request_id = resume.get("mutation_provider_request_id")
@@ -289,7 +292,7 @@ class PermissionRegressionEngine:
         # Probe wording is deterministic for the selected synthetic domain and is
         # independent of the unique canary/resource IDs used by the security oracle.
         probe_set = deterministic_probes(
-            generate_synthetic_document(category=scenario.synthetic_category.value)
+            generate_synthetic_document(category=scenario.synthetic_category.value, canary=oracle_canary)
         )
 
         def event(state: RunState, detail: str) -> None:
@@ -346,7 +349,7 @@ class PermissionRegressionEngine:
 
             if resource is None:
                 event(RunState.PROVISIONING, "Creating synthetic resource")
-                synthetic = generate_synthetic_document(category=scenario.synthetic_category.value)
+                synthetic = generate_synthetic_document(category=scenario.synthetic_category.value, canary=oracle_canary)
                 resource = await self.source.create_resource(
                     name=synthetic.title, content=synthetic.body, marker=synthetic.canary
                 )

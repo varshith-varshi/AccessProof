@@ -1,0 +1,141 @@
+........................................................................ [ 23%]
+................FF...............................F...................... [ 47%]
+...................F.................................................... [ 71%]
+........................................................................ [ 94%]
+................                                                         [100%]
+=================================== FAILURES ===================================
+__ test_protect_layer1_must_not_release_if_layer2_silently_reverts_to_shadow ___
+
+    def test_protect_layer1_must_not_release_if_layer2_silently_reverts_to_shadow():
+        rag, calls = _harness(layer1_mode="protect", layer2_decision="would_block",
+                              layer2_reason="UNVERIFIED")
+        answer = rag.run(employee_token="synthetic", application_id="app",
+                         retrieved=[PUBLIC], generate=lambda _: [CANARY])
+        assert len(calls) == 2
+>       assert answer.decision == "block"
+E       AssertionError: assert 'would_block' == 'block'
+E         
+E         - block
+E         + would_block
+
+tests/security/test_adversarial_sdk_contract.py:43: AssertionError
+__________ test_protect_layer1_must_not_accept_would_allow_at_layer2 ___________
+
+    def test_protect_layer1_must_not_accept_would_allow_at_layer2():
+        rag, calls = _harness(layer1_mode="protect", layer2_decision="would_allow")
+        answer = rag.run(employee_token="synthetic", application_id="app",
+                         retrieved=[PUBLIC], generate=lambda _: CANARY)
+        assert len(calls) == 2
+>       assert answer.decision == "block"
+E       AssertionError: assert 'would_allow' == 'block'
+E         
+E         - block
+E         + would_allow
+
+tests/security/test_adversarial_sdk_contract.py:52: AssertionError
+________ test_policy_rollover_during_layer2_consumption_blocks_release _________
+
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-47/test_policy_rollover_during_la0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x795ec5d50980>
+
+    def test_policy_rollover_during_layer2_consumption_blocks_release(tmp_path, monkeypatch):
+        policy = PolicyCache(str(tmp_path / "version-race.db"))
+        policy.install(1, [{
+            "subject_id": "alice", "source_id": "drive",
+            "resource_id": "finance", "decision": "allow",
+        }])
+        policy.set_application_bindings([{
+            "application_id": "rag", "source_id": "drive", "mode": "protect",
+            "source_acl_healthy": True,
+        }])
+        policy.mark_sync_success()
+        secret = "synthetic-release-race-key-over-32-characters"
+        settings = {
+            "cache": policy, "identity_mode": "static", "issuer": "https://id.local",
+            "audience": "rag", "verification_key": secret,
+            "subject_claim": "sub", "expected_tenant": None,
+            "max_policy_age_seconds": 300,
+        }
+        for key, value in settings.items():
+            monkeypatch.setattr(guard_app, key, value)
+        token = jwt.encode({
+            "sub": "alice", "iss": "https://id.local", "aud": "rag",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        }, secret, algorithm="HS256")
+        headers = {"Authorization": f"Bearer {token}"}
+    
+        def filter_request(client, request_id):
+            result = client.post("/guard/v1/filter-resources", headers=headers, json={
+                "application_id": "rag", "request_id": request_id,
+                "resources": [{"source_id": "drive", "resource_id": "finance"}],
+            })
+            assert result.status_code == 200
+            return result.json()
+    
+        def output_request(client, request_id, decision_id):
+            return client.post("/guard/v1/check-output", headers=headers, json={
+                "application_id": "rag", "request_id": request_id,
+                "decision_id": decision_id, "used_resource_ids": ["finance"],
+                "provenance": [{"source_resource_ids": ["finance"]}],
+            })
+    
+        with TestClient(guard_app.app) as client:
+            first = filter_request(client, "race-1")
+            assert first["decision"] == "allow"
+            original_consume = policy.consume_contexts
+    
+            def revoke_before_context_consumption(*args, **kwargs):
+                policy.install(2, [{
+                    "subject_id": "alice", "source_id": "drive",
+                    "resource_id": "finance", "decision": "deny", "reason": "REVOKED",
+                }])
+                return original_consume(*args, **kwargs)
+    
+            monkeypatch.setattr(policy, "consume_contexts", revoke_before_context_consumption)
+            denied = output_request(client, "race-1", first["decision_id"])
+            assert denied.status_code == 200
+>           assert denied.json()["decision"] == "block", denied.json()
+E           AssertionError: {'decision': 'allow', 'reason': 'TRUSTED_PROVENANCE_VALID', 'policy_version': 1}
+E           assert 'allow' == 'block'
+E             
+E             - block
+E             + allow
+
+tests/security/test_release_version_race.py:67: AssertionError
+___________ test_protected_drive_fails_closed_when_guard_unavailable ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x795ec5e2f680>
+
+    def test_protected_drive_fails_closed_when_guard_unavailable(monkeypatch):
+        module = _demo(monkeypatch)
+        def fail(_):
+            return GuardClient("https://fake-guard.test", client=httpx.Client(
+                transport=httpx.MockTransport(lambda _: httpx.Response(503))
+            ))
+        monkeypatch.setattr(module, "GuardClient", fail)
+        with TestClient(module.app) as client:
+            response = client.post("/v1/protected-chat", headers={"Authorization": "Bearer synthetic-jwt"}, json={"message": "secret?"})
+>       assert response.status_code == 503
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/unit/test_drive_rag_guard_path.py:92: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /tmp/accessproof-redteam-20261020/repo/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+.venv/lib/python3.12/site-packages/typer/__init__.py:24
+  /tmp/accessproof-redteam-20261020/repo/.venv/lib/python3.12/site-packages/typer/__init__.py:24: DeprecationWarning: 'click.utils.get_binary_stream' is deprecated and will be removed in Click 9.0.
+    from click.utils import get_binary_stream as get_binary_stream
+
+.venv/lib/python3.12/site-packages/typer/__init__.py:25
+  /tmp/accessproof-redteam-20261020/repo/.venv/lib/python3.12/site-packages/typer/__init__.py:25: DeprecationWarning: 'click.utils.get_text_stream' is deprecated and will be removed in Click 9.0.
+    from click.utils import get_text_stream as get_text_stream
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_adversarial_sdk_contract.py::test_protect_layer1_must_not_release_if_layer2_silently_reverts_to_shadow
+FAILED tests/security/test_adversarial_sdk_contract.py::test_protect_layer1_must_not_accept_would_allow_at_layer2
+FAILED tests/security/test_release_version_race.py::test_policy_rollover_during_layer2_consumption_blocks_release
+FAILED tests/unit/test_drive_rag_guard_path.py::test_protected_drive_fails_closed_when_guard_unavailable

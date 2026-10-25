@@ -47,20 +47,24 @@ def _token(subject: str = "bob") -> str:
     )
 
 
-def _guard(cache: PolicyCache, mode: str = "protect") -> TestClient:
-    guard_app.cache = cache
-    guard_app.issuer = "https://issuer"
-    guard_app.audience = "rag"
-    guard_app.verification_key = "test-key-with-at-least-thirty-two-bytes"
-    guard_app.identity_mode = "static"
-    guard_app.expected_tenant = "tenant-a"
-    guard_app.subject_claim = "oid"
-    guard_app.mode = mode
-    guard_app.fail_mode = "fail_closed"
+def _guard(cache: PolicyCache, monkeypatch, mode: str = "protect") -> TestClient:
+    """Install a synthetic Guard without leaking module state to later tests."""
+    for key, value in {
+        "cache": cache,
+        "issuer": "https://issuer",
+        "audience": "rag",
+        "verification_key": "test-key-with-at-least-thirty-two-bytes",
+        "identity_mode": "static",
+        "expected_tenant": "tenant-a",
+        "subject_claim": "oid",
+        "mode": mode,
+        "fail_mode": "fail_closed",
+    }.items():
+        monkeypatch.setattr(guard_app, key, value)
     return TestClient(guard_app.app)
 
 
-def test_golden_never_authorized(tmp_path):
+def test_golden_never_authorized(tmp_path, monkeypatch):
     cache = PolicyCache(str(tmp_path / "guard.db"))
     cache.install(
         1,
@@ -81,7 +85,7 @@ def test_golden_never_authorized(tmp_path):
             },
         ],
     )
-    with _guard(cache) as client:
+    with _guard(cache, monkeypatch) as client:
         response = client.post(
             "/guard/v1/filter-resources",
             headers={"Authorization": f"Bearer {_token()}"},
@@ -201,7 +205,7 @@ def test_golden_overlapping_grants(tmp_path):
     db.close()
 
 
-def test_golden_derived_provenance(tmp_path):
+def test_golden_derived_provenance(tmp_path, monkeypatch):
     cache = PolicyCache(str(tmp_path / "guard.db"))
     cache.install(
         1,
@@ -215,7 +219,7 @@ def test_golden_derived_provenance(tmp_path):
             }
         ],
     )
-    with _guard(cache) as client:
+    with _guard(cache, monkeypatch) as client:
         filtered = client.post(
             "/guard/v1/filter-resources",
             headers={"Authorization": f"Bearer {_token()}"},

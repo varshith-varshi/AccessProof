@@ -75,7 +75,13 @@ async def test_google_drive_contract_paths():
         path = req.url.path
         if req.method == "GET" and path.endswith("/drive/v3/files/root"):
             return httpx.Response(
-                200, json={"id": "root", "name": "AccessProof", "driveId": "shared1"}
+                200,
+                json={
+                    "id": "root",
+                    "name": "AccessProof",
+                    "driveId": "shared1",
+                    "mimeType": "application/vnd.google-apps.folder",
+                },
             )
         if req.method == "POST" and path.endswith("/upload/drive/v3/files"):
             return httpx.Response(200, json={"id": "file1", "name": "AP_TEST.txt"})

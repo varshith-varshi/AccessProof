@@ -1,9 +1,10 @@
 import asyncio
+import json
 
 from fastapi.testclient import TestClient
 
 from apps.api.accessproof_api.app import app
-from apps.api.accessproof_api.db import Base, CleanupTask, SessionLocal, engine
+from apps.api.accessproof_api.db import Base, CleanupTask, SessionLocal, TestRun, engine
 from apps.worker.accessproof_worker.main import process_cleanup_task
 
 
@@ -69,8 +70,10 @@ def test_cleanup_failure_creates_durable_task_and_janitor_reconciles_it():
         assert leased["run_id"] == run_id
         result = {
             "run_id": run_id,
-            "outcome": "PASS",
-            "reason": "security result retained even though provider cleanup failed",
+            # This test exercises durable cleanup, not security validation.
+            # With no stable denial/source proof, a PASS must be rejected.
+            "outcome": "INCONCLUSIVE",
+            "reason": "Provider cleanup failed; the security result is not certified",
             "timeline": [
                 {
                     "state": "CLEANING_UP",
@@ -99,6 +102,13 @@ def test_cleanup_failure_creates_durable_task_and_janitor_reconciles_it():
         assert done.status_code == 200
 
     with SessionLocal() as db:
+        run = db.get(TestRun, run_id)
+        assert run.outcome == "INCONCLUSIVE"
+        # This record is signed and stored: incomplete provider cleanup must
+        # never make the server validator announce a successful security run.
+        validation = json.loads(run.result_json)["server_validation"]
+        assert validation["contract"] == "runner-attested-v1"
+        assert validation["passed"] is False
         task = db.query(CleanupTask).filter(CleanupTask.run_id == run_id).one()
         assert task.status == "pending"
         task_id = task.id

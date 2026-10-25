@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import threading
 import time
+from ipaddress import ip_address
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import jwt
+
+from packages.connector_sdk.http_target import _pin_https_url
 
 
 class IdentityError(RuntimeError):
@@ -22,6 +26,8 @@ class IdentityError(RuntimeError):
 @dataclass(frozen=True)
 class VerifiedIdentity:
     subject: str
+    issuer: str
+    tenant_id: str | None
     claims: dict[str, Any]
 
 
@@ -29,6 +35,21 @@ class OidcVerifier:
     """Bounded, cached OIDC discovery and asymmetric JWT validation."""
 
     _algorithms = {"RS256", "RS384", "RS512", "ES256", "ES384"}
+
+    @staticmethod
+    def _public_https_url(url: str, error_code: str) -> None:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").rstrip(".").lower()
+        if (parsed.scheme != "https" or not parsed.netloc or not host
+                or parsed.username or parsed.password or parsed.fragment
+                or host == "localhost" or host.endswith((".localhost", ".internal", ".local"))):
+            raise IdentityError(error_code)
+        try:
+            address = ip_address(host)
+        except ValueError:
+            return
+        if not address.is_global:
+            raise IdentityError(error_code)
 
     def __init__(
         self,
@@ -41,7 +62,20 @@ class OidcVerifier:
         timeout_seconds: float = 5,
         client: httpx.Client | None = None,
     ) -> None:
-        self.issuer = issuer.rstrip("/")
+        # Permissions must follow an immutable issuer-scoped user identifier.
+        # Emails, usernames and display names can be reassigned and would
+        # silently transfer an old employee's ACL to a new account.
+        if subject_claim not in {"sub", "oid"}:
+            raise IdentityError("IDENTITY_SUBJECT_CLAIM_UNSAFE")
+        # An issuer is an opaque security identifier.  In particular Auth0
+        # issuers conventionally end in '/', and removing it merges distinct
+        # issuer namespaces.  Preserve the configured value byte-for-byte.
+        if not issuer or issuer != issuer.strip():
+            raise IdentityError("IDENTITY_ISSUER_INVALID")
+        self._public_https_url(issuer, "IDENTITY_ISSUER_INVALID")
+        if urlsplit(issuer).query:
+            raise IdentityError("IDENTITY_ISSUER_INVALID")
+        self.issuer = issuer
         self.audience = audience
         self.subject_claim = subject_claim
         self.tenant_id = tenant_id
@@ -57,8 +91,25 @@ class OidcVerifier:
             self._client.close()
 
     def _json(self, url: str) -> dict[str, Any]:
+        self._public_https_url(url, "IDENTITY_KEY_UNAVAILABLE")
         try:
-            response = self._client.get(url, headers={"Accept": "application/json"})
+            if self._owns_client:
+                # Pin the already verified public address to the connection
+                # while preserving the original Host and TLS SNI. Never let
+                # attacker-controlled discovery metadata reach local/metadata
+                # IPs, including via DNS rebinding after validation.
+                pinned, host, sni = _pin_https_url(url)
+                response = self._client.get(
+                    pinned,
+                    headers={"Accept": "application/json", "Host": host},
+                    extensions={"sni_hostname": sni},
+                )
+            else:
+                # Injected mock transports exercise token validation without
+                # requiring real DNS for synthetic issuer.example.test.
+                response = self._client.get(url, headers={"Accept": "application/json"})
+        except ValueError as exc:
+            raise IdentityError("IDENTITY_KEY_UNAVAILABLE") from exc
         except httpx.HTTPError as exc:
             raise IdentityError("IDENTITY_PROVIDER_UNAVAILABLE") from exc
         if response.status_code >= 500:
@@ -77,13 +128,15 @@ class OidcVerifier:
         with self._lock:
             if not refresh and self._discovery and time.monotonic() - self._discovery[0] < self.cache_seconds:
                 return self._discovery[1]
-            payload = self._json(f"{self.issuer}/.well-known/openid-configuration")
-            discovered_issuer = str(payload.get("issuer") or "").rstrip("/")
+            discovery_url = self.issuer + ("" if self.issuer.endswith("/") else "/") + ".well-known/openid-configuration"
+            payload = self._json(discovery_url)
+            discovered_issuer = payload.get("issuer")
             jwks_uri = payload.get("jwks_uri")
-            if discovered_issuer != self.issuer:
+            if not isinstance(discovered_issuer, str) or discovered_issuer != self.issuer:
                 raise IdentityError("IDENTITY_ISSUER_MISMATCH")
-            if not isinstance(jwks_uri, str) or not jwks_uri.startswith("https://"):
+            if not isinstance(jwks_uri, str):
                 raise IdentityError("IDENTITY_KEY_UNAVAILABLE")
+            self._public_https_url(jwks_uri, "IDENTITY_KEY_UNAVAILABLE")
             document = {"issuer": discovered_issuer, "jwks_uri": jwks_uri}
             self._discovery = (time.monotonic(), document)
             return document
@@ -148,4 +201,10 @@ class OidcVerifier:
         subject = claims.get(self.subject_claim)
         if not isinstance(subject, str) or not subject:
             raise IdentityError("IDENTITY_SUBJECT_UNKNOWN")
-        return VerifiedIdentity(subject=subject, claims=claims)
+        tenant = claims.get("tid")
+        return VerifiedIdentity(
+            subject=subject,
+            issuer=self.issuer,
+            tenant_id=tenant if isinstance(tenant, str) and tenant else None,
+            claims=claims,
+        )

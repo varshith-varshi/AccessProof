@@ -121,4 +121,22 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # This validator deletes/recreates test organizations. It must never run
+    # merely because someone asks for --help or explores deployment commands.
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(
+        description="Destructive Redis recovery check. Use only with a dedicated disposable database."
+    )
+    parser.add_argument(
+        "--execute", action="store_true",
+        help="Run against an isolated, correctly migrated validation database",
+    )
+    args = parser.parse_args()
+    if not args.execute or os.environ.get("ACCESSPROOF_DISPOSABLE_VALIDATION") != "YES":
+        parser.error(
+            "Destructive validation disabled. Use --execute with "
+            "ACCESSPROOF_DISPOSABLE_VALIDATION=YES only on a disposable database."
+        )
     raise SystemExit(main())

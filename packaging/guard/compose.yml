@@ -1,5 +1,6 @@
 services:
   guard:
+    container_name: accessproof-guard
     build:
       context: .
       dockerfile: apps/guard/Dockerfile
@@ -8,8 +9,17 @@ services:
       ACCESSPROOF_GUARD_CREDENTIAL_FILE: /var/lib/accessproof-guard/credentials.json
       ACCESSPROOF_GUARD_IDENTITY_MODE: ${ACCESSPROOF_GUARD_IDENTITY_MODE:-oidc}
     read_only: true
+    restart: unless-stopped
     tmpfs: [/tmp]
     volumes:
       - ./state:/var/lib/accessproof-guard
     ports:
       - "127.0.0.1:${GUARD_PORT:-8080}:8080"
+    healthcheck:
+      # An HTTP 200 only proves that the process responds.  A Guard without a
+      # complete, healthy policy must not be reported as customer-ready.
+      test: ["CMD", "python", "-c", "import json, sys, urllib.request; result = json.load(urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)); sys.exit(0 if result.get('ready') is True and result.get('status') == 'ok' else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
