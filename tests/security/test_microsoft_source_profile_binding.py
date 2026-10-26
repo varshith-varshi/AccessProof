@@ -138,7 +138,7 @@ def test_uncertified_provider_profile_cannot_enable_protect(provider, profile):
         registered_app = client.post("/api/v1/current/ai-applications", headers=headers, json={
             "application_id": app_id, "name": app_id,
             "guard_id": guard.json()["id"], "source_id": source.json()["id"],
-            "adapter_type": "generic-python",
+            "adapter_type": "accessproof-gateway",
             "adapter_contract_version": "accessproof.rag/v1",
         })
         assert registered_app.status_code == 201, registered_app.text

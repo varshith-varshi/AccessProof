@@ -132,7 +132,7 @@ class GoogleWorkspaceDirectoryAdapter(_DirectoryClient):
                 or not isinstance(body.get("id"), str) or not body["id"]
                 or len(body["id"]) > 255):
             raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_INVALID")
-        return body["id"]
+        return str(body["id"])
 
     async def users(self) -> list[DirectoryUser]:
         result: list[DirectoryUser] = []

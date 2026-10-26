@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -90,38 +90,41 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
             }
             seen_user_ids: set[str] = set()
             seen_group_ids: set[str] = set()
+            google_adapter = cast(GoogleWorkspaceDirectoryAdapter, adapter)
             for user in users:
                 if user.status != "active":
                     continue
                 if not isinstance(user.email, str) or not user.email:
                     raise DirectorySyncError("GOOGLE_DRIVE_USER_EMAIL_MISSING")
-                prior = prior_users.get(user.provider_id)
-                if (prior and prior.drive_permission_id and prior.primary_email
-                        and prior.primary_email.casefold() == user.email.casefold()):
-                    permission_id = prior.drive_permission_id
+                prior_user = prior_users.get(user.provider_id)
+                if (prior_user and prior_user.drive_permission_id and prior_user.primary_email
+                        and prior_user.primary_email.casefold() == user.email.casefold()):
+                    permission_id = prior_user.drive_permission_id
                 else:
-                    permission_id = await adapter.drive_permission_id(user.email)
-                    if prior and prior.drive_permission_id and prior.drive_permission_id != permission_id:
+                    permission_id = await google_adapter.drive_permission_id(user.email)
+                    if (prior_user and prior_user.drive_permission_id
+                            and prior_user.drive_permission_id != permission_id):
                         raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_CHANGED")
                 if permission_id in seen_user_ids:
                     raise DirectorySyncError("DUPLICATE_GOOGLE_DRIVE_PERMISSION_ID")
                 seen_user_ids.add(permission_id)
                 verified_user_permission_ids[user.provider_id] = permission_id
-            for group in groups:
-                if not isinstance(group.email, str) or not group.email:
+            for directory_group in groups:
+                if not isinstance(directory_group.email, str) or not directory_group.email:
                     raise DirectorySyncError("GOOGLE_DRIVE_GROUP_EMAIL_MISSING")
-                prior = prior_groups.get(group.provider_id)
-                if (prior and prior.drive_permission_id and prior.provider_email
-                        and prior.provider_email.casefold() == group.email.casefold()):
-                    permission_id = prior.drive_permission_id
+                prior_group = prior_groups.get(directory_group.provider_id)
+                if (prior_group and prior_group.drive_permission_id and prior_group.provider_email
+                        and prior_group.provider_email.casefold() == directory_group.email.casefold()):
+                    permission_id = prior_group.drive_permission_id
                 else:
-                    permission_id = await adapter.drive_permission_id(group.email)
-                    if prior and prior.drive_permission_id and prior.drive_permission_id != permission_id:
+                    permission_id = await google_adapter.drive_permission_id(directory_group.email)
+                    if (prior_group and prior_group.drive_permission_id
+                            and prior_group.drive_permission_id != permission_id):
                         raise DirectorySyncError("GOOGLE_DRIVE_GROUP_PERMISSION_ID_CHANGED")
                 if permission_id in seen_group_ids or permission_id in seen_user_ids:
                     raise DirectorySyncError("DUPLICATE_GOOGLE_DRIVE_GROUP_PERMISSION_ID")
                 seen_group_ids.add(permission_id)
-                verified_group_permission_ids[group.provider_id] = permission_id
+                verified_group_permission_ids[directory_group.provider_id] = permission_id
     except DirectorySyncError as exc:
         cursor.status, cursor.last_error_at, cursor.last_error_code = "degraded", _now(), exc.code
         raise
@@ -259,11 +262,11 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
             membership_row.updated_at = now
     memberships = 0
     for group_id, member_ids in members.items():
-        group = group_rows[group_id]
+        active_group = group_rows[group_id]
         present = set(member_ids)
         existing = list(db.scalars(select(GuardGroupMembership).where(
             GuardGroupMembership.organization_id == source.organization_id,
-            GuardGroupMembership.group_id == group.id,
+            GuardGroupMembership.group_id == active_group.id,
         )))
         by_subject = {membership_row.subject_id: membership_row for membership_row in existing}
         for member_id in present:
@@ -275,19 +278,19 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
             existing_membership = by_subject.get(subject.id)
             was_active = bool(existing_membership and existing_membership.active)
             if existing_membership is None:
-                created_membership = GuardGroupMembership(organization_id=source.organization_id, group_id=group.id, subject_id=subject.id, active=True)
+                created_membership = GuardGroupMembership(organization_id=source.organization_id, group_id=active_group.id, subject_id=subject.id, active=True)
                 db.add(created_membership)
             else:
                 existing_membership.active = True
                 existing_membership.updated_at = now
             if not was_active:
-                _queue_membership_events(db, source, provider, group, subject, "membership_upsert", now)
+                _queue_membership_events(db, source, provider, active_group, subject, "membership_upsert", now)
             memberships += 1
         for membership_row in existing:
             subject = db.get(GuardSubject, membership_row.subject_id)
             if subject and subject.provider_subject_id not in present:
                 if membership_row.active:
-                    _queue_membership_events(db, source, provider, group, subject, "membership_revoke", now)
+                    _queue_membership_events(db, source, provider, active_group, subject, "membership_revoke", now)
                 membership_row.active = False
                 membership_row.updated_at = now
     if identity_map_changed and provider == "google-drive" and settings.env == "production":

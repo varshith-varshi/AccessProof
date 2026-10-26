@@ -299,7 +299,7 @@ class PolicyCache:
                 or not isinstance(tenant, str)
             ):
                 raise ValueError("INVALID_IDENTITY_MAPPINGS")
-            key = (source, issuer, subject, tenant)
+            key = (str(source), str(issuer), str(subject), tenant)
             if key in seen:
                 raise ValueError("CONFLICTING_IDENTITY_MAPPINGS")
             seen.add(key)

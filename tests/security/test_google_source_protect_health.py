@@ -36,7 +36,7 @@ def test_google_policy_binding_unhealthy_without_usable_credentials(monkeypatch)
         guard_id = guard_result.json()["id"]
         application_result = client.post("/api/v1/current/ai-applications", headers=owner_headers, json={
             "application_id": "employee-rag", "name": "Employee RAG",
-            "guard_id": guard_id, "source_id": source_id, "adapter_type": "generic-python",
+            "guard_id": guard_id, "source_id": source_id, "adapter_type": "accessproof-gateway",
         })
         assert application_result.status_code == 201, application_result.text
         enrollment = client.post(
