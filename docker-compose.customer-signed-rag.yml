@@ -1,0 +1,25 @@
+# Explicit hardened overlay for the signed-snapshot reference RAG path.
+# This is NOT a universal existing-customer application deployment.
+services:
+  drive-rag:
+    environment:
+      ACCESSPROOF_ENV: production
+      ACCESSPROOF_DEMO_ALLOW_LEGACY: "0"
+      DRIVE_OWNER_TOKEN: ""
+      ACCESSPROOF_DEMO_REQUIRE_ATTESTED_CONTENT: "1"
+      ACCESSPROOF_DEMO_TRUSTED_SNAPSHOT_PATH: /run/accessproof/trusted/drive.snapshot.json
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/health/ready',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  drive-rag-ingester:
+    environment:
+      ACCESSPROOF_GOOGLE_DRIVE_CREDENTIALS_FILE: /run/secrets/google-oauth/token.json
+      ACCESSPROOF_GOOGLE_DRIVE_ACCESS_TOKEN: ""
+    read_only: true
+    tmpfs: [/tmp]

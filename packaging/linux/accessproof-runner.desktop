@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=AccessProof Runner
+Comment=Connect this machine to AccessProof
+Exec=pkexec /opt/accessproof-runner/venv/bin/accessproof-runner enroll-ui
+Terminal=false
+Categories=System;Security;

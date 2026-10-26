@@ -1,0 +1,10 @@
+"use client";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { EmptyState, ErrorState, Skeleton, StatusBadge } from "../../components/ui";
+import { Employee, api } from "../../lib/api";
+import { formatTimestamp } from "../../lib/format";
+import { PageHeader } from "../app-shell";
+import { ProtectedPage } from "../protected-page";
+
+export default function Employees() { const [rows, setRows] = useState<Employee[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState(""); const load = useCallback(async () => { setLoading(true); setError(""); try { setRows(await api<Employee[]>("/api/v1/current/employees")); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load synchronized employees."); } finally { setLoading(false); } }, []); useEffect(() => { queueMicrotask(() => void load()); }, [load]); return <ProtectedPage><PageHeader eyebrow="IDENTITIES" title="Employees" description="Provider-verified people and groups synchronized from your permission sources."/><section className="card table-card">{loading ? <Skeleton rows={5}/> : error ? <ErrorState message={error} retry={load}/> : !rows.length ? <EmptyState title="No employees synchronized" description="Connect a Google Workspace or Microsoft Entra source, then run directory sync. AccessProof uses provider-stable identities instead of display names." action={<Link className="button compact" href="/sources">Open permission sources</Link>}/> : <table><thead><tr><th>Employee</th><th>Provider identity</th><th>Groups</th><th>Status</th><th>Last synchronized</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td><b>{row.name}</b><small>{row.email ?? "No email returned by provider"}</small></td><td><b>{row.provider}</b><small>{row.stable_id}</small></td><td className="table-muted">{row.groups.length ? row.groups.map(group => group.name).join(", ") : "No synchronized groups"}</td><td><StatusBadge value={row.status}/></td><td>{formatTimestamp(row.last_synced_at)}</td></tr>)}</tbody></table>}</section></ProtectedPage>; }

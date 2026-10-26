@@ -1,0 +1,3 @@
+import { PageHeader } from "../app-shell";
+import { ProtectedPage } from "../protected-page";
+export default function Settings() { return <ProtectedPage><PageHeader eyebrow="WORKSPACE" title="Settings" description="Manage workspace preferences and operational defaults."/><section className="card"><div className="setting-row"><div><b>Workspace name</b><p className="muted">AccessProof organization</p></div><button className="button secondary">Edit</button></div><div className="setting-row"><div><b>Session security</b><p className="muted">Managed by your organization’s authentication policy.</p></div><span className="tag">Managed</span></div></section></ProtectedPage>; }

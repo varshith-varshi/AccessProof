@@ -1,0 +1,33 @@
+# Disposable local-only PostgreSQL/Redis integration lab.
+# Never use this Compose file with real customer credentials or production DBs.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: accessproof_lab
+      POSTGRES_PASSWORD: lab-only-not-a-secret
+      POSTGRES_DB: accessproof_lab
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55439:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accessproof_lab -d accessproof_lab"]
+      interval: 2s
+      retries: 20
+    networks: [lab]
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 20
+    networks: [lab]
+networks:
+  lab:
+    # The lab containers are ephemeral; host ports are explicitly loopback-only.
+    # An internal Docker network suppresses host port publishing on this host.
+    driver: bridge

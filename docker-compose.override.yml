@@ -1,0 +1,13 @@
+services:
+  # This workstation's Docker bridge cannot reach external HTTPS. Keep the two
+  # components that call Google on the host network while preserving the target
+  # and API hostnames expected by saved AccessProof configuration.
+  drive-rag:
+    network_mode: host
+    ports: !reset []
+
+  runner:
+    network_mode: host
+    extra_hosts:
+      - "api:127.0.0.1"
+      - "accessproof-drive-rag:127.0.0.1"
