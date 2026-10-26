@@ -44,12 +44,16 @@ CHECKS = [
         "tests/security/test_cross_source_context_binding.py",
         "tests/security/test_tenant_isolation.py",
     ]),
-    ("sdk_source_integrity_and_release", [
-        "tests/security/test_customer_adapter_source_confusion.py",
-        "tests/security/test_adversarial_sdk_contract.py",
-        "tests/security/test_sdk_guard_failures.py",
+    ("gateway_source_integrity_and_release", [
+        "tests/security/test_gateway_adversarial_contract.py",
+        "tests/security/test_gateway_guard_failures.py",
+        "tests/security/test_gateway_scoped_readiness.py",
+        "tests/security/test_gateway_upstream_transport.py",
         "tests/security/test_adversarial_guard_duplicate_grants.py",
-        "tests/unit/test_rag_adapters.py",
+        "tests/security/test_source_content_attestation.py",
+        "tests/unit/test_gateway_authorization_core.py",
+        "tests/unit/test_gateway_only_release_contract.py",
+        "tests/unit/test_gateway_network_boundary.py",
         "tests/unit/test_layer2_late_sources.py",
     ]),
     ("source_attestation_sse_and_route_observer", [
@@ -98,12 +102,26 @@ def main() -> int:
         "customer_data_used": False,
         "scenario_catalogue_individually_executed": False,
         "three_customer_journey_source": "google-drive-synthetic-only",
-        "framework_adapter_forms": ["generic-python", "langchain-python", "llamaindex-python"],
+        "supported_customer_rag_integration": ["accessproof-gateway"],
+        "public_rag_sdk_available": False,
         "stages": [],
         "external_provider_checks": "BLOCKED",
         "customer_protect_certification": "BLOCKED",
         "known_provenance_integrity_gap": "UNRESOLVED_STRICT_XFAIL",
     }
+    # Prevent false "validation failed" results caused by removed SDK tests
+    # or an accidental typo in a stage definition. Fail before any evidence
+    # is written if this local runner refers to nonexistent test modules.
+    missing_test_paths = [
+        test_path
+        for _, test_paths in CHECKS
+        for test_path in test_paths
+        if not (ROOT / test_path).exists()
+    ]
+    if missing_test_paths:
+        raise RuntimeError(
+            "VALIDATION_TEST_SELECTION_STALE: " + ", ".join(missing_test_paths)
+        )
     result_rows: list[dict[str, object]] = []
     failed = False
     for title, paths in CHECKS:

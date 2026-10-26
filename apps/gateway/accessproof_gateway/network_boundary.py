@@ -102,11 +102,75 @@ def verify_reference_compose_isolation(
     if any(not isinstance(networks.get(name), dict) or
            networks[name].get("internal") is not True for name in rag_networks):
         raise NetworkBoundaryError("RAG network egress is not explicitly isolated")
+    # A direct RAG <-> model network disjointness check is insufficient:
+    # any other dual-homed service can act as an HTTP relay around Gateway.
+    # Explore the transitive network graph through *all non-Gateway services*,
+    # treating each peer as potentially untrusted, including sidecars. Never
+    # infer protection from service names, image names, or declared labels.
+    # Gateway is the only acceptable bridge; it is removed from this graph.
+    # Compose network_mode: service:gateway / container:<id> shares a
+    # container's network namespace without declaring a "networks" edge.
+    # It can run an unprotected local model proxy inside Gateway or model's
+    # namespace. Reject every namespace-sharing peer in the examined stack,
+    # not only those with a named network intersecting the RAG subnet.
+    for name, peer in services.items():
+        if not isinstance(peer, dict):
+            raise NetworkBoundaryError("Unreviewable Compose service")
+        if peer.get("network_mode") or peer.get("pid") == "host" or peer.get("ipc") == "host":
+            raise NetworkBoundaryError("Unreviewable shared container/host namespace")
+        for value in (peer.get("pid"), peer.get("ipc")):
+            if isinstance(value, str) and value.startswith(("service:", "container:")):
+                raise NetworkBoundaryError("Unreviewable shared container/host namespace")
+    unprotected_reachable = set(rag_networks)
+    changed = True
+    while changed:
+        changed = False
+        for name, peer in services.items():
+            if name == gateway_service:
+                continue
+            if not isinstance(peer, dict):
+                raise NetworkBoundaryError("Unreviewable Compose sidecar service")
+            peer_networks = _network_names(peer)
+            if peer_networks & unprotected_reachable:
+                newly_reached = peer_networks - unprotected_reachable
+                if newly_reached:
+                    unprotected_reachable.update(newly_reached)
+                    changed = True
+                # Published sidecars, privileged peers or host aliases create
+                # paths outside this reviewable container-network topology.
+                if (name != rag_service and (
+                    peer.get("ports") or peer.get("network_mode")
+                    or peer.get("privileged") or peer.get("extra_hosts")
+                    or peer.get("cap_add") or peer.get("devices")
+                    or peer.get("pid") == "host"
+                )):
+                    raise NetworkBoundaryError("RAG network has an unreviewable relay sidecar")
+    if not remote_native and unprotected_reachable & model_networks:
+        raise NetworkBoundaryError("RAG can reach model through an unprotected service relay")
+    if any(
+        not isinstance(networks.get(name), dict) or
+        networks[name].get("internal") is not True
+        for name in unprotected_reachable
+    ):
+        raise NetworkBoundaryError("RAG can reach a non-internal network through a sidecar")
     if (any(service.get("network_mode") or service.get("privileged")
             for service in (rag, gateway, *(tuple() if remote_native else (model_service,))))
             or any(service.get("extra_hosts") for service in (rag, gateway))
             or (not remote_native and model_service.get("ports"))):
         raise NetworkBoundaryError("Host networking, privileged networking or published model ports are incompatible")
+    for label, service in (("RAG", rag), ("Gateway", gateway)):
+        # NET_ADMIN and host device access can modify kernel networking or
+        # manipulate egress even when Docker network topology looks isolated.
+        # cap_drop: ALL is insufficient if cap_add later reintroduces powers.
+        if service.get("cap_add") or service.get("devices"):
+            raise NetworkBoundaryError(f"{label} must not add capabilities or host devices")
+        security_opts = service.get("security_opt") or []
+        if (not isinstance(security_opts, list) or any(
+            not isinstance(option, str) or
+            option.lower() in {"seccomp:unconfined", "apparmor:unconfined"}
+            for option in security_opts
+        )):
+            raise NetworkBoundaryError(f"{label} security profile is unreviewable")
     for service in (rag, gateway):
         for volume in service.get("volumes", []):
             mount = volume if isinstance(volume, str) else str(volume.get("source", ""))
