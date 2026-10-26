@@ -16,6 +16,19 @@ class NetworkBoundaryError(ValueError):
     """The inspected Docker Compose deployment cannot guarantee the reference path."""
 
 
+def _unsafe_security_options(service: dict[str, Any]) -> bool:
+    options = service.get("security_opt") or []
+    # Docker accepts both key:value and key=value security options.
+    # Apply the same validation to protected components and reachable peers.
+    return not isinstance(options, list) or any(
+        not isinstance(option, str)
+        or option.lower().replace("=", ":", 1) in {
+            "seccomp:unconfined", "apparmor:unconfined",
+        }
+        for option in options
+    )
+
+
 def _network_names(service: dict[str, Any]) -> set[str]:
     value = service.get("networks", {})
     if isinstance(value, dict):
@@ -23,6 +36,35 @@ def _network_names(service: dict[str, Any]) -> set[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return set(value)
     raise NetworkBoundaryError("Invalid Compose service network configuration")
+
+
+def _has_host_runtime_mount(service: dict[str, Any]) -> bool:
+    """Detect reachable peers with Docker/container runtime or host-root access.
+
+    A container with the Docker socket can create a fresh network-attached
+    container even when its *declared* Compose networks are isolated. Both
+    short- and long-form mounts must be inspected, including the target path.
+    """
+    volumes = service.get("volumes") or []
+    if not isinstance(volumes, list):
+        raise NetworkBoundaryError("Unreviewable Compose volumes declaration")
+    for volume in volumes:
+        if isinstance(volume, str):
+            paths = volume.split(":", 2)[:2]
+        elif isinstance(volume, dict):
+            paths = [volume.get("source", ""), volume.get("target", "")]
+        else:
+            raise NetworkBoundaryError("Unreviewable Compose volume mount")
+        if any(not isinstance(path, str) for path in paths):
+            raise NetworkBoundaryError("Unreviewable Compose volume path")
+        if any(
+            "docker.sock" in path or "containerd.sock" in path
+            or path in {"/", "/run", "/var/run", "/proc", "/sys"}
+            or path.startswith(("/run/docker/", "/run/containerd/", "/var/run/docker/"))
+            for path in paths
+        ):
+            return True
+    return False
 
 
 def verify_reference_compose_isolation(
@@ -116,6 +158,11 @@ def verify_reference_compose_isolation(
     for name, peer in services.items():
         if not isinstance(peer, dict):
             raise NetworkBoundaryError("Unreviewable Compose service")
+        # Host daemon sockets can rewire the entire Docker stack regardless of
+        # which network a peer currently declares. A nominally unrelated
+        # service may create a new bridge into the RAG or model networks.
+        if _has_host_runtime_mount(peer) or peer.get("volumes_from"):
+            raise NetworkBoundaryError("Compose service has host runtime/control access")
         if peer.get("network_mode") or peer.get("pid") == "host" or peer.get("ipc") == "host":
             raise NetworkBoundaryError("Unreviewable shared container/host namespace")
         for value in (peer.get("pid"), peer.get("ipc")):
@@ -143,6 +190,9 @@ def verify_reference_compose_isolation(
                     or peer.get("privileged") or peer.get("extra_hosts")
                     or peer.get("cap_add") or peer.get("devices")
                     or peer.get("pid") == "host"
+                    or peer.get("volumes_from")
+                    or _has_host_runtime_mount(peer)
+                    or _unsafe_security_options(peer)
                 )):
                     raise NetworkBoundaryError("RAG network has an unreviewable relay sidecar")
     if not remote_native and unprotected_reachable & model_networks:
@@ -164,18 +214,11 @@ def verify_reference_compose_isolation(
         # cap_drop: ALL is insufficient if cap_add later reintroduces powers.
         if service.get("cap_add") or service.get("devices"):
             raise NetworkBoundaryError(f"{label} must not add capabilities or host devices")
-        security_opts = service.get("security_opt") or []
-        if (not isinstance(security_opts, list) or any(
-            not isinstance(option, str) or
-            option.lower() in {"seccomp:unconfined", "apparmor:unconfined"}
-            for option in security_opts
-        )):
+        if _unsafe_security_options(service):
             raise NetworkBoundaryError(f"{label} security profile is unreviewable")
     for service in (rag, gateway):
-        for volume in service.get("volumes", []):
-            mount = volume if isinstance(volume, str) else str(volume.get("source", ""))
-            if "docker.sock" in mount or "/var/run" in mount:
-                raise NetworkBoundaryError("Host Docker socket mounts are not supported")
+        if service.get("volumes_from") or _has_host_runtime_mount(service):
+            raise NetworkBoundaryError("Host runtime/control mounts are not supported")
     if gateway.get("read_only") is not True or "ALL" not in gateway.get("cap_drop", []):
         raise NetworkBoundaryError("Gateway must be read-only and have no Linux capabilities")
     raw_env = rag.get("environment") or {}

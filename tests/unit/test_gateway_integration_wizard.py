@@ -31,6 +31,8 @@ def _resolved(cache="none", *, contract=True, cache_return=True):
     } if contract else {}
     if cache_return:
         labels["com.accessproof.cache.return_path"] = "signed-manifest-guard-reauthorization/v1"
+    if cache == "none":
+        labels["com.accessproof.cache.mode"] = "none"
     env = {"ACCESSPROOF_DEMO_CACHE_BACKEND": cache} if cache != "none" else {}
     return {
         "services": {
@@ -335,3 +337,44 @@ def test_protect_request_rejects_malformed_control_plane_without_traceback():
             application_id="app-1",
             approval={"control_plane_url": 42, "admin_session_token": "a" * 45},
         )
+
+
+def test_wizard_unknown_cache_is_never_misreported_as_none():
+    compose = _resolved()
+    compose["services"]["rag"]["labels"].pop("com.accessproof.cache.mode")
+    report = wizard.analyze_reference(_spec(), compose)
+    assert report["detected_cache_backend"] == "unknown"
+    assert report["cache_identification_confidence"] == "UNKNOWN"
+    assert "CACHE_CONFIGURATION_UNKNOWN" in report["blocking_issues"]
+    assert report["cache_inventory_complete"] is False
+    assert report["cache_return_path_verified"] is False
+
+
+def test_wizard_rejects_conflicting_or_multiple_cache_configs():
+    compose = _resolved("redis")
+    compose["services"]["rag"]["environment"]["MEMCACHED_HOST"] = "memcached"
+    result = wizard.analyze_reference(_spec(), compose)
+    assert "CACHE_BACKEND_DECLARATION_CONFLICT" in result["blocking_issues"]
+
+    compose = _resolved()
+    compose["services"]["rag"]["labels"].pop("com.accessproof.cache.mode")
+    compose["services"]["rag"]["environment"] = {
+        "REDIS_URL": "redis://cache", "MEMCACHED_HOST": "memcache",
+    }
+    result = wizard.analyze_reference(_spec(), compose)
+    assert result["detected_cache_backend"] == "ambiguous"
+    assert "CACHE_MULTIPLE_BACKENDS_DETECTED" in result["blocking_issues"]
+
+
+def test_no_cache_declaration_conflicting_with_redis_is_blocked():
+    compose = _resolved()
+    compose["services"]["rag"]["environment"]["REDIS_URL"] = "redis://cache"
+    report = wizard.analyze_reference(_spec(), compose)
+    assert "CACHE_NO_CACHE_DECLARATION_CONFLICT" in report["blocking_issues"]
+
+
+def test_custom_cache_hint_without_reference_config_is_blocked():
+    compose = _resolved()
+    compose["services"]["rag"]["environment"]["LANGCHAIN_CACHE_URL"] = "local://unknown"
+    report = wizard.analyze_reference(_spec(), compose)
+    assert "CACHE_POSSIBLY_UNINSTRUMENTED" in report["blocking_issues"]

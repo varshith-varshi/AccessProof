@@ -302,7 +302,12 @@ class ProtectedRAG:
             if layer2.get("decision") != "allow":
                 return ProtectedResponse("block", None, "CACHE_OUTPUT_NOT_AUTHORIZED", str(layer1["decision_id"]))
             layer2_revision, layer2_revision_hash = self._revision_binding(layer2)
-            if (current_revision is not None and layer2_revision is not None
+            # A Guard that advertised a revision at Layer 1 must prove that
+            # Layer 2 checked that same state. An omitted revision is not a
+            # successful re-authorization, even if the response says "allow".
+            if (current_revision is None) != (layer2_revision is None):
+                return ProtectedResponse("block", None, "AUTHORIZATION_REVISION_MISSING", str(layer1["decision_id"]))
+            if (current_revision is not None
                     and (current_revision, current_revision_hash)
                     != (layer2_revision, layer2_revision_hash)):
                 return ProtectedResponse("block", None, "AUTHORIZATION_REVISION_CHANGED", str(layer1["decision_id"]))
@@ -485,8 +490,11 @@ class ProtectedRAG:
         valid_layer2 = ({"allow"} if guard_mode == "protect" else {"would_allow", "would_block"})
         if layer2["decision"] in valid_layer2:
             layer2_revision, layer2_revision_hash = self._revision_binding(layer2)
+            if guard_mode == "protect" and ((revision is None) != (layer2_revision is None)):
+                # An omitted revision cannot authenticate a Layer 2 release
+                # against Layer 1's authorization snapshot.
+                return ProtectedResponse("block", None, "AUTHORIZATION_REVISION_MISSING", str(layer1["decision_id"]))
             if (guard_mode == "protect" and revision is not None
-                    and layer2_revision is not None
                     and (revision, revision_hash) != (layer2_revision, layer2_revision_hash)):
                 # The authorization state changed between Layer 1 and release.
                 # A conformance-correct Guard also blocks this; never release

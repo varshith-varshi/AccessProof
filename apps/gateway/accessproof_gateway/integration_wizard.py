@@ -26,7 +26,7 @@ from .customer_agent import (
 from .customer_cutover import approved_docker_cutover
 from .cutover_agent import EmployeeRouteProbe
 from .installer import (
-    InstallationError, InstallationSpec, stage_installation, validate_reference_service,
+    InstallationError, InstallationSpec, stage_installation, validate_reference_service, _labels,
     verify_existing_staged_installation,
 )
 
@@ -75,25 +75,53 @@ def analyze_reference(
         # This is an opaque code, never source/config values.
         raise IntegrationWizardError("SUPPORTED_RAG_CONTRACT_REQUIRED") from exc
     environment = _environ(service)
-    cache_backend = environment.get("ACCESSPROOF_DEMO_CACHE_BACKEND", "").lower()
-    if not cache_backend:
-        cache_backend = (
-            "redis" if environment.get("ACCESSPROOF_DEMO_CACHE_URL") else
-            "memcached" if environment.get("ACCESSPROOF_DEMO_CACHE_MEMCACHED_HOST") else
-            "postgresql" if environment.get("ACCESSPROOF_DEMO_CACHE_SQLALCHEMY_URL") else
-            "none"
-        )
-    if cache_backend not in {"redis", "memcached", "postgresql", "memory", "none"}:
+    # Cache absence cannot be inferred from missing AccessProof-specific env
+    # variables. Otherwise an arbitrary customer Redis/LangChain cache could be
+    # silently labelled "none" and a protected-route claim could be overstated.
+    declared_cache = environment.get("ACCESSPROOF_DEMO_CACHE_BACKEND", "").strip().lower()
+    labels = _labels(service.get("labels"))
+    hints = {
+        "redis": bool(environment.get("ACCESSPROOF_DEMO_CACHE_URL") or
+                      environment.get("REDIS_URL") or environment.get("CACHE_REDIS_URL")),
+        "memcached": bool(environment.get("ACCESSPROOF_DEMO_CACHE_MEMCACHED_HOST") or
+                          environment.get("MEMCACHED_HOST")),
+        "postgresql": bool(environment.get("ACCESSPROOF_DEMO_CACHE_SQLALCHEMY_URL")),
+    }
+    named = {key for key, present in hints.items() if present}
+    if declared_cache and declared_cache not in {"redis", "memcached", "postgresql", "memory", "none"}:
         issues.append("CACHE_BACKEND_NOT_SUPPORTED")
+    if declared_cache:
+        cache_backend = declared_cache
+        cache_confidence = "DECLARED_UNVERIFIED"
+        if named and (named != {declared_cache}):
+            issues.append("CACHE_BACKEND_DECLARATION_CONFLICT")
+    elif len(named) == 1:
+        cache_backend = next(iter(named))
+        cache_confidence = "INFERRED_UNVERIFIED"
+    elif len(named) > 1:
+        cache_backend = "ambiguous"
+        cache_confidence = "AMBIGUOUS"
+        issues.append("CACHE_MULTIPLE_BACKENDS_DETECTED")
+    elif labels.get("com.accessproof.cache.mode") == "none":
+        cache_backend = "none"
+        cache_confidence = "NO_CACHE_DECLARED_UNVERIFIED"
+    else:
+        cache_backend = "unknown"
+        cache_confidence = "UNKNOWN"
+        issues.append("CACHE_CONFIGURATION_UNKNOWN")
+    if labels.get("com.accessproof.cache.mode") == "none" and cache_backend != "none":
+        issues.append("CACHE_NO_CACHE_DECLARATION_CONFLICT")
+    # A custom cache may exist outside these env variables. Its presence can
+    # be hinted by config, but only approved live route probes establish safety.
+    if any(key in environment for key in (
+        "CACHE_URL", "LANGCHAIN_CACHE_URL", "GPTCACHE_URL", "SEMANTIC_CACHE_URL",
+    )) and cache_backend in {"none", "unknown"}:
+        issues.append("CACHE_POSSIBLY_UNINSTRUMENTED")
     if cache_backend == "memory":
         issues.append("PROCESS_LOCAL_CACHE_UNCERTIFIED")
-    if cache_backend != "none":
-        # A storage adapter is not proof of output interception. This label
-        # is an explicit signed-cache return-path contract, not a certificate.
-        declared = str((service.get("labels") or {}).get(
-            "com.accessproof.cache.return_path", ""
-        )) if isinstance(service.get("labels"), dict) else ""
-        if declared != "signed-manifest-guard-reauthorization/v1":
+    if cache_backend not in {"none", "unknown"}:
+        # This label is a *declaration*, never proof of output interception.
+        if labels.get("com.accessproof.cache.return_path") != "signed-manifest-guard-reauthorization/v1":
             issues.append("CACHE_RESPONSE_PATH_NOT_DECLARED")
     if service.get("network_mode") or service.get("privileged"):
         issues.append("RAG_UNSAFE_NETWORK_MODE")
@@ -144,6 +172,9 @@ def analyze_reference(
         "rag_service": spec.rag_service,
         "route_environment_name": route_env,
         "detected_cache_backend": cache_backend,
+        "cache_identification_confidence": cache_confidence,
+        "cache_inventory_complete": False,
+        "cache_return_path_verified": False,
         "model_provider": spec.model_provider,
         "blocking_issues": sorted(set(issues)),
         "automatic_customer_traffic_cutover": False,

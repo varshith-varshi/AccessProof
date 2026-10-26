@@ -21,11 +21,15 @@ NEXT_REVISION_HASH = "b" * 64
 class RevisionGuard:
     def __init__(self, *, revision: int | None = 1, revision_hash: str | None = REVISION_HASH,
                  layer2_revision: int | None = None,
-                 layer2_revision_hash: str | None = None) -> None:
+                 layer2_revision_hash: str | None = None,
+                 omit_layer2_revision: bool = False) -> None:
         self.revision = revision
         self.revision_hash = revision_hash
-        self.layer2_revision = layer2_revision
-        self.layer2_revision_hash = layer2_revision_hash
+        self.layer2_revision = (None if omit_layer2_revision else
+                                revision if layer2_revision is None else layer2_revision)
+        self.layer2_revision_hash = (None if omit_layer2_revision else
+                                     revision_hash if layer2_revision_hash is None
+                                     else layer2_revision_hash)
         self.calls: list[str] = []
 
     def filter_resources(self, **kwargs):
@@ -231,3 +235,52 @@ def test_manifest_rejects_incomplete_revision_binding(revision, revision_hash):
             authorization_revision=revision,
             authorization_revision_hash=revision_hash,
         )
+
+
+def test_attested_generation_blocks_layer2_allow_without_authorization_revision():
+    manifest, _token, source_verifier, _cache_verifier, dependency, _signer = _fixtures()
+    guard = RevisionGuard(omit_layer2_revision=True)
+    resource = RetrievedResource(
+        source_id=dependency.source_id, resource_id=dependency.resource_id,
+        chunk_id=dependency.chunk_id, content="approved synthetic text",
+        content_version=dependency.content_version,
+        content_attestation=dependency.content_attestation,
+    )
+    result = ProtectedRAG(guard, provenance_verifier=source_verifier).run(
+        employee_token="employee", application_id="rag",
+        retrieved=[resource], generate=lambda _: "synthetic model output",
+        source_trace=lambda: [resource],
+    )
+    assert guard.calls == ["layer1", "layer2"]
+    assert result.decision == "block"
+    assert result.reason == "AUTHORIZATION_REVISION_MISSING"
+    assert result.response is None
+
+
+def test_attested_cached_answer_blocks_layer2_allow_without_authorization_revision():
+    manifest, token, source_verifier, cache_verifier, *_ = _fixtures()
+    guard = RevisionGuard(omit_layer2_revision=True)
+    result = ProtectedRAG(
+        guard, provenance_verifier=source_verifier,
+    ).verify_cached_answer(
+        employee_token="employee", application_id="rag",
+        manifest=manifest, manifest_token=token,
+        manifest_verifier=cache_verifier,
+    )
+    assert guard.calls == ["layer1", "layer2"]
+    assert result.decision == "block"
+    assert result.reason == "AUTHORIZATION_REVISION_MISSING"
+    assert result.response is None
+
+
+def test_generation_blocks_layer2_revision_when_layer1_is_unversioned():
+    guard = RevisionGuard(revision=None, revision_hash=None,
+                          layer2_revision=1, layer2_revision_hash=REVISION_HASH)
+    resource = RetrievedResource("source-a", "doc-a", "chunk-a", "synthetic")
+    result = ProtectedRAG(guard, allow_unattested_metadata=True).run(
+        employee_token="employee", application_id="rag", retrieved=[resource],
+        generate=lambda _: "synthetic", source_trace=lambda: [resource],
+    )
+    assert result.decision == "block"
+    assert result.reason == "AUTHORIZATION_REVISION_MISSING"
+    assert result.response is None

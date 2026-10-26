@@ -46,6 +46,17 @@ def test_reference_only_supports_provably_restricted_compose_network():
     assert report["customer_deployment_certified"] is False
 
 
+@pytest.mark.parametrize("component", ["customer-rag", "accessproof-gateway", "relay"])
+@pytest.mark.parametrize("option", ["seccomp=unconfined", "apparmor=unconfined"])
+def test_equals_syntax_unconfined_profile_cannot_pass_boundary_check(component, option):
+    config = _compose()
+    if component == "relay":
+        config["services"][component] = {"networks": ["rag-isolated"]}
+    config["services"][component]["security_opt"] = [option]
+    with pytest.raises(NetworkBoundaryError):
+        _check(config)
+
+
 @pytest.mark.parametrize("mutation", [
     lambda c: c["services"]["customer-rag"]["networks"].append("model-private"),
     lambda c: c["networks"]["rag-isolated"].update(internal=False),
@@ -253,3 +264,53 @@ def test_default_hardened_gateway_security_profile_is_supported():
     config["services"]["accessproof-gateway"]["security_opt"] = ["no-new-privileges:true"]
     config["services"]["customer-rag"]["cap_drop"] = ["ALL"]
     assert _check(config)["static_egress_isolated"]
+
+
+@pytest.mark.parametrize("relay_mount", [
+    {"volumes": ["/var/run/docker.sock:/control.sock"]},
+    {"volumes": [{"type": "bind", "source": "/run/docker.sock", "target": "/control"}]},
+    {"volumes": ["/run/containerd/containerd.sock:/control.sock"]},
+    {"volumes": ["/:/host:ro"]},
+    {"volumes_from": ["another-service"]},
+    {"security_opt": ["seccomp:unconfined"]},
+])
+def test_rag_reachable_relay_with_host_runtime_control_must_be_rejected(relay_mount):
+    config = _compose()
+    config["services"]["relay"] = {"networks": ["rag-isolated"], **relay_mount}
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control|unreviewable relay sidecar"):
+        _check(config)
+
+
+def test_unrelated_service_with_host_runtime_mount_is_outside_rag_attack_graph():
+    config = _compose()
+    config["networks"]["separate-network"] = {"internal": False}
+    config["services"]["independent"] = {
+        "networks": ["separate-network"],
+        "volumes": ["/var/run/docker.sock:/control.sock"],
+    }
+    # Docker-daemon access allows even a currently unrelated service to add a
+    # new RAG/model bridge at runtime. Static certification must fail closed.
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
+        _check(config)
+
+
+@pytest.mark.parametrize("component,mount", [
+    ("customer-rag", "/run/containerd/containerd.sock:/runtime.sock"),
+    ("customer-rag", "/:/host:ro"),
+    ("accessproof-gateway", {"type": "bind", "source": "/var/run/docker.sock", "target": "/hidden"}),
+])
+def test_protected_components_cannot_mount_host_runtime_control(component, mount):
+    config = _compose()
+    config["services"][component]["volumes"] = [mount]
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
+        _check(config)
+
+
+def test_unrelated_service_inheriting_unknown_container_volumes_is_not_certifiable():
+    config = _compose()
+    config["networks"]["unrelated-net"] = {"internal": False}
+    config["services"]["unrelated"] = {
+        "networks": ["unrelated-net"], "volumes_from": ["external-controller"],
+    }
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
+        _check(config)

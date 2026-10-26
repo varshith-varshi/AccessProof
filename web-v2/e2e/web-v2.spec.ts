@@ -465,3 +465,37 @@ test("Google OAuth return acknowledges durable server-side sync without browser 
   await page.reload();
   expect(browserSyncCalls).toBe(0);
 });
+
+test("customer onboarding previews local cache architecture inventory without API upload", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  const uploads: string[] = [];
+  page.on("request", request => {
+    if (request.method() === "POST" && request.url().includes("/api/")) uploads.push(request.url());
+  });
+  await page.goto("/integrations/setup");
+  await expect(page.getByRole("heading", { name: "Inspect your RAG, models and caches" })).toBeVisible();
+  await page.getByLabel("Preview architecture inventory JSON").setInputFiles({
+    name: "accessproof-architecture.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({
+      schema: "accessproof.architecture_inventory/v1",
+      certification_status: "NOT_CERTIFIED",
+      cache_inventory_state: "CANDIDATES_FOUND_UNVERIFIED",
+      cache_return_path_declared: false,
+      architecture: {
+        caches: [{ name: "redis", evidence: "app.py:12", confidence: "POSSIBLE", authorization_coverage: "NOT_VERIFIED" }],
+        frameworks: [{ name: "langchain", evidence: "app.py:7", confidence: "POSSIBLE", authorization_coverage: "NOT_VERIFIED" }],
+        vectors: [], models: [], deployments: [],
+      },
+      blockers: ["CACHE_RETURN_PATH_UNVERIFIED: requires customer challenge"],
+    })),
+  });
+  await expect(page.getByText("CANDIDATES_FOUND_UNVERIFIED")).toBeVisible();
+  await expect(page.getByText("redis", { exact: true })).toBeVisible();
+  await expect(page.getByText("CACHE_RETURN_PATH_UNVERIFIED: requires customer challenge")).toBeVisible();
+  expect(uploads).toEqual([]);
+  await page.getByLabel("Preview architecture inventory JSON").setInputFiles({
+    name: "fake-cert.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ schema: "accessproof.architecture_inventory/v1", certification_status: "CERTIFIED" })),
+  });
+  await expect(page.getByRole("alert").getByText(/Invalid AccessProof architecture inventory JSON/)).toBeVisible();
+});
