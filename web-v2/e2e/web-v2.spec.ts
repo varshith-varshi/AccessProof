@@ -175,7 +175,7 @@ test("one-click security preflight reports action required without manual audit 
       application_id: "rag-e2e", name: "RAG E2E", mode: "shadow", effective_state: "BLOCKED",
       state_message: "The bound Guard or permission source is revoked or disconnected. Requests must fail closed.",
       reason_code: "GUARD_ENROLLED",
-      adapter: { type: "generic-python", contract_version: "accessproof.rag/v1", protect_capable: true },
+      adapter: { type: "accessproof-gateway", contract_version: "accessproof.rag/v1", protect_capable: true },
       guard: { id: "guard-1", name: "Guard", health: "not_enrolled", heartbeat_age_seconds: null, policy_version: null },
       source: { id: "source-1", name: "Source", provider: "google-drive", status: "not_configured", acl_sync_age_seconds: null, directory_sync_age_seconds: null, acl_fresh: false, directory_fresh: false },
       route_certification: { required: false, expired: false, status: "NOT_APPLICABLE", certified: false, age_seconds: null, evidence_level: null, certification_scope: "REFERENCE_GATEWAY_ROUTE_ONLY" },
@@ -187,7 +187,7 @@ test("one-click security preflight reports action required without manual audit 
   }));
   await page.route("**/api/v1/current/ai-applications", route => route.fulfill({ json: [{
     id: "app-1", application_id: "rag-e2e", name: "RAG E2E", mode: "shadow",
-    guard_id: "guard-1", source_id: "source-1", adapter_type: "generic-python",
+    guard_id: "guard-1", source_id: "source-1", adapter_type: "accessproof-gateway",
     adapter_contract_version: "accessproof.rag/v1",
     readiness: [{ code: "LAYER1_INTEGRATION_CONFIRMED", ok: false, reason: "Run an approved Guard test" }]
   }] }));
@@ -213,6 +213,24 @@ test("one-click security preflight reports action required without manual audit 
   await expect(page.getByRole("status").filter({ hasText: "Connect the trusted" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry checks" })).toBeVisible();
   expect(submitted).toBe(1);
+});
+
+test("retired RAG SDK applications remain read-only in Gateway V1", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson() }));
+  await page.route("**/api/v1/current/protection/overview", route => route.fulfill({ json: protectionOverviewJson() }));
+  await page.route("**/api/v1/current/ai-applications", route => route.fulfill({ json: [{
+    id: "legacy-1", application_id: "old-python-rag", name: "Historical RAG", mode: "shadow",
+    guard_id: "guard-1", source_id: "source-1", adapter_type: "generic-python",
+    adapter_contract_version: "accessproof.rag/v1", readiness: [{ code: "ENFORCEMENT_ADAPTER_CONFIGURED", ok: false }],
+  }] }));
+  await page.route("**/api/v1/guards", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
+  await page.goto("/applications");
+  await expect(page.getByText("Historical RAG")).toBeVisible();
+  await expect(page.getByText("Historical record only · new Gateway required")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enable Protection" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Set up Gateway" })).toHaveCount(0);
 });
 
 test("application registration sends the Gateway-only contract", async ({ context, page }) => {
