@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from packages.demo_cache.protected_cache import SignedRedisAnswerCache
-from packages.rag_sdk import (
+from packages.rag_core import (
     CachedAnswerManifestSigner, CachedAnswerManifestVerifier, ContentBinding,
     SourceAttestationSigner, SourceAttestationVerifier,
 )

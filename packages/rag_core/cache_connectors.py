@@ -9,11 +9,11 @@ from __future__ import annotations
 from typing import Any
 
 from packages.demo_cache.universal import AuthorizedCacheHit, SignedBackendAnswerCache
-from packages.rag_sdk.cache_backends import (
+from packages.rag_core.cache_backends import (
     CacheBackend, CacheBackendError, CallbackBackend, MemcachedBackend,
     MemoryBackend, RedisBackend, SQLAlchemyBackend,
 )
-from packages.rag_sdk.protection import ProtectedResponse, RetrievedResource
+from packages.rag_core.protection import ProtectedResponse, RetrievedResource
 
 
 class ProtectedAnswerCache:

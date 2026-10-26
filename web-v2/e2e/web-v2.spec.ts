@@ -142,21 +142,18 @@ test("synchronized employees render provider-stable identities", async ({ contex
   await expect(page.getByText("Engineering")).toBeVisible();
 });
 
-test("adapter catalog distinguishes enforcement from connectivity", async ({ context, page }) => {
+test("Gateway integration page has one supported path and no SDK choices", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
-  await page.route("**/api/v1/current/adapters", route => route.fulfill({ json: [
-    { id: "langchain-python", name: "LangChain Python", category: "RAG framework", status: "AVAILABLE", language: "Python", contract_version: "accessproof.rag/v1", pre_generation_filtering: true, output_verification: true, shadow_mode: true, protect_mode: true, installation: "Use packages.rag_sdk.LangChainAdapter", limitation: "Requires stable metadata" },
-    { id: "generic-http", name: "Generic HTTP target", category: "Connectivity", status: "PARTIAL", language: "Any", contract_version: "target-config/v1", pre_generation_filtering: false, output_verification: false, shadow_mode: true, protect_mode: false, installation: "Configure a target", limitation: "Connectivity alone is not Layer 1" },
-  ] }));
   await page.goto("/integrations");
-  await expect(page.getByRole("heading", { name: "Adapters", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Connect your RAG in three steps" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "1. Connect permission source" })).toHaveAttribute("href", "/sources");
-  await expect(page.getByRole("link", { name: "2. Create a Guard" })).toHaveAttribute("href", "/guards");
-  await expect(page.getByRole("link", { name: "3. Register AI application" })).toHaveAttribute("href", "/applications");
-  await expect(page.getByText("LangChain Python")).toBeVisible();
-  await expect(page.getByText("Generic HTTP target")).toBeVisible();
-  await expect(page.getByText("Connectivity alone is not Layer 1")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AccessProof Gateway", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "One Gateway. Two enforcement layers." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connect source" })).toHaveAttribute("href", "/sources");
+  await expect(page.getByRole("link", { name: "Manage Guards" })).toHaveAttribute("href", "/guards");
+  await expect(page.getByRole("link", { name: "Start Gateway installation" })).toHaveAttribute("href", "/integrations/setup");
+  await expect(page.getByRole("link", { name: "Register application" })).toHaveAttribute("href", "/applications");
+  await expect(page.getByText("LangChain Python")).toHaveCount(0);
+  await expect(page.getByText("Generic HTTP target")).toHaveCount(0);
+  await expect(page.getByRole("table")).toHaveCount(0);
 });
 
 test("mobile navigation exposes product routes", async ({ context, page }, testInfo) => {
@@ -218,31 +215,36 @@ test("one-click security preflight reports action required without manual audit 
   expect(submitted).toBe(1);
 });
 
-test("application registration uses the selected adapter contract", async ({ context, page }) => {
+test("application registration sends the Gateway-only contract", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
   await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson({ guards_online: 1, guards_total: 1, permission_sources: 1 }) }));
   await page.route("**/api/v1/current/protection/overview", route => route.fulfill({ json: protectionOverviewJson() }));
+  let created = 0;
   await page.route("**/api/v1/current/ai-applications", async route => {
     if (route.request().method() === "POST") {
       expect(route.request().postDataJSON()).toMatchObject({
-        application_id: "http-rag", adapter_type: "generic-http", adapter_contract_version: "target-config/v1",
+        application_id: "finance-gateway", adapter_type: "accessproof-gateway", adapter_contract_version: "accessproof.rag/v1",
       });
-      return route.fulfill({ status: 201, json: { id: "app-http" } });
+      created++;
+      return route.fulfill({ status: 201, json: { id: "gateway-1" } });
     }
     return route.fulfill({ json: [] });
   });
   await page.route("**/api/v1/guards", route => route.fulfill({ json: [{ id: "guard-1", name: "RAG Guard", health: "online" }] }));
   await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [{ id: "source-1", name: "Drive", provider: "google-drive", status: "connected" }] }));
-  await page.route("**/api/v1/current/adapters", route => route.fulfill({ json: [{ id: "generic-http", name: "Generic HTTP target", status: "PARTIAL", contract_version: "target-config/v1", installation: "Configure a target", pre_generation_filtering: false, output_verification: false, protect_mode: false }] }));
+  await page.route("**/api/v1/current/adapters", route => route.fulfill({ json: [{
+    id: "accessproof-gateway", name: "AccessProof Gateway", status: "AVAILABLE", contract_version: "accessproof.rag/v1",
+  }] }));
   await page.goto("/applications");
   await page.getByRole("button", { name: "Register application" }).first().click();
-  await page.getByLabel("Application ID").fill("http-rag");
-  await page.getByLabel("Display name").fill("HTTP RAG");
-  await page.getByLabel("Integration adapter").selectOption("generic-http");
+  await expect(page.getByLabel("Integration method")).toHaveValue("AccessProof Gateway");
+  await expect(page.getByLabel("Integration adapter")).toHaveCount(0);
+  await page.getByLabel("Application ID").fill("finance-gateway");
+  await page.getByLabel("Display name").fill("Finance Gateway");
   await page.getByLabel("Guard selector").selectOption("guard-1");
   await page.getByLabel("Permission source selector").selectOption("source-1");
-  await page.getByRole("button", { name: "Register application" }).last().click();
-  await expect(page.getByText("No AI applications yet")).toBeVisible();
+  await page.locator("form").getByRole("button", { name: "Register application" }).click();
+  await expect.poll(() => created).toBe(1);
 });
 
 test.skip("Microsoft SharePoint setup shows unresolved permission certification", async ({ context, page }) => {

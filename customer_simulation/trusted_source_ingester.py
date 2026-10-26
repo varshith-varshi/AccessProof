@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from packages.rag_sdk.attestation import ContentBinding, SourceAttestationSigner
+from packages.rag_core.attestation import ContentBinding, SourceAttestationSigner
 
 
 @dataclass(frozen=True)

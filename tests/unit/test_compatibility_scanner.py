@@ -15,7 +15,7 @@ def _write(root: Path, name: str, content: str) -> Path:
 def test_protected_route_and_reauth_cache_are_reported_without_certification(tmp_path):
     _write(tmp_path, "app.py", '''\
 from fastapi import FastAPI
-from packages.rag_sdk import ProtectedRAG
+from packages.rag_core import ProtectedRAG
 
 app = FastAPI()
 

@@ -8,7 +8,7 @@ import { api, clearActiveOrganization } from "../lib/api";
 
 const items = [
   ["Overview", "/dashboard", LayoutDashboard], ["Employees", "/employees", Users], ["Permission sources", "/sources", BriefcaseBusiness],
-  ["Permission events", "/permission-events", Activity], ["Identity mappings", "/identity-mappings", Link2], ["AI applications", "/applications", Bot], ["Integrations", "/integrations", Boxes], ["Guards", "/guards", ShieldCheck],
+  ["Permission events", "/permission-events", Activity], ["Identity mappings", "/identity-mappings", Link2], ["AI applications", "/applications", Bot], ["Gateway setup", "/integrations", Boxes], ["Guards", "/guards", ShieldCheck],
   ["Protection", "/protection", LockKeyhole], ["Blocked requests", "/blocked-requests", CircleStop], ["Audit", "/audit", ScrollText],
 ] as const;
 

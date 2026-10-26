@@ -7,12 +7,12 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from packages.demo_cache.universal import SignedBackendAnswerCache
-from packages.rag_sdk import (
+from packages.rag_core import (
     CacheDependency, CachedAnswerManifest, CachedAnswerManifestSigner,
     CachedAnswerManifestVerifier, ContentBinding, ProtectedRAG,
     RetrievedResource, SourceAttestationSigner, SourceAttestationVerifier,
 )
-from packages.rag_sdk.cache_backends import MemoryBackend
+from packages.rag_core.cache_backends import MemoryBackend
 
 REVISION_HASH = "a" * 64
 NEXT_REVISION_HASH = "b" * 64

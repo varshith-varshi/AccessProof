@@ -8,12 +8,12 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import create_engine
 
-from packages.rag_sdk import (
+from packages.rag_core import (
     CachedAnswerManifestSigner, CachedAnswerManifestVerifier,
     SourceAttestationSigner, SourceAttestationVerifier,
     ContentBinding, RetrievedResource,
 )
-from packages.rag_sdk.cache_backends import (
+from packages.rag_core.cache_backends import (
     CallbackBackend, CacheBackendError, MemoryBackend, MemcachedBackend,
     RedisBackend, SQLAlchemyBackend,
 )
@@ -278,7 +278,7 @@ def test_many_signed_source_dependencies_are_authorized_not_truncated():
 
 
 def test_factory_detects_selected_backend_and_rejects_conflicts():
-    from packages.rag_sdk.cache_backends import RedisBackend, MemcachedBackend
+    from packages.rag_core.cache_backends import RedisBackend, MemcachedBackend
     redis = configured_cache_backend({
         "ACCESSPROOF_DEMO_CACHE_URL": "redis://127.0.0.1:6379/0",
     })
@@ -316,7 +316,7 @@ def test_memcached_factory_reuses_thread_safe_connection_pool():
 def test_sql_cache_expired_rows_are_boundedly_purged(tmp_path):
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import update
-    from packages.rag_sdk.cache_backends import signed_cache_entries
+    from packages.rag_core.cache_backends import signed_cache_entries
     engine = create_engine(f"sqlite:///{tmp_path / 'cache_cleanup.sqlite'}")
     backend = SQLAlchemyBackend(engine)
     backend.provision_schema()

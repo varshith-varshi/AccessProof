@@ -1,7 +1,7 @@
 """Reject contradictory grants for the same document before model input."""
 import pytest
 
-from packages.rag_sdk.protection import ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import ProtectedRAG, RetrievedResource
 
 
 class ContradictoryGuard:

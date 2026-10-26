@@ -44,7 +44,7 @@ def provision(client, headers):
     ("haystack-python", "accessproof.rag/v1"),
     ("generic-http", "target-config/v1"),
 ])
-def test_ai_application_accepts_every_adapter_published_in_web_v2(adapter_type, contract_version):
+def test_old_sdk_application_types_cannot_be_registered(adapter_type, contract_version):
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with TestClient(app) as client:
@@ -55,14 +55,31 @@ def test_ai_application_accepts_every_adapter_published_in_web_v2(adapter_type, 
             "adapter_type": adapter_type,
             "adapter_contract_version": contract_version,
         })
+        assert response.status_code == 422, response.text
+        listed = client.get("/api/v1/current/ai-applications", headers=headers)
+        assert listed.status_code == 200
+        assert listed.json() == []
+
+
+def test_gateway_is_the_only_new_customer_integration():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        _, headers = signup(client)
+        response = client.post("/api/v1/current/ai-applications", headers=headers, json={
+            "application_id": "gateway-only", "name": "Gateway",
+            "adapter_type": "accessproof-gateway",
+            "adapter_contract_version": "accessproof.rag/v1",
+        })
         assert response.status_code == 201, response.text
+        assert response.json()["adapter_type"] == "accessproof-gateway"
         readiness = client.get(
-            f"/api/v1/current/ai-applications/{adapter_type}-test/protect-readiness",
-            headers=headers,
+            "/api/v1/current/ai-applications/gateway-only/protect-readiness", headers=headers,
         )
-        assert readiness.status_code == 200, readiness.text
-        checks = {item["code"]: item["ok"] for item in readiness.json()["checks"]}
-        assert checks["ENFORCEMENT_ADAPTER_CONFIGURED"] is (adapter_type != "generic-http")
+        assert readiness.status_code == 200
+        assert not readiness.json()["ready"]
+        checks = {row["code"]: row["ok"] for row in readiness.json()["checks"]}
+        assert checks["ENFORCEMENT_ADAPTER_CONFIGURED"] is True
 
 
 def test_ai_application_rejects_a_mismatched_adapter_contract():

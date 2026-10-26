@@ -9,8 +9,8 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass
 
-from packages.rag_sdk.protection import ProtectedResponse, ProtectedRAG
-from packages.rag_sdk.cache_backends import CacheBackend, CacheBackendError
+from packages.rag_core.protection import ProtectedResponse, ProtectedRAG
+from packages.rag_core.cache_backends import CacheBackend, CacheBackendError
 from packages.demo_cache.protected_cache import SignedRedisAnswerCache
 
 

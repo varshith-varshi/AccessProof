@@ -1,6 +1,6 @@
 import httpx
 
-from packages.rag_sdk import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource
 
 
 def test_protected_rag_buffers_model_output_until_layer2_allows() -> None:

@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from apps.guard.accessproof_guard import app as guard_app
 from apps.guard.accessproof_guard.cache import PolicyCache
-from packages.rag_sdk.protection import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import GuardClient, ProtectedRAG, RetrievedResource
 
 
 def _local_guard(tmp_path, monkeypatch, capacity: int):

@@ -39,7 +39,7 @@ def test_microsoft_protect_readiness_reports_blocker_and_rejects_mode():
             "application_id": "ms-preview-rag", "name": "Preview RAG",
             "guard_id": guard_response.json()["id"],
             "source_id": source_response.json()["id"],
-            "adapter_type": "generic-python",
+            "adapter_type": "accessproof-gateway",
             "adapter_contract_version": "accessproof.rag/v1",
         })
         assert create.status_code == 201, create.text

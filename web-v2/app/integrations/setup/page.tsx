@@ -96,7 +96,7 @@ export default function IntegrationSetup() {
     }
   }
   return <ProtectedPage>
-    <PageHeader eyebrow="CUSTOMER INTEGRATION" title="Guided RAG connection" description="For reviewed Docker Compose RAG deployments with signed retrieval provenance. The customer-side installer prepares a Gateway, while a separate enrolled-machine test must approve actual protection." action={<Link href="/integrations" className="button compact secondary">Back to integrations</Link>}/>
+    <PageHeader eyebrow="CUSTOMER INTEGRATION" title="Deploy AccessProof Gateway" description="For reviewed Docker Compose RAG deployments with signed retrieval provenance. The customer-side installer prepares a Gateway, while a separate enrolled-machine test must approve actual protection." action={<Link href="/integrations" className="button compact secondary">Back to integrations</Link>}/>
     <section className="card section">
       <div className="panel-head">
         <div><p className="label">SUPPORTED DEPLOYMENT</p><h2>Choose your cache backend</h2></div>

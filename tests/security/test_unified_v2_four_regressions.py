@@ -18,7 +18,7 @@ from apps.api.accessproof_api.db import (
     GuardGroupMembership, GuardPermissionGrant, GuardPermissionEvent,
 )
 from packages.auth.microsoft_consent import authorization_url
-from packages.rag_sdk import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource
 
 TENANT = "11111111-2222-3333-4444-555555555555"
 

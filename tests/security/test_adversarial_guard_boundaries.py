@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.guard.accessproof_guard.cache import PolicyCache
-from packages.rag_sdk.protection import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import GuardClient, ProtectedRAG, RetrievedResource
 
 
 @pytest.fixture

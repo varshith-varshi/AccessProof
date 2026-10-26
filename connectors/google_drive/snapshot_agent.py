@@ -18,8 +18,8 @@ from connectors.google_drive.trusted_ingestion import (
     GoogleDriveIngestionSettings, GoogleDriveTrustedIngestion,
 )
 from packages.demo_cache.trusted_snapshot import write_snapshot
-from packages.rag_sdk.ingestion import TrustedSourceIngestor
-from packages.rag_sdk.protection import RetrievedResource
+from packages.rag_core.ingestion import TrustedSourceIngestor
+from packages.rag_core.protection import RetrievedResource
 
 logger = logging.getLogger(__name__)
 

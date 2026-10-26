@@ -6,7 +6,7 @@ outside the dedicated AccessProof signed-answer cache table.
 from __future__ import annotations
 
 from packages.demo_cache.factory import configured_cache_backend
-from packages.rag_sdk.cache_backends import SQLAlchemyBackend, CacheBackendError
+from packages.rag_core.cache_backends import SQLAlchemyBackend, CacheBackendError
 
 
 def main() -> int:

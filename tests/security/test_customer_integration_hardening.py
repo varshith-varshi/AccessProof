@@ -4,7 +4,7 @@ import pytest
 
 from apps.guard.accessproof_guard.cache import PolicyCache
 from apps.guard.accessproof_guard.sync import GuardMachineCredentials, GuardSyncClient
-from packages.rag_sdk.protection import GuardClient, ProtectedRAG
+from packages.rag_core.protection import GuardClient, ProtectedRAG
 
 
 def test_protect_sync_rejects_missing_source_health(tmp_path):

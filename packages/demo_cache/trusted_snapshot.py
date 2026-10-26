@@ -15,7 +15,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from packages.rag_sdk import (
+from packages.rag_core import (
     ContentBinding, RetrievedResource, SourceAttestationVerifier,
 )
 

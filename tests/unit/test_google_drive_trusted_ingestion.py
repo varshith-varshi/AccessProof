@@ -9,7 +9,7 @@ from connectors.google_drive.adapter import GoogleDriveAdapter
 from connectors.google_drive.trusted_ingestion import (
     GoogleDriveIngestionSettings, GoogleDriveTrustedIngestion,
 )
-from packages.rag_sdk import ContentBinding, SourceAttestationSigner, SourceAttestationVerifier, TrustedSourceIngestor, IngestionError
+from packages.rag_core import ContentBinding, SourceAttestationSigner, SourceAttestationVerifier, TrustedSourceIngestor, IngestionError
 
 
 def _make_transport(*, content: bytes = b"authorized sample", mime: str = "text/plain",

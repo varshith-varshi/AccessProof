@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from apps.gateway.accessproof_gateway.app import GatewaySettings, create_app
-from packages.rag_sdk import (
+from packages.rag_core import (
     CacheDependency, CachedAnswerManifest, CachedAnswerManifestSigner,
     CachedAnswerManifestVerifier, ContentBinding, SourceAttestationSigner,
     SourceAttestationVerifier,

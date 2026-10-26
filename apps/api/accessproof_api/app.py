@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from packages.connector_sdk.base import SourceAdapter
 from packages.capability_registry import snapshot as capability_registry_snapshot
-from packages.rag_sdk import adapter_registry
+from packages.rag_core import adapter_registry
 from apps.api.accessproof_api.rag_challenge_verifier import verify_reference_evidence, request_ids
 from apps.api.accessproof_api.source_certification import effective_source_certified
 from apps.api.accessproof_api.protection_state import (
@@ -3047,6 +3047,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
         and adapter["pre_generation_filtering"]
         and adapter["output_verification"]
         and adapter["protect_mode"]
+        and row.adapter_type == "accessproof-gateway"
     )
     checks.append({
         "code": "ENFORCEMENT_ADAPTER_CONFIGURED",
@@ -3191,8 +3192,9 @@ def create_current_ai_application(
 ) -> dict[str, Any]:
     org_id = actor.membership.organization_id
     adapter = next((item for item in adapter_registry() if item["id"] == payload.adapter_type), None)
-    if adapter is None or adapter["contract_version"] != payload.adapter_contract_version:
-        raise HTTPException(422, "The adapter and contract version must match a reviewed AccessProof adapter.")
+    if (payload.adapter_type != "accessproof-gateway" or adapter is None
+            or adapter["contract_version"] != payload.adapter_contract_version):
+        raise HTTPException(422, "GATEWAY_ONLY_V1: Register an AccessProof Gateway deployment; SDK integrations are retired.")
     guard = db.get(GuardRegistration, payload.guard_id) if payload.guard_id else None
     if payload.guard_id and (guard is None or guard.organization_id != org_id):
         raise HTTPException(404, "Guard not found")
@@ -4094,7 +4096,7 @@ def acknowledge_enrolled_guard_customer_cutover(
 def list_current_adapters(
     actor: Actor = Depends(require(Permission.RESULT_READ)),
 ) -> list[dict[str, object]]:
-    """Return reviewed adapter metadata; customer code is never loaded here."""
+    """Return the single supported customer Gateway integration profile."""
     return adapter_registry()
 
 

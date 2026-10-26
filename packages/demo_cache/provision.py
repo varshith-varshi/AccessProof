@@ -9,7 +9,7 @@ Do not run against a production database without owning the chosen schema
 and getting the database administrator's approval.
 """
 from packages.demo_cache.factory import configured_cache_backend
-from packages.rag_sdk.cache_backends import SQLAlchemyBackend
+from packages.rag_core.cache_backends import SQLAlchemyBackend
 
 
 def main() -> None:

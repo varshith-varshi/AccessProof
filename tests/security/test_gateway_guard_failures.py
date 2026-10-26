@@ -2,7 +2,7 @@
 import httpx
 import pytest
 
-from packages.rag_sdk import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource
 
 
 @pytest.mark.parametrize("failure_stage", ["layer1", "late-source", "layer2"])

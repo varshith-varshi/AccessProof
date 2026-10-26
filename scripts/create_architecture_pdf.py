@@ -767,7 +767,7 @@ def page_api(c, page):
         ("Guard runtime", "GET /health; POST authorization-scope, filter-resources, check-output", "Customer-local identity verification, authorization-first scope, Layer 1 resource filtering, Layer 2 output verification."),
         ("Gateway runtime", "GET /health/live, /health/ready; POST /v1/chat/completions, /v1/cache/authorize", "Attested protected route, bounded non-streaming model completion, and protected cache-hit release."),
         ("Runner machine API", "exchange, heartbeat, lease, checkpoint, cancel-status, complete", "Dedicated bearer credential; persists deterministic lifecycle and evidence without placing runner secrets in URLs."),
-        ("Python SDK", "packages.rag_sdk", "ProtectedRAG, GuardClient, framework adapters, content attestation, ingestion, authorization-first retrieval, pgvector backend, signed cache manifests/connectors."),
+        ("Python SDK", "packages.rag_core", "ProtectedRAG, GuardClient, framework adapters, content attestation, ingestion, authorization-first retrieval, pgvector backend, signed cache manifests/connectors."),
         ("TypeScript SDK", "packages/rag-sdk-typescript", "ProtectedRAG and Ed25519 attestation contract for Node/browser-server integrations; employee tokens stay at the customer boundary."),
     ]
     for i, (h, label, body) in enumerate(groups):
@@ -838,7 +838,7 @@ def page_repository(c, page):
         ["apps/gateway/accessproof_gateway/", "Customer-side protected RAG HTTP boundary, model adapters, install/cutover/challenge agents."],
         ["apps/runner/accessproof_runner/", "Private synthetic test runner, enrollment UI, leases, checkpoints, source mutation, target probes, completion."],
         ["packages/guard/", "Provider-neutral policy and permission resolution primitives."],
-        ["packages/rag_sdk/", "Python protected RAG lifecycle, adapters, attestations, ingestion, authorization-first retrieval, pgvector, cache verification."],
+        ["packages/rag_core/", "Python protected RAG lifecycle, adapters, attestations, ingestion, authorization-first retrieval, pgvector, cache verification."],
         ["packages/rag-sdk-typescript/", "TypeScript protected RAG and source-attestation contract."],
         ["packages/auth, crypto, identity, domain, reporting, test_engine", "Shared session/OIDC/security primitives, signing/encryption, models, report output, and test orchestration."],
         ["connectors/", "Google Drive, Microsoft 365, Confluence, Salesforce, Slack, demo, and mock source adapters."],

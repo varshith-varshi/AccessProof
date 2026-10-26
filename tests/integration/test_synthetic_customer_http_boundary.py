@@ -29,8 +29,8 @@ from customer_simulation.route_probe import RouteProbeConfig, probe_local_custom
 from customer_simulation.trusted_source_ingester import (
     SyntheticProviderFile, build_synthetic_ingestion_service,
 )
-from packages.rag_sdk import GuardClient, ProtectedRAG, RetrievedResource
-from packages.rag_sdk.attestation import SourceAttestationSigner, SourceAttestationVerifier
+from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core.attestation import SourceAttestationSigner, SourceAttestationVerifier
 
 
 def _port() -> int:

@@ -25,8 +25,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from packages.rag_sdk import GuardClient, ProtectedRAG, RetrievedResource, SourceAttestationVerifier
-from packages.rag_sdk.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
+from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource, SourceAttestationVerifier
+from packages.rag_core.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
 from .model_adapters import ModelAdapter, ModelProtocolError, selected_adapter
 
 

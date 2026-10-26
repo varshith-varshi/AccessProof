@@ -4,7 +4,7 @@ Protect release requires a trusted source-content attestation. A resource ID
 alone proves only which ACL entry was checked, never which bytes the generator
 actually received.
 """
-from packages.rag_sdk.protection import ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import ProtectedRAG, RetrievedResource
 
 
 class MetadataOnlyGuard:

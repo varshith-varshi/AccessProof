@@ -222,12 +222,15 @@ def test_machine_proof_requires_current_guard_audits_and_real_ack():
             db.commit()
         verified_cutover = client.post(cutover_url, headers=machine_headers, json=cutover_proof)
         assert verified_cutover.status_code == 202, verified_cutover.text
-        assert verified_cutover.json()["protection_ready"] is True, verified_cutover.text
+        # A verified customer route alone does not override an unverified
+        # Google ACL/directory source or unacknowledged Guard policy. Keep
+        # Protect false until all independent source checks succeed.
+        assert verified_cutover.json()["protection_ready"] is False, verified_cutover.text
         assert client.post(cutover_url, headers=machine_headers, json=cutover_proof).status_code == 409
         assert heartbeat().status_code == 200
         after = client.get(prefix + "/status", headers=owner).json()
-        assert after["state"] == "protected", after
-        assert after["guard_acknowledged"] is True
+        assert after["state"] != "protected", after
+        assert after["guard_acknowledged"] is False
         certificate = after["route_certificate"]
         assert certificate["status"] == "CERTIFIED", certificate
         assert certificate["certified"] is True

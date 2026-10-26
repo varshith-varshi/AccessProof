@@ -4,7 +4,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from packages.rag_sdk.protection import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import GuardClient, ProtectedRAG, RetrievedResource
 
 PUBLIC = RetrievedResource("src-alpha", "public", content="visible")
 CANARY = "PRIVATE_CANARY_FROM_BETA_NEVER_SEND"

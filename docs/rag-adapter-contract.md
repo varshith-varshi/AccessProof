@@ -1,3 +1,9 @@
+> **RETIRED CUSTOMER SDK CONTRACT (26 October 2026).** Historical engineering
+> reference only. The V1 customer integration is AccessProof Gateway.
+> No Python, TypeScript, LangChain, LlamaIndex or Haystack framework adapter
+> can be newly registered. Use docs/GATEWAY_ONLY_V1_MIGRATION_2026-10-26.md.
+> Existing records remain audit-visible, not automatically protected.
+
 # AccessProof RAG adapter contract
 
 AccessProof protects an existing RAG pipeline at two application-controlled

@@ -10,7 +10,7 @@ from packages.demo_cache.protected_cache import SignedRedisAnswerCache, CacheInt
 from packages.demo_cache.universal import SignedBackendAnswerCache
 from packages.demo_cache.factory import configured_cache_backend, CacheConfigurationError
 from packages.demo_cache.trusted_snapshot import load_snapshot, SnapshotInvalid
-from packages.rag_sdk import (
+from packages.rag_core import (
     GuardClient, ProtectedRAG, RetrievedResource, SourceAttestationVerifier,
     CachedAnswerManifestSigner, CachedAnswerManifestVerifier,
 )

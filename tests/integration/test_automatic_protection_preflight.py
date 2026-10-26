@@ -35,7 +35,7 @@ def test_one_click_checks_are_durable_idempotent_and_do_not_fake_activation():
         application = client.post("/api/v1/current/ai-applications", headers=headers, json={
             "application_id": "synthetic-rag", "name": "Synthetic RAG",
             "source_id": source.json()["id"], "guard_id": guard.json()["id"],
-            "adapter_type": "generic-python", "adapter_contract_version": "accessproof.rag/v1",
+            "adapter_type": "accessproof-gateway", "adapter_contract_version": "accessproof.rag/v1",
         })
         assert application.status_code == 201, application.text
         path = "/api/v1/current/ai-applications/synthetic-rag/protection"
