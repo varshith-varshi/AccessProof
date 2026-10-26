@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { EmptyState, ErrorState, PendingButton, ProtectionStateBadge, Skeleton, StatusBadge } from "../../components/ui";
-import { AdapterRegistration, AIApplication, CurrentDashboard, Guard, ProtectionOverview, ProtectionStatus, Source, api } from "../../lib/api";
+import { AIApplication, CurrentDashboard, Guard, ProtectionOverview, ProtectionStatus, Source, api } from "../../lib/api";
 import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 
@@ -19,7 +19,7 @@ type GatewayChallengeState = {
 
 export default function Applications() {
   const [applications, setApplications] = useState<AIApplication[]>([]);
-  const [guards, setGuards] = useState<Guard[]>([]), [sources, setSources] = useState<Source[]>([]), [adapters, setAdapters] = useState<AdapterRegistration[]>([]);
+  const [guards, setGuards] = useState<Guard[]>([]), [sources, setSources] = useState<Source[]>([]);
   const [protectionStates, setProtectionStates] = useState<Record<string, string>>({});
   const [observed, setObserved] = useState<Array<{ id: string; blocked: number; latest: string | null }>>([]);
   const [loading, setLoading] = useState(true), [error, setError] = useState(""), [creating, setCreating] = useState(false), [pending, setPending] = useState(false), [formError, setFormError] = useState("");
@@ -37,12 +37,12 @@ export default function Applications() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [registered, dashboard, availableGuards, availableSources, availableAdapters, protection] = await Promise.all([
+      const [registered, dashboard, availableGuards, availableSources, protection] = await Promise.all([
         api<AIApplication[]>("/api/v1/current/ai-applications"), api<CurrentDashboard>("/api/v1/current/dashboard"),
-        api<Guard[]>("/api/v1/guards"), api<Source[]>("/api/v1/current/sources"), api<AdapterRegistration[]>("/api/v1/current/adapters"),
+        api<Guard[]>("/api/v1/guards"), api<Source[]>("/api/v1/current/sources"),
         api<ProtectionOverview>("/api/v1/current/protection/overview"),
       ]);
-      setGuards(availableGuards); setSources(availableSources); setAdapters(availableAdapters);
+      setGuards(availableGuards); setSources(availableSources);
       setProtectionStates(Object.fromEntries(
         protection.applications.map(item => [item.application_id, item.effective_state]),
       ));
@@ -62,9 +62,7 @@ export default function Applications() {
   async function create(event: FormEvent) {
     event.preventDefault(); setPending(true); setFormError("");
     try {
-      const selectedAdapter = adapters.find(item => item.id === "accessproof-gateway");
-      if (!selectedAdapter || selectedAdapter.status !== "AVAILABLE") throw new Error("Gateway is not available; contact your administrator.");
-      await api("/api/v1/current/ai-applications", { method: "POST", body: JSON.stringify({ application_id: applicationId.trim(), name: name.trim(), guard_id: guardId.trim() || undefined, source_id: sourceId.trim() || undefined, adapter_type: "accessproof-gateway", adapter_contract_version: selectedAdapter.contract_version }) });
+      await api("/api/v1/current/ai-applications", { method: "POST", body: JSON.stringify({ application_id: applicationId.trim(), name: name.trim(), guard_id: guardId.trim() || undefined, source_id: sourceId.trim() || undefined, adapter_type: "accessproof-gateway", adapter_contract_version: "accessproof.rag/v1" }) });
       setApplicationId(""); setName(""); setGuardId(""); setSourceId(""); setCreating(false); await load();
     } catch (cause) { setFormError(cause instanceof Error ? cause.message : "Unable to register the application."); }
     finally { setPending(false); }

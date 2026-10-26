@@ -70,7 +70,6 @@ export type ProtectionOverview = {
 };
 export type ProtectionStatus = { application_id: string; state: string; checks: ApplicationReadinessCheck[]; reason_code: string; message: string; last_checked_at: string | null; run_id: string | null; guard_acknowledged: boolean };
 export type AIApplication = { id: string; application_id: string; name: string; mode: string; guard_id: string | null; source_id: string | null; adapter_type: string; adapter_contract_version: string; readiness: ApplicationReadinessCheck[] };
-export type AdapterRegistration = { id: string; name: string; category: string; status: string; language: string; contract_version: string; pre_generation_filtering: boolean; output_verification: boolean; shadow_mode: boolean; protect_mode: boolean; installation: string; limitation: string; adapter_version?: string; framework?: string; framework_versions?: string[]; required_guard_version?: string; required_configuration?: string[]; deployment_models?: string[]; validation_requirements?: string[]; certification?: string };
 
 export type Guard = {
   id: string; name: string; environment: string; version: string | null;
