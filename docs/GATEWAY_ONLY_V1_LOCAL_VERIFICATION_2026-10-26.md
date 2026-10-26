@@ -52,3 +52,48 @@ An earlier combined full-suite invocation was interrupted after four now-resolve
 5. **GitHub CI:** Workflow in `.github/workflows/ci.yml` remains local and must be added after authorization grants the GitHub `workflow` scope. Until then, the GitHub PR itself has no hosted build evidence.
 
 **No production deployment, real customer credentials, destructive database operation, or live enterprise certification was performed as part of this migration.** The PR remains draft until external release gates are met.
+
+
+## Continued post-refactor Gateway hardening (26 October 2026)
+
+- Restricted plaintext Gateway-to-Guard and Gateway-to-model upstream
+  destinations to validated loopback, RFC1918, IPv6 ULA and single-label Docker
+  service hostnames. Public/dotted names require HTTPS; metadata, link-local,
+  wildcard and special-use IPs are rejected.
+- Made Guard health query optionally application-specific, and made Gateway
+  readiness require its own healthy, Protect-mode application binding and ACL
+  freshness instead of trusting another application's Guard health.
+- New security tests exercise public vs. private transport, metadata addresses,
+  missing or Shadow application binding and healthy specific bindings.
+- First focused regression run: **55 passed** (new tests and related Guard,
+  Gateway, unit and real TCP integration checks), zero failures. Evidence:
+  `/tmp/ap-gateway-scoped-hardening.log`.
+- This does not eliminate arbitrary runtime RAG bypass; customer-side Docker
+  egress isolation and employee-facing cutover remain external production gates.
+
+### Extended post-hardening release evidence
+
+- Whole Python unit directory rerun: **444 passing**; evidence:
+  /tmp/ap-gw-next-unit.log (POST_HARDEN_UNIT_EXIT:0).
+- Whole Python security directory rerun after transport and app-scoped health
+  checks: **373 passing**, no failures; evidence:
+  /tmp/ap-gw-next-security.log (POST_HARDEN_SECURITY_EXIT:0).
+- Additional production-Guard revision installation gate was added after the
+  broad suite began. Its independent 48-test focused rerun passed, including
+  a production case with an enrolled Guard that refuses Protect until
+  authorization revisions and identity mappings are installed; evidence:
+  /tmp/ap-gw-prod-revision-gate.log (PROD_REVISION_GATE_EXIT:0).
+- The complete selected 55-case app-scoped health / external HTTP / real TCP
+  regression also passed before the final revision rule; evidence:
+  /tmp/ap-gateway-scoped-hardening.log.
+- Rebuilt nonproduction Gateway image 'accessproof-gateway:scoped-ready-20261026'
+  and Guard image 'accessproof-guard:revision-gated-20261026'; each built and
+  passed internal application import smoke checks. Nothing was deployed to
+  any live endpoint.
+- New code must remain in draft review until real Google Workspace and
+  end-to-end customer RAG validation complete. These tests validate local
+  contracts; they do not prove enterprise revocation propagation speed.
+- Final cross-component Gateway/Guard OAuth, customer RAG, route certification,
+  and upstream transport test set: **64 passed**, no failures, after the
+  production revision gate was installed; evidence:
+  /tmp/ap-gateway-protect-routes-final.log (PROTECT_ROUTES_EXIT:0).

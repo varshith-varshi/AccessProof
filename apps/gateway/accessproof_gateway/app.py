@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+import ipaddress
+import re
 import json
 import os
 from contextlib import asynccontextmanager
@@ -114,6 +116,51 @@ class CachedAnswerAuthorizationInput(BaseModel):
         return self
 
 
+# Only local/VPC endpoints may receive employee Guard credentials or LLM
+# context without transport encryption. Public, link-local, metadata-service,
+# and ambiguous DNS hosts must never be an unencrypted HTTP destination.
+_COMPOSE_SERVICE_HOST = re.compile(r"^[a-zA-Z][a-zA-Z0-9-]{0,61}$")
+
+
+def _validate_upstream_url(label: str, value: str) -> None:
+    parsed = urlsplit(value)
+    if (parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username or parsed.password or parsed.fragment):
+        raise ValueError(f"Gateway {label} URL must be an authenticated service endpoint")
+    # urlsplit() allows unusual URL forms; reject malformed network locations.
+    if not parsed.netloc or parsed.hostname.endswith("."):
+        raise ValueError(f"Gateway {label} URL has an ambiguous host")
+    host = parsed.hostname
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None:
+        # Python's .is_private includes IPv4/IPv6 special-use allocations,
+        # documentation prefixes and metadata link-local addresses. Permit
+        # plaintext only for actual RFC1918, IPv6 ULA and loopback networks.
+        local_networks = (
+            ipaddress.ip_network("127.0.0.0/8"),
+            ipaddress.ip_network("10.0.0.0/8"),
+            ipaddress.ip_network("172.16.0.0/12"),
+            ipaddress.ip_network("192.168.0.0/16"),
+            ipaddress.ip_network("::1/128"),
+            ipaddress.ip_network("fc00::/7"),
+        )
+        if not any(address in network for network in local_networks):
+            if (address.is_link_local or address.is_multicast or
+                    address.is_unspecified or address.is_reserved):
+                raise ValueError(f"Gateway {label} URL may not target a special-use IP")
+            if parsed.scheme == "http":
+                raise ValueError(f"Gateway {label} URL requires HTTPS outside private networks")
+    elif parsed.scheme == "http" and host != "localhost" and not _COMPOSE_SERVICE_HOST.fullmatch(host):
+        # A single-label Docker service must still be verified as isolated by
+        # the customer-side topology/cutover review. Dotted DNS or public names
+        # need TLS, even if they claim to end in '.internal' or '.local'.
+        raise ValueError(f"Gateway {label} URL requires HTTPS outside private networks")
+
+
 @dataclass(frozen=True)
 class GatewaySettings:
     guard_url: str
@@ -144,10 +191,7 @@ class GatewaySettings:
                 not 1024 <= self.max_response_bytes <= 8_000_000):
             raise ValueError("Gateway request/response resource limit is unsafe")
         for label, value in (("guard", self.guard_url), ("model", self.model_url)):
-            parsed = urlsplit(value)
-            if (parsed.scheme not in {"http", "https"} or not parsed.hostname
-                    or parsed.username or parsed.password or parsed.fragment):
-                raise ValueError(f"Gateway {label} URL must be an authenticated service endpoint")
+            _validate_upstream_url(label, value)
         if self.model_provider != "custom":
             adapter = selected_adapter(self.model_provider)
             adapter.validate(self.model_url, self.model_name, self.model_bearer_token)
@@ -415,7 +459,9 @@ def create_app(
     @app.get("/health/ready")
     def ready() -> dict[str, str]:
         try:
-            health = GuardClient(resolved.guard_url, client=service.client).health()
+            health = GuardClient(resolved.guard_url, client=service.client).health(
+                application_id=resolved.application_id,
+            )
         except Exception:
             raise HTTPException(503, "GUARD_UNAVAILABLE") from None
         if health.get("status") != "ok" or health.get("ready") is not True:

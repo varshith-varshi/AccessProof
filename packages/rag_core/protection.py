@@ -118,9 +118,12 @@ class GuardClient:
         if self._owns_client:
             self.client.close()
 
-    def health(self) -> dict[str, Any]:
-        """Return the Guard health contract without sending employee data."""
-        response = self.client.get(f"{self.base_url}/health")
+    def health(self, *, application_id: str | None = None) -> dict[str, Any]:
+        """Return global or app-scoped Guard health without employee data."""
+        response = self.client.get(
+            f"{self.base_url}/health",
+            params={"application_id": application_id} if application_id is not None else None,
+        )
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, dict) or not isinstance(data.get("status"), str):

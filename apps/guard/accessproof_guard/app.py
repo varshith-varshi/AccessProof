@@ -411,7 +411,10 @@ def _mapped_subject(authorization: str | None, source_id: str | None) -> str:
 
 
 @app.get("/health")
-def health() -> dict[str, object]:
+def health(application_id: str | None = None) -> dict[str, object]:
+    # Gateway readiness is always scoped to one configured application.
+    # A globally healthy Guard may still be missing this application's
+    # binding, be in Shadow, or lack fresh Google source authorization.
     configured = bool(control_plane_url and guard_id and guard_credential)
     sync_age = cache.sync_age_seconds()
     fresh = sync_age is not None and sync_age <= max_policy_age_seconds
@@ -431,6 +434,20 @@ def health() -> dict[str, object]:
         cache.version() > 0 and source_healthy and audit_buffer_ready and bindings_ready
         and revisions_ready and (not configured or fresh)
     )
+    if application_id is not None:
+        binding = cache.application_binding(application_id) if cache.application_bindings_received() else None
+        production = os.getenv("ACCESSPROOF_ENV", "").lower() == "production"
+        app_ready = bool(
+            binding is not None and binding[1] == "protect"
+            and cache.source_acl_healthy(application_id)
+            and (not production or (
+                cache.identity_mappings_received() and
+                cache.authorization_revisions_received()
+            ))
+            and (not cache.authorization_revisions_received()
+                 or cache.authorization_revision(application_id) is not None)
+        )
+        ready = ready and app_ready
     return {
         "status": "ok" if ready and _sync_error is None else "degraded",
         "policy_version": cache.version(),
@@ -451,6 +468,13 @@ def _application_mode(application_id: str) -> tuple[str, str | None]:
             raise HTTPException(403, "APPLICATION_NOT_BOUND")
         source_id, application_mode = binding
         if application_mode == "protect":
+            # A production Guard without a received revision envelope cannot
+            # correlate Layer 1 with the authorization state at Layer 2.
+            # Never treat "not yet synced" as "no revisions required".
+            if os.getenv("ACCESSPROOF_ENV", "").lower() == "production":
+                if (not cache.authorization_revisions_received()
+                        or cache.authorization_revision(application_id) is None):
+                    raise HTTPException(503, "AUTHORIZATION_REVISION_NOT_SYNCED")
             age = cache.sync_age_seconds()
             if age is None or age > max_policy_age_seconds:
                 raise HTTPException(503, "POLICY_SYNC_STALE")
