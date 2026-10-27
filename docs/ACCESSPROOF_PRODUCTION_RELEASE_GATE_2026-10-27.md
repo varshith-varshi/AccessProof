@@ -57,7 +57,7 @@
    allow/deny, cache invalidation after source revoke, negative controls and
    signed leak-window/SLO results must all be tested independently.
 4. **AWS production hardening gaps.** AWS Core reported the instance root EBS
-   volume as **unencrypted**, only ~1.3 GB free disk after cleanup, and its
+   volume as **unencrypted**, ~2.3 GB free disk after deleting obsolete unused Docker images, and its
    current AWS management connection uses root-account credentials. There is
    no EC2 instance profile. Change to least-privilege IAM and encrypted
    storage in a controlled maintenance plan before an enterprise GA claim.
@@ -82,3 +82,14 @@ archive during a controlled outage; never overwrite live data casually.
 **No security certification is implied by HTTP 200 health or by Graph
 consent/grant success.** Final GA/protection activation requires actual
 authorization and revocation evidence.
+
+## Post-release verification update
+
+- Production API and worker upgraded to the pinned multitenant release images.
+- Public API health and login page HTTP 200, desktop/mobile login forms and protected-route redirects verified in real Chromium with no page JS errors.
+- Production PostgreSQL schema is now at `n7a2b4c6d801`.
+- Removed unused retired Live Validation frontend images and obsolete legacy frontend image: EC2 free space improved to approximately 2.3 GB (88% full).
+- Local release Git commits: `2aeb390` and `b0cc470`. HTTPS push timed out; remote branch publication is not confirmed.
+- An activation helper is staged at `/home/ubuntu/accessproof/releases/activate_accessproof_microsoft_aws.py`. It requires the operator to install the existing 0600 JSON credential file through an approved channel; the assistant did not transfer it or execute the helper.
+
+**Final status remains: multitenant backend deployed; Microsoft customer authorization and RAG protection certification blocked pending server-side credential activation and genuine employee sign-in/protection tests.**
