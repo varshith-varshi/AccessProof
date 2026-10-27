@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from sqlalchemy import create_engine
 
-from packages.rag_sdk.cache_backends import (
+from packages.rag_core.cache_backends import (
     CacheBackend, MemcachedBackend, MemoryBackend, RedisBackend, SQLAlchemyBackend,
 )
 

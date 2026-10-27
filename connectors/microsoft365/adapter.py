@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Any, cast
 import hashlib
+from urllib.parse import urlsplit
+from uuid import UUID
 
 import httpx
 
@@ -10,6 +12,10 @@ from packages.connector_sdk.base import (
     ConnectionIdentity,
     SourceAdapter,
     UnsafeBoundaryError,
+    AuthenticationError,
+    ProviderUnavailableError,
+    AuthorizationError,
+    UnsupportedCapabilityError,
 )
 from packages.domain.models import Capability, CapabilityStatus, Principal, SourceResource
 
@@ -25,6 +31,9 @@ class Microsoft365Adapter(SourceAdapter):
         drive_id: str,
         test_root_item_id: str,
         tenant_hint: str | None = None,
+        sharepoint_site_id: str | None = None,
+        sharepoint_list_id: str | None = None,
+        onedrive_owner_object_id: str | None = None,
         test_group_id: str | None = None,
         test_group_email: str | None = None,
         advanced_directory_mode: bool = False,
@@ -42,6 +51,9 @@ class Microsoft365Adapter(SourceAdapter):
         self.drive_id = drive_id
         self.test_root_item_id = test_root_item_id
         self.tenant_hint = tenant_hint
+        self.sharepoint_site_id = sharepoint_site_id
+        self.sharepoint_list_id = sharepoint_list_id
+        self.onedrive_owner_object_id = onedrive_owner_object_id
         self.test_group_id = test_group_id
         self.test_group_email = test_group_email
         self.advanced_directory_mode = advanced_directory_mode
@@ -60,7 +72,24 @@ class Microsoft365Adapter(SourceAdapter):
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         async def send() -> httpx.Response:
-            return await self._client.request(method, f"{self.GRAPH}{path}", **kwargs)
+            # Never follow a Graph-origin redirect with an administrator token,
+            # even when a caller supplies a differently configured HTTP client.
+            response = await self._client.request(
+                method, f"{self.GRAPH}{path}", follow_redirects=False, **kwargs
+            )
+            if response.status_code == 400:
+                # Graph currently returns this on some newly provisioned M365
+                # Business Basic trials. Keep the full provider body private,
+                # and surface a stable action-oriented status to the operator.
+                try:
+                    error = response.json().get("error", {})
+                    message = error.get("message", "") if isinstance(error, dict) else ""
+                except (ValueError, AttributeError):
+                    message = ""
+                if (isinstance(message, str)
+                        and "tenant does not have a spo license" in message.lower()):
+                    raise ProviderUnavailableError("MICROSOFT_SHAREPOINT_SERVICE_NOT_READY")
+            return response
 
         if method.upper() in {"GET", "HEAD"}:
             return await bounded_idempotent_request(send, max_attempts=3)
@@ -233,13 +262,64 @@ class Microsoft365Adapter(SourceAdapter):
         )
 
     async def validate_connection(self) -> ConnectionIdentity:
+        # Explicit SharePoint profiles must be tied to the real Graph site and
+        # document library, not merely user-supplied IDs in source credentials.
+        facets = ("id,name,parentReference,remoteItem,folder,sharepointIds"
+                  if self.sharepoint_site_id else
+                  "id,name,parentReference,remoteItem,folder"
+                  if self.onedrive_owner_object_id else
+                  "id,name,parentReference,remoteItem")
         r = await self._request(
             "GET",
-            f"/drives/{self.drive_id}/items/{self.test_root_item_id}?$select=id,name,parentReference,remoteItem",
+            f"/drives/{self.drive_id}/items/{self.test_root_item_id}",
+            params={"$select": facets},
         )
         item = r.json()
         if not isinstance(item, dict) or "remoteItem" in item or item.get("id") != self.test_root_item_id:
             raise UnsafeBoundaryError("Approved Microsoft boundary must be a local drive item")
+        if self.sharepoint_site_id:
+            identifiers = item.get("sharepointIds")
+            if not isinstance(item.get("folder"), dict) or not isinstance(identifiers, dict):
+                raise UnsafeBoundaryError("SharePoint library boundary metadata incomplete")
+            try:
+                # Graph site ID: hostname,SPSite-GUID,SPWeb-GUID.
+                # The driveItem sharepointIds.siteId is the *SPSite* GUID;
+                # sharepointIds.webId is the *SPWeb* GUID. Confusing these
+                # silently rejects valid sub-sites or binds the wrong scope.
+                parts = self.sharepoint_site_id.split(",")
+                if len(parts) != 3:
+                    raise ValueError("Graph site ID must have three components")
+                expected_host = parts[0].lower()
+                expected_collection = UUID(parts[1])
+                expected_web = UUID(parts[2])
+                expected_list = UUID(str(self.sharepoint_list_id))
+                actual_collection = UUID(str(identifiers.get("siteId")))
+                actual_web = UUID(str(identifiers.get("webId")))
+                actual_list = UUID(str(identifiers.get("listId")))
+                site_url = urlsplit(str(identifiers.get("siteUrl") or ""))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise UnsafeBoundaryError("SharePoint site/library identifiers invalid") from exc
+            if (expected_collection != actual_collection or expected_web != actual_web
+                    or expected_list != actual_list or
+                    site_url.scheme != "https" or
+                    site_url.hostname != expected_host):
+                raise UnsafeBoundaryError("SharePoint site/library does not match approved folder")
+        if self.onedrive_owner_object_id:
+            if not isinstance(item.get("folder"), dict):
+                raise UnsafeBoundaryError("OneDrive source boundary must be a folder")
+            drive_response = await self._request(
+                "GET", f"/drives/{self.drive_id}",
+                params={"$select": "id,driveType,owner"},
+            )
+            drive = drive_response.json()
+            owner = drive.get("owner") if isinstance(drive, dict) else None
+            user = owner.get("user") if isinstance(owner, dict) else None
+            actual_owner = user.get("id") if isinstance(user, dict) else None
+            if (not isinstance(drive, dict) or drive.get("id") != self.drive_id
+                    or drive.get("driveType") != "business"
+                    or not isinstance(actual_owner, str)
+                    or actual_owner.lower() != self.onedrive_owner_object_id.lower()):
+                raise UnsafeBoundaryError("OneDrive business drive owner could not be verified")
         metadata = {
             "name": item.get("name"),
             "advanced_directory_mode": self.advanced_directory_mode,
@@ -592,8 +672,29 @@ class Microsoft365Adapter(SourceAdapter):
             async with httpx.AsyncClient(
                 timeout=30,
                 follow_redirects=False,
+                trust_env=False,
                 headers={"Authorization": f"Bearer {principal.access_token}"},
             ) as delegated_client:
+                # Independently bind the delegated Graph credential to the
+                # principal whose access the evidence purports to measure.
+                # An attacker must not be able to substitute Bob's token into
+                # Alice's test and report Bob's denial as Alice's revocation.
+                identity_response = await delegated_client.get(
+                    f"{self.GRAPH}/me?$select=id"
+                )
+                normalize_http_error(identity_response)
+                try:
+                    identity = identity_response.json()
+                except ValueError as exc:
+                    raise AuthorizationError(
+                        "Microsoft employee identity could not be verified"
+                    ) from exc
+                employee_id = identity.get("id") if isinstance(identity, dict) else None
+                if (not isinstance(employee_id, str) or not employee_id
+                        or employee_id.lower() != principal.external_id.lower()):
+                    raise AuthorizationError(
+                        "Delegated Microsoft token does not match tested employee object ID"
+                    )
                 response = await delegated_client.get(
                     f"{self.GRAPH}/drives/{self.drive_id}/items/{resource.provider_id}/content"
                 )
@@ -602,60 +703,58 @@ class Microsoft365Adapter(SourceAdapter):
                 or response.headers.get("client-request-id")
                 or response.headers.get("x-ms-request-id")
             )
-            if response.status_code in {200, 201, 202, 204, 301, 302, 303, 307, 308}:
+            if response.status_code == 200:
                 return True
+            if response.status_code == 302:
+                # Microsoft Graph documents a 302 to a short-lived content
+                # download URL. An arbitrary HTTP redirect (or one without a
+                # Location) is NOT proof of the employee's content access.
+                # Validate the destination independently of the Graph token.
+                location = response.headers.get("Location", "")
+                try:
+                    target = urlsplit(location)
+                    host = (target.hostname or "").lower()
+                    port = target.port
+                except (ValueError, TypeError) as exc:
+                    raise ProviderUnavailableError(
+                        "MICROSOFT_DELEGATED_CONTENT_REDIRECT_UNTRUSTED"
+                    ) from exc
+                trusted = (
+                    host.endswith(".sharepoint.com")
+                    or host.endswith(".1drv.com")
+                    or host.endswith(".onedrive.com")
+                )
+                if (target.scheme != "https" or not trusted or port not in {None, 443}
+                        or target.username or target.password or target.fragment):
+                    raise ProviderUnavailableError(
+                        "MICROSOFT_DELEGATED_CONTENT_REDIRECT_UNTRUSTED"
+                    )
+                return True
+            if 300 <= response.status_code < 400:
+                raise ProviderUnavailableError("MICROSOFT_DELEGATED_CONTENT_REDIRECT_UNEXPECTED")
             # Microsoft Graph commonly returns either 403 or 404 after access is
             # removed, depending on the SharePoint/OneDrive sharing model.  Neither is
             # treated as a transient outage or as an administrator-side inference.
-            if response.status_code in {401, 403, 404}:
+            # Expired/invalid delegated identity credentials do not establish
+            # that a SharePoint revocation took effect. Treat 401 as an
+            # inconclusive authentication failure, never as observed denial.
+            if response.status_code == 401:
+                raise AuthenticationError("Employee delegated Microsoft token was rejected")
+            if response.status_code in {403, 404}:
                 return False
             normalize_http_error(response)
             return False  # pragma: no cover - normalize_http_error always raises here
 
-        # Direct permissions first. Inherited permissions are intentionally not flattened
-        # into this list; advanced paths are represented explicitly.
-        r = await self._request(
-            "GET", f"/drives/{self.drive_id}/items/{resource.provider_id}/permissions"
+        # The administrator-side Graph permissions listing cannot prove the
+        # effective rights of an employee (native SharePoint groups, inherited
+        # scopes, link possession, and invalid delegation can change the answer).
+        # In particular, a permission's displayName is not a trustworthy
+        # employee identity. Do not turn that inventory into source-denial
+        # evidence for an AccessProof security validation.
+        raise UnsupportedCapabilityError(
+            "Independent Microsoft effective-access verification requires "
+            "a delegated token for the tested employee"
         )
-        email = (principal.email or principal.external_id).lower()
-        for p in r.json().get("value", []):
-            identities = list(p.get("grantedToIdentitiesV2") or [])
-            if p.get("grantedToV2"):
-                identities.append(p["grantedToV2"])
-            for ident in identities:
-                user = ident.get("user", {})
-                if email in {
-                    str(user.get("email", "")).lower(),
-                    str(user.get("displayName", "")).lower(),
-                }:
-                    return True
-
-        if (
-            self.enable_parent_acl_tests
-            and resource.metadata.get("microsoft_parent_principal") == principal.external_id
-            and not resource.metadata.get("moved_to_parent_item_id")
-        ):
-            parent = await self._request(
-                "GET", f"/drives/{self.drive_id}/items/{self.test_root_item_id}/permissions"
-            )
-            for permission in parent.json().get("value", []):
-                identities = list(permission.get("grantedToIdentitiesV2") or [])
-                if permission.get("grantedToV2"):
-                    identities.append(permission["grantedToV2"])
-                for ident in identities:
-                    user = ident.get("user", {})
-                    if email in {
-                        str(user.get("email", "")).lower(),
-                        str(user.get("displayName", "")).lower(),
-                    }:
-                        return True
-
-        group_id = resource.metadata.get("microsoft_group_id")
-        if group_id:
-            # The resource was explicitly granted to the dedicated AccessProof test group;
-            # effective user access is therefore determined by current directory membership.
-            return await self._is_member_of_test_group(principal, str(group_id))
-        return False
 
     async def cleanup(self) -> None:
         for resource_id, (permission_id, _principal) in list(self._parent_permissions.items()):

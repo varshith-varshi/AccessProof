@@ -8,6 +8,18 @@ import { ProtectedPage } from "../../protected-page";
 type Cache = "redis" | "memcached" | "postgresql" | "none";
 type ModelProvider = "openai-compatible" | "anthropic" | "gemini";
 type Step = "prepare" | "inspect" | "stage" | "install" | "verify" | "cutover";
+type InventoryGroup = "caches" | "frameworks" | "vectors" | "models" | "deployments";
+type InventoryEntry = { name: string; evidence: string; confidence: string; authorization_coverage: string };
+type LocalInventory = {
+  schema: "accessproof.architecture_inventory/v1";
+  certification_status: "NOT_CERTIFIED";
+  cache_inventory_state: string;
+  cache_return_path_declared: boolean;
+  architecture: Record<InventoryGroup, InventoryEntry[]>;
+  blockers: string[];
+};
+const inventoryGroups: InventoryGroup[] = ["caches", "frameworks", "vectors", "models", "deployments"];
+const inventoryCommand = "python -m scripts.customer_architecture_inventory /path/to/customer-rag --output ./accessproof-architecture.json";
 
 const steps: Array<{ id: Step; title: string; description: string }> = [
   { id: "prepare", title: "Connect", description: "Register one source, an enrolled Guard, and your application." },
@@ -28,6 +40,8 @@ export default function IntegrationSetup() {
   const [copied, setCopied] = useState("");
   const [approved, setApproved] = useState(false);
   const [approveCutover, setApproveCutover] = useState(false);
+  const [inventory, setInventory] = useState<LocalInventory | null>(null);
+  const [inventoryError, setInventoryError] = useState("");
   const chosen = steps.find((item) => item.id === step) ?? steps[0];
   const commands = useMemo(() => ({
     inspect: `${tool} plan ${fixedSpec}`,
@@ -57,7 +71,7 @@ export default function IntegrationSetup() {
     redis: "Redis: configure ACCESSPROOF_DEMO_CACHE_BACKEND=redis and ACCESSPROOF_DEMO_CACHE_URL on the customer RAG. Signed cache hits must be reauthorized.",
     memcached: "Memcached: configure ACCESSPROOF_DEMO_CACHE_BACKEND=memcached and ACCESSPROOF_DEMO_CACHE_MEMCACHED_HOST on the customer RAG.",
     postgresql: "PostgreSQL: configure ACCESSPROOF_DEMO_CACHE_BACKEND=postgresql and a dedicated SQLAlchemy URL. The approved cache table must be provisioned separately.",
-    none: "No answer cache: the RAG must still route retrieved source context and every generated answer through both Guard layers.",
+    none: "No answer cache: explicitly declare com.accessproof.cache.mode=none in the RAG service labels. Missing cache config is UNKNOWN, not proof of absence. The RAG must still route retrieved context and every answer through both Guard layers.",
   };
   const cacheSupport: Record<Cache, { label: string; tone: string; evidence: string; production: string }> = {
     redis: {
@@ -95,8 +109,60 @@ export default function IntegrationSetup() {
       setCopied("blocked");
     }
   }
+  async function loadInventory(file?: File) {
+    setInventory(null);
+    setInventoryError("");
+    if (!file) return;
+    if (file.size > 2_000_000) {
+      setInventoryError("The inventory report exceeds the 2 MB local preview limit.");
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      if (!parsed || typeof parsed !== "object") throw new Error("Invalid report");
+      const report = parsed as Record<string, unknown>;
+      if (report.schema !== "accessproof.architecture_inventory/v1" || report.certification_status !== "NOT_CERTIFIED"
+        || !report.architecture || typeof report.architecture !== "object"
+        || !Array.isArray(report.blockers) || typeof report.cache_inventory_state !== "string"
+        || typeof report.cache_return_path_declared !== "boolean") throw new Error("Invalid report");
+      const groups = report.architecture as Record<string, unknown>;
+      if (!inventoryGroups.every((group) => Array.isArray(groups[group])
+        && (groups[group] as unknown[]).length <= 300
+        && (groups[group] as unknown[]).every((item) => !!item && typeof item === "object"
+          && typeof (item as Record<string, unknown>).name === "string"
+          && typeof (item as Record<string, unknown>).evidence === "string"))
+        || report.blockers.length > 1000 || report.blockers.some((item) => typeof item !== "string")) {
+        throw new Error("Invalid report");
+      }
+      setInventory(report as LocalInventory);
+    } catch {
+      setInventoryError("Invalid AccessProof architecture inventory JSON. Run the local scanner and select its report.");
+    }
+  }
+
   return <ProtectedPage>
-    <PageHeader eyebrow="CUSTOMER INTEGRATION" title="Guided RAG connection" description="For reviewed Docker Compose RAG deployments with signed retrieval provenance. The customer-side installer prepares a Gateway, while a separate enrolled-machine test must approve actual protection." action={<Link href="/integrations" className="button compact secondary">Back to integrations</Link>}/>
+    <PageHeader eyebrow="CUSTOMER INTEGRATION" title="Deploy AccessProof Gateway" description="For reviewed Docker Compose RAG deployments with signed retrieval provenance. The customer-side installer prepares a Gateway, while a separate enrolled-machine test must approve actual protection." action={<Link href="/integrations" className="button compact secondary">Back to integrations</Link>}/>
+    <section className="card section" aria-label="Customer architecture discovery">
+      <div className="panel-head"><div><p className="label">CUSTOMER-SIDE DISCOVERY</p><h2>Inspect your RAG, models and caches</h2></div><span className="status-badge warning">Read-only / not certified</span></div>
+      <p className="muted small">Run the scanner on the customer-controlled RAG source directory. It does not execute customer code or connect to customer infrastructure. Its evidence identifies possible components and routes, not guaranteed interception.</p>
+      <pre style={{ background: "#102630", borderRadius: 6, padding: 16, color: "#fff", overflowX: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><code>{inventoryCommand}</code></pre>
+      <label>Preview a local inventory JSON file (no upload to AccessProof servers)
+        <input type="file" accept=".json,application/json" aria-label="Preview architecture inventory JSON" onChange={(event) => void loadInventory(event.target.files?.[0])} />
+      </label>
+      {inventoryError && <p className="alert warning-alert small" role="alert">{inventoryError}</p>}
+      {inventory ? <div>
+        <p className="alert warning-alert small"><b>NOT CERTIFIED.</b> Cache inventory: <b>{inventory.cache_inventory_state}</b>. Signed cache-return-path declaration: <b>{inventory.cache_return_path_declared ? "Found (unverified)" : "Not found"}</b>.</p>
+        <div className="definition-list" aria-label="Discovered architecture components">{inventoryGroups.map((group) => <div key={group}>
+          <span>{group[0].toUpperCase() + group.slice(1)}</span>
+          <span className="table-muted small">{inventory.architecture[group].length
+            ? [...new Set(inventory.architecture[group].map((entry) => entry.name))].join(", ")
+            : "Unknown / none observed (not proof of absence)"}</span>
+        </div>)}</div>
+        <p className="label" style={{ marginTop: 12 }}>Compatibility blockers ({inventory.blockers.length})</p>
+        {inventory.blockers.slice(0, 12).map((item, index) => <p className="muted small" key={index}>{item}</p>)}
+        {inventory.blockers.length > 12 && <p className="muted small">Additional blockers are in the private local report.</p>}
+      </div> : <p className="muted small">No report selected. Unknown components and untested cache paths must not be considered protected.</p>}
+    </section>
     <section className="card section">
       <div className="panel-head">
         <div><p className="label">SUPPORTED DEPLOYMENT</p><h2>Choose your cache backend</h2></div>
@@ -175,7 +241,13 @@ export default function IntegrationSetup() {
         {step === "inspect" && <p className="muted">The inspection returns a compatibility report without writing files or starting services. Unsupported routes and unreviewed cache paths are blocked.</p>}
         {step === "stage" && <p className="muted">Stage creates mode-0600 Gateway environment, override, and installation hash files. The customer&apos;s existing Compose source is never modified.</p>}
         {step === "install" && <p className="muted">The installer verifies the staged files and starts only the Gateway. It must report <b>INSTALLED_UNVERIFIED</b>; customer RAG traffic remains unchanged.</p>}
-        {step === "verify" && <p className="muted">Upload the generated installation manifest in the AI application screen, issue a server challenge, then provide the resulting private challenge and enrolled Guard credentials to the local command. This test does not activate Protect by itself.</p>}
+        {step === "verify" && <div>
+          <p className="muted">Upload the generated installation manifest in the AI application screen, issue a server challenge, then provide the resulting private challenge and enrolled Guard credentials to the local command. This test does not activate Protect by itself.</p>
+          <p className="label">OPTIONAL CACHE-RETURN REPLAY TEST</p>
+          <p className="muted small">For a customer application with an answer cache, use a private synthetic-probe config (0600): an approved loopback employee-facing URL, an authorized employee token, a denied employee token, the same synthetic query, approved/forbidden canaries, and the JSON field indicating a real cache hit. The test warms the answer, confirms a cache hit, then checks that the denied employee cannot receive it. Do not use real secrets or production documents.</p>
+          <pre style={{ background: "#102630", borderRadius: 6, padding: 16, color: "#fff", overflowX: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><code>python -m scripts.customer_cache_route_probe --config ./synthetic-cache-probe.json --output ./cache-route-evidence.json</code></pre>
+          <p className="alert warning-alert small">A passing cache replay proves only the specified synthetic route, not all customer caches or revocation timing. Every unsupported return path remains excluded from Protect certification.</p>
+        </div>}
         {step === "cutover" && <div>
           <p className="alert warning-alert small">The cutover command requires an already installed, reviewed Gateway and a server-issued machine challenge. For a single approved install → verify → cutover transaction after staging, use the separate complete command documented in the customer runbook. It will refuse to proceed if a security check fails. A successful customer-route challenge is not a blanket production certificate.</p>
           <p className="muted small">After the route is verified, an authorized administrator can request the separate control-plane Protect preflight. The server must independently validate source permissions, identity, routes and Guard acknowledgment before it reports protection active.</p>

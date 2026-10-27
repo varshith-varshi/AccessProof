@@ -278,7 +278,14 @@ def test_protect_readiness_requires_fresh_directory_not_just_drive_acl():
     db, org, source, _ = setup_db()
     try:
         source.status = "connected"
-        source.encrypted_credentials = "dummy"
+        # Readiness also requires a decryptable, approved-root-bound Google
+        # credential; an arbitrary placeholder must never activate Protect.
+        from apps.api.accessproof_api import app as api_module
+        import json
+        source.encrypted_credentials = api_module._secret_box.encrypt(json.dumps({
+            "access_token": "synthetic-provider-token",
+            "test_root_folder_id": source.boundary,
+        }))
         source.last_validated_at = datetime.now(timezone.utc)
         application = AIApplication(
             organization_id=org.id, application_id="demo-rag",

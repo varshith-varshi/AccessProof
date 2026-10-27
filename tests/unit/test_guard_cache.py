@@ -171,3 +171,85 @@ def test_machine_heartbeat_degraded_without_installed_policy(tmp_path):
     client.heartbeat()
     assert observed[-1]["cache_status"] == "healthy"
     assert observed[-1]["degraded_conditions"] == []
+
+
+def test_guard_rejects_stale_revision_before_installing_allow_or_ack(tmp_path):
+    """No new ALLOW may be committed if the revision envelope is rejected."""
+    import pytest
+    cache = PolicyCache(str(tmp_path / "guard-preflight.db"))
+    cache.install(3, [{
+        "subject_id": "alice", "source_id": "drive", "resource_id": "secret",
+        "decision": "deny", "reason": "REVOKED",
+    }])
+    cache.set_authorization_revisions([{
+        "application_id": "rag", "revision": 2, "revision_hash": "b" * 64,
+        "generated_at": "2026-10-26T00:00:00Z",
+    }])
+    acks: list[httpx.Request] = []
+
+    def stale_revision(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            acks.append(request)
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(200, json={
+            "kind": "incremental", "version": 4,
+            "applications": [{
+                "application_id": "rag", "source_id": "drive",
+                "mode": "protect", "source_acl_healthy": True,
+            }],
+            "authorization_revisions": [{
+                "application_id": "rag", "revision": 1, "revision_hash": "a" * 64,
+                "generated_at": "2026-10-26T00:00:00Z",
+            }],
+            "policies": [{
+                "version": 4, "subject_id": "alice", "source_id": "drive",
+                "resource_id": "secret", "scope": "read", "decision": "allow",
+            }],
+        })
+
+    client = GuardSyncClient(
+        cache, GuardMachineCredentials("https://control.example", "g", "machine", "1"),
+        httpx.Client(transport=httpx.MockTransport(stale_revision)),
+    )
+    with pytest.raises(ValueError, match="STALE_AUTHORIZATION_REVISION"):
+        client.sync_once()
+    assert cache.version() == 3
+    assert cache.decide("alice", "drive", "secret", "read")[0] == "deny"
+    assert cache.authorization_revision("rag") == (2, "b" * 64)
+    assert acks == []
+
+
+def test_guard_rejects_invalid_identity_mapping_before_policy_install(tmp_path):
+    """A malformed mapping cannot leave new ALLOW decisions installed."""
+    import pytest
+    cache = PolicyCache(str(tmp_path / "guard-mapping-preflight.db"))
+    observed: list[httpx.Request] = []
+
+    def malformed(request: httpx.Request) -> httpx.Response:
+        observed.append(request)
+        return httpx.Response(200, json={
+            "kind": "incremental", "version": 1,
+            "applications": [{
+                "application_id": "rag", "source_id": "drive",
+                "mode": "protect", "source_acl_healthy": True,
+            }],
+            "identity_mappings": [{
+                "source_id": "drive", "issuer": "https://issuer.example",
+                "subject": "alice", "source_subject_id": "",
+            }],
+            "policies": [{
+                "version": 1, "subject_id": "alice", "source_id": "drive",
+                "resource_id": "secret", "scope": "read", "decision": "allow",
+            }],
+        })
+
+    client = GuardSyncClient(
+        cache, GuardMachineCredentials("https://control.example", "g", "machine", "1"),
+        httpx.Client(transport=httpx.MockTransport(malformed)),
+    )
+    with pytest.raises(ValueError, match="INVALID_IDENTITY_MAPPINGS"):
+        client.sync_once()
+    assert cache.version() == 0
+    assert cache.decide("alice", "drive", "secret", "read")[0] == "unknown"
+    assert not cache.application_bindings_received()
+    assert all(request.method == "GET" for request in observed)

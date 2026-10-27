@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 from fastapi.testclient import TestClient
-from packages.rag_sdk import GuardClient
+from packages.rag_core import GuardClient
 
 
 def _demo(monkeypatch):

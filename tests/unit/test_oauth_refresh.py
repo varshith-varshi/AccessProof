@@ -156,3 +156,72 @@ async def test_microsoft_app_token_renewal_rejects_missing_tenant(monkeypatch):
         await refresh_source_credentials_if_needed(
             None, SimpleNamespace(provider="microsoft365"), credentials,
         )
+
+
+@pytest.mark.asyncio
+async def test_server_managed_google_refresh_uses_operator_secret_only(monkeypatch):
+    """A customer record can store a refresh token, never the app OAuth secret."""
+    from types import SimpleNamespace
+    from apps.worker.accessproof_worker import main as worker
+    monkeypatch.setenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "neuralmatrix-client")
+    monkeypatch.setenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "operator-secret")
+    calls = []
+
+    def refreshed(current, **kwargs):
+        calls.append((kwargs["client_id"], kwargs["client_secret"], kwargs["token_endpoint"]))
+        result = OAuthCredentials("new-access", "new-refresh", datetime.now(timezone.utc) + timedelta(hours=1))
+        kwargs["save"](result)
+        return result
+
+    monkeypatch.setattr(worker, "refresh_credentials", refreshed)
+    source = SimpleNamespace(provider="google-drive", encrypted_credentials=None)
+    creds = {
+        "oauth_credential_mode": "server_managed", "client_id": "neuralmatrix-client",
+        "access_token": "old-access", "refresh_token": "old-refresh",
+        "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        "token_endpoint": "https://oauth2.googleapis.com/token",
+    }
+    result = await worker.refresh_source_credentials_if_needed(None, source, creds)
+    assert result["access_token"] == "new-access"
+    assert result["refresh_token"] == "new-refresh"
+    assert "client_secret" not in result
+    assert calls == [("neuralmatrix-client", "operator-secret", "https://oauth2.googleapis.com/token")]
+    persisted = json.loads(worker.box.decrypt(source.encrypted_credentials))
+    assert persisted["client_id"] == "neuralmatrix-client"
+    assert "operator-secret" not in json.dumps(persisted)
+    assert "client_secret" not in persisted
+
+
+@pytest.mark.asyncio
+async def test_server_managed_google_scrubs_legacy_secret_without_refresh(monkeypatch):
+    """Migrated source records stop carrying the operator client secret."""
+    from types import SimpleNamespace
+    from apps.worker.accessproof_worker import main as worker
+    monkeypatch.setenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "neuralmatrix-client")
+    monkeypatch.setenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "operator-secret")
+    source = SimpleNamespace(provider="google-drive", encrypted_credentials=None)
+    original = {
+        "oauth_credential_mode": "server_managed", "client_id": "neuralmatrix-client",
+        "client_secret": "legacy-operator-secret",
+        "access_token": "still-valid", "refresh_token": "refresh",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "token_endpoint": "https://oauth2.googleapis.com/token",
+    }
+    result = await worker.refresh_source_credentials_if_needed(None, source, original)
+    assert result["access_token"] == "still-valid"
+    assert "client_secret" not in result
+    assert "client_secret" not in json.loads(worker.box.decrypt(source.encrypted_credentials))
+
+
+@pytest.mark.asyncio
+async def test_server_managed_google_fails_closed_on_client_mismatch(monkeypatch):
+    from types import SimpleNamespace
+    from apps.worker.accessproof_worker import main as worker
+    monkeypatch.setenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "neuralmatrix-client")
+    monkeypatch.setenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "operator-secret")
+    with pytest.raises(OAuthRefreshError, match="GOOGLE_OPERATOR_OAUTH_CLIENT_MISMATCH"):
+        await worker.refresh_source_credentials_if_needed(None, SimpleNamespace(provider="google-drive"), {
+            "oauth_credential_mode": "server_managed", "client_id": "attacker-controlled-client",
+            "refresh_token": "synthetic-refresh",
+            "expires_at": "2020-01-01T00:00:00+00:00",
+        })

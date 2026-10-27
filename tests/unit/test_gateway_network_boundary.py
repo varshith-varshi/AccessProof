@@ -46,6 +46,17 @@ def test_reference_only_supports_provably_restricted_compose_network():
     assert report["customer_deployment_certified"] is False
 
 
+@pytest.mark.parametrize("component", ["customer-rag", "accessproof-gateway", "relay"])
+@pytest.mark.parametrize("option", ["seccomp=unconfined", "apparmor=unconfined"])
+def test_equals_syntax_unconfined_profile_cannot_pass_boundary_check(component, option):
+    config = _compose()
+    if component == "relay":
+        config["services"][component] = {"networks": ["rag-isolated"]}
+    config["services"][component]["security_opt"] = [option]
+    with pytest.raises(NetworkBoundaryError):
+        _check(config)
+
+
 @pytest.mark.parametrize("mutation", [
     lambda c: c["services"]["customer-rag"]["networks"].append("model-private"),
     lambda c: c["networks"]["rag-isolated"].update(internal=False),
@@ -135,4 +146,171 @@ def test_docker_compose_omitted_false_internal_is_a_valid_gateway_host_bridge():
     assert report["static_egress_isolated"]
     config["networks"]["accessproof-gateway-host"]["internal"] = True
     with pytest.raises(NetworkBoundaryError):
+        _check(config)
+
+
+
+@pytest.mark.parametrize("mutation", [
+    # The simplest bypass: a proxy sidecar joins both restricted networks.
+    lambda config: config["services"].update({
+        "relay": {"networks": ["rag-isolated", "model-private"]},
+    }),
+    # A longer relay chain must fail even if no single peer bridges RAG+model.
+    lambda config: (
+        config["networks"].update({"bridge-step": {"internal": True}}),
+        config["services"].update({
+            "relay-1": {"networks": ["rag-isolated", "bridge-step"]},
+            "relay-2": {"networks": ["bridge-step", "model-private"]},
+        }),
+    ),
+    # A sidecar with Internet access can forward employee and document bytes
+    # to an off-stack model API, even if the model Compose service is isolated.
+    lambda config: (
+        config["networks"].update({"public-proxy": {"internal": False}}),
+        config["services"].update({
+            "relay": {"networks": ["rag-isolated", "public-proxy"]},
+        }),
+    ),
+    lambda config: config["services"].update({
+        "relay": {"networks": ["rag-isolated"], "ports": ["0.0.0.0:9000:9000"]},
+    }),
+    lambda config: config["services"].update({
+        "relay": {"networks": ["rag-isolated"], "cap_add": ["NET_ADMIN"]},
+    }),
+    lambda config: config["services"].update({
+        "relay": {"networks": ["rag-isolated"], "network_mode": "host"},
+    }),
+])
+def test_untrusted_peer_bypass_must_not_be_certified(mutation):
+    config = deepcopy(_compose())
+    mutation(config)
+    with pytest.raises(NetworkBoundaryError):
+        _check(config)
+
+
+def test_harmless_internal_sidecar_still_permitted():
+    config = _compose()
+    config["services"]["telemetry"] = {"networks": ["rag-isolated"]}
+    assert _check(config)["static_egress_isolated"] is True
+
+
+def test_unrelated_public_service_does_not_widen_rag_network():
+    config = _compose()
+    config["networks"]["unrelated-public"] = {"internal": False}
+    config["services"]["unrelated"] = {
+        "networks": ["unrelated-public"], "ports": ["127.0.0.1:9001:9001"],
+    }
+    assert _check(config)["static_egress_isolated"] is True
+
+
+@pytest.mark.parametrize("provider,url", [
+    ("anthropic", "https://api.anthropic.com/v1/messages"),
+    ("gemini", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"),
+])
+def test_cloud_model_cannot_be_reached_through_internet_sidecar(provider, url):
+    config = _compose()
+    del config["services"]["model"]
+    config["services"]["accessproof-gateway"]["networks"].remove("model-private")
+    config["networks"]["public-relay"] = {"internal": False}
+    config["services"]["untrusted-relay"] = {
+        "networks": ["rag-isolated", "public-relay"],
+    }
+    with pytest.raises(NetworkBoundaryError, match="non-internal network"):
+        verify_reference_compose_isolation(
+            config, rag_service="customer-rag", model_provider=provider,
+            model_url=url, expected_route_env="ACCESSPROOF_CHAT_URL",
+        )
+
+
+
+@pytest.mark.parametrize("namespace", [
+    {"network_mode": "service:accessproof-gateway"},
+    {"network_mode": "service:model"},
+    {"network_mode": "container:protected-gateway-id"},
+    {"pid": "service:accessproof-gateway"},
+    {"ipc": "service:accessproof-gateway"},
+    {"pid": "host"},
+    {"ipc": "host"},
+])
+def test_namespace_sharing_hidden_sidecar_never_certified(namespace):
+    config = _compose()
+    config["services"]["hidden-relay"] = namespace
+    with pytest.raises(NetworkBoundaryError, match="namespace"):
+        _check(config)
+
+
+def test_no_actual_sidecars_does_not_require_container_namespace_configuration():
+    assert _check(_compose())["static_egress_isolated"] is True
+
+
+
+@pytest.mark.parametrize(("name", "mutation"), [
+    ("rag_net_admin", lambda c: c["services"]["customer-rag"].update(cap_add=["NET_ADMIN"])),
+    ("rag_tun_device", lambda c: c["services"]["customer-rag"].update(devices=["/dev/net/tun:/dev/net/tun"])),
+    ("gateway_capability_readd", lambda c: c["services"]["accessproof-gateway"].update(cap_add=["NET_ADMIN"])),
+    ("gateway_host_device", lambda c: c["services"]["accessproof-gateway"].update(devices=["/dev/net/tun:/dev/net/tun"])),
+    ("rag_no_seccomp", lambda c: c["services"]["customer-rag"].update(security_opt=["seccomp:unconfined"])),
+    ("gateway_no_apparmor", lambda c: c["services"]["accessproof-gateway"].update(security_opt=["apparmor:unconfined"])),
+])
+def test_sensitive_host_network_privileges_cannot_certify(name, mutation):
+    config = _compose()
+    mutation(config)
+    with pytest.raises(NetworkBoundaryError):
+        _check(config)
+
+
+def test_default_hardened_gateway_security_profile_is_supported():
+    config = _compose()
+    config["services"]["accessproof-gateway"]["security_opt"] = ["no-new-privileges:true"]
+    config["services"]["customer-rag"]["cap_drop"] = ["ALL"]
+    assert _check(config)["static_egress_isolated"]
+
+
+@pytest.mark.parametrize("relay_mount", [
+    {"volumes": ["/var/run/docker.sock:/control.sock"]},
+    {"volumes": [{"type": "bind", "source": "/run/docker.sock", "target": "/control"}]},
+    {"volumes": ["/run/containerd/containerd.sock:/control.sock"]},
+    {"volumes": ["/:/host:ro"]},
+    {"volumes_from": ["another-service"]},
+    {"security_opt": ["seccomp:unconfined"]},
+])
+def test_rag_reachable_relay_with_host_runtime_control_must_be_rejected(relay_mount):
+    config = _compose()
+    config["services"]["relay"] = {"networks": ["rag-isolated"], **relay_mount}
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control|unreviewable relay sidecar"):
+        _check(config)
+
+
+def test_unrelated_service_with_host_runtime_mount_is_outside_rag_attack_graph():
+    config = _compose()
+    config["networks"]["separate-network"] = {"internal": False}
+    config["services"]["independent"] = {
+        "networks": ["separate-network"],
+        "volumes": ["/var/run/docker.sock:/control.sock"],
+    }
+    # Docker-daemon access allows even a currently unrelated service to add a
+    # new RAG/model bridge at runtime. Static certification must fail closed.
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
+        _check(config)
+
+
+@pytest.mark.parametrize("component,mount", [
+    ("customer-rag", "/run/containerd/containerd.sock:/runtime.sock"),
+    ("customer-rag", "/:/host:ro"),
+    ("accessproof-gateway", {"type": "bind", "source": "/var/run/docker.sock", "target": "/hidden"}),
+])
+def test_protected_components_cannot_mount_host_runtime_control(component, mount):
+    config = _compose()
+    config["services"][component]["volumes"] = [mount]
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
+        _check(config)
+
+
+def test_unrelated_service_inheriting_unknown_container_volumes_is_not_certifiable():
+    config = _compose()
+    config["networks"]["unrelated-net"] = {"internal": False}
+    config["services"]["unrelated"] = {
+        "networks": ["unrelated-net"], "volumes_from": ["external-controller"],
+    }
+    with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
         _check(config)

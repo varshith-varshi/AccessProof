@@ -2,6 +2,6 @@ feature_id,feature,implementation_path,claimed_scope,test_id,status,evidence,lim
 GD-01,Drive ACL inventory and pagination,connectors/google_drive/adapter.py,Google Drive V1 root boundary,test_google_drive_v1_security,IMPLEMENTED + VERIFIED,focused local regression,real Drive required
 GD-02,Directory groups and nested memberships,apps/api/accessproof_api/directory_sync.py,approved Directory scope,test_directory_connectors,IMPLEMENTED + VERIFIED,focused local regression,Admin SDK consent required
 GU-01,Machine Guard policy enforcement,apps/guard/accessproof_guard,bound application/source,test_customer_lifecycle_over_http,IMPLEMENTED + VERIFIED,loopback HTTP lifecycle,customer network deployment required
-RAG-01,Python Layer 1/Layer 2 SDK,packages/rag_sdk/protection.py,instrumented buffered path,test_rag_sdk,IMPLEMENTED + VERIFIED,unit and HTTP tests,unwrapped routes are outside coverage
+RAG-01,Internal Gateway Layer 1/Layer 2 engine,packages/rag_core/protection.py,instrumented buffered path,test_gateway_authorization_core,IMPLEMENTED + VERIFIED,unit and HTTP tests,unwrapped routes are outside coverage
 OAUTH-01,OAuth refresh handling,packages/auth/oauth_refresh.py,configured trusted endpoint,test_oauth_refresh,IMPLEMENTED + VERIFIED,mocked provider contract,real consent/sandbox required
 GD-03,Domain/anyone sharing,apps/api/accessproof_api/acl_sync.py,none,test_google_drive_v1_security,OUT OF V1 SCOPE,fails closed,not advertised as supported

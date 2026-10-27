@@ -4,13 +4,13 @@ from __future__ import annotations
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from packages.rag_sdk import (
+from packages.rag_core import (
     CachedAnswerManifestSigner, CachedAnswerManifestVerifier,
     ContentBinding, RetrievedResource, SourceAttestationSigner,
     SourceAttestationVerifier,
 )
-from packages.rag_sdk.cache_connectors import MemoryBackend, ProtectedAnswerCache
-from packages.rag_sdk.protection import ProtectedResponse
+from packages.rag_core.cache_connectors import MemoryBackend, ProtectedAnswerCache
+from packages.rag_core.protection import ProtectedResponse
 
 
 def test_public_connector_sdk_prevents_direct_cached_answer_bypass():

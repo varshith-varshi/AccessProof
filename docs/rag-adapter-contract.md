@@ -1,3 +1,9 @@
+> **RETIRED CUSTOMER SDK CONTRACT (26 October 2026).** Historical engineering
+> reference only. The V1 customer integration is AccessProof Gateway.
+> No Python, TypeScript, LangChain, LlamaIndex or Haystack framework adapter
+> can be newly registered. Use docs/GATEWAY_ONLY_V1_MIGRATION_2026-10-26.md.
+> Existing records remain audit-visible, not automatically protected.
+
 # AccessProof RAG adapter contract
 
 AccessProof protects an existing RAG pipeline at two application-controlled
@@ -160,3 +166,28 @@ JSON or model-generated citations. When provenance is incomplete or cannot be
 trusted, do not release the answer. Real customer framework/cached-tool
 instrumentation and a live Google Drive integration must be validated before
 claiming comprehensive provenance protection.
+
+
+## Content attestation on certified routes
+
+An application-supplied `source_id`/`resource_id` proves *which* resource the
+application claims to have used. It does not prove *what bytes* it used. On a
+certified Protect route, each retrieved resource must therefore also carry an
+Ed25512 attestation from a trusted ingestion worker that binds tenant,
+application, source, resource, chunk, revision and the SHA-256 digest of the
+exact content; see [the Guard RAG SDK guide](guard-rag-sdk.md#source-content-attestation-and-certification-eligibility).
+
+Adapters pass `content` and `content_attestation` through unchanged and never
+synthesize either. Consequences an integrator must accept:
+
+* `ProtectedRAG` without a pinned verifier blocks with
+  `SOURCE_CONTENT_ATTESTATION_REQUIRED` before generation. Adapters surface the
+  block rather than degrading to metadata-only release.
+* `allow_unattested_metadata=True` is a legacy escape hatch for integrations
+  that cannot attest yet. It is mutually exclusive with a verifier and returns
+  `provenance_level="UNATTESTED_METADATA_ONLY"` with
+  `certification_eligible=False`, so a route built that way stays visibly
+  uncertifiable instead of reporting a protection level it did not observe.
+* Revoking an ingestion key (`revoked_key_ids`) fails closed before signature
+  verification, so a rotated key cannot keep attesting content into a release.
+

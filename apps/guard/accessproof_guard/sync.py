@@ -105,34 +105,33 @@ class GuardSyncClient:
         revisions = payload.get("authorization_revisions")
         if revisions is not None and not isinstance(revisions, list):
             raise ValueError("INVALID_AUTHORIZATION_REVISIONS")
+        # Validate authorization and identity snapshots before any policy
+        # mutation or ACK. A malformed revision cannot leave a newer ALLOW
+        # installed with an older or rejected authorization boundary.
+        self.cache.validate_identity_mappings(mappings)
+        if revisions is not None:
+            self.cache.validate_authorization_revisions(revisions)
         full = payload.get("kind") == "full"
         decisions = payload.get("decisions", []) if full else payload.get("policies", [])
-        if version == self.cache.version():
-            # Revisions are replaced atomically with the binding snapshot. A
-            # revision failure aborts the whole sync rather than installing a
-            # partially trusted state.
-            if revisions is not None:
-                self.cache.set_authorization_revisions(revisions)
-            self.cache.set_application_bindings(bindings)
-            self.cache.set_identity_mappings(mappings)
-            self.cache.mark_sync_success()
-            return False
         if not isinstance(decisions, list):
             raise ValueError("Invalid policy decision set")
-        # Install policies before updating application bindings: otherwise
-        # an application could temporarily use new mode with old grants.
+        # Received ACK is informational; installed ACK is sent *only* after
+        # the whole authorization snapshot commits as one SQLite transaction.
         versions = [version] if full else sorted({int(row["version"]) for row in decisions})
-        for policy_version in versions:
-            self._ack(policy_version, "received")
-        installed = self.cache.install(version, decisions, full_snapshot=full)
-        if installed:
+        if version > self.cache.version():
             for policy_version in versions:
-                self._ack(policy_version, "installed")
-        if revisions is not None:
-            self.cache.set_authorization_revisions(revisions)
-        self.cache.set_application_bindings(bindings)
-        self.cache.set_identity_mappings(mappings)
-        self.cache.mark_sync_success()
+                self._ack(policy_version, "received")
+        installed = self.cache.apply_sync_snapshot(
+            version, decisions, full_snapshot=full, applications=bindings,
+            mappings=mappings, revisions=revisions,
+            ack_versions=versions if version > self.cache.version() else [],
+        )
+        # Do not lose an installed ACK if the HTTP request, the API, or the
+        # Guard process crashes after the SQLite commit. Pending versions are
+        # persisted in the same transaction as the installed policy snapshot.
+        for policy_version in self.cache.pending_installed_policy_acks():
+            self._ack(policy_version, "installed")
+            self.cache.mark_installed_policy_ack_delivered(policy_version)
         return installed
 
     def heartbeat(self, *, degraded_conditions: list[str] | None = None) -> None:

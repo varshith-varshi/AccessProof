@@ -29,7 +29,7 @@ services:
       ACCESSPROOF_SMTP_USERNAME: ${ACCESSPROOF_SMTP_USERNAME:?set ACCESSPROOF_SMTP_USERNAME}
       ACCESSPROOF_SMTP_PASSWORD: ${ACCESSPROOF_SMTP_PASSWORD:?set ACCESSPROOF_SMTP_PASSWORD}
       ACCESSPROOF_SMTP_STARTTLS: ${ACCESSPROOF_SMTP_STARTTLS:-1}
-    command: ["sh", "-c", "alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$${ACCESSPROOF_FORWARDED_ALLOW_IPS}\""]
+    command: ["sh", "-c", "python scripts/check_schema.py && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$${ACCESSPROOF_FORWARDED_ALLOW_IPS}\""]
     restart: unless-stopped
     init: true
     read_only: true
@@ -42,9 +42,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # Run explicitly, once, before changing/restarting API replicas:
+  # docker compose -f docker-compose.production.yml run --rm migrate
+  # The deployment principal for this job may have DDL privileges; API and
+  # worker principals must not need them.
+  migrate:
+    image: ${ACCESSPROOF_API_IMAGE:?set ACCESSPROOF_API_IMAGE}
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    environment:
+      ACCESSPROOF_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL}
+      SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:?set SESSION_HMAC_KEY}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY}
+      REPORT_SIGNING_KEY: ${REPORT_SIGNING_KEY:?set REPORT_SIGNING_KEY}
+
   worker:
     image: ${ACCESSPROOF_WORKER_IMAGE:?set ACCESSPROOF_WORKER_IMAGE}
     environment:
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
       ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL: ${ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL:-}
       ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS: ${ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS:-900}
       ACCESSPROOF_ENV: production
@@ -73,6 +91,7 @@ services:
     cap_drop: [ALL]
 
   web:
+    # Require an immutable digest, e.g. registry/accessproof-web@sha256:... .
     image: ${ACCESSPROOF_WEB_IMAGE:?set ACCESSPROOF_WEB_IMAGE}
     environment:
       NODE_ENV: production

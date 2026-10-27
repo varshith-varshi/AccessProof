@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.accessproof_api import app as api_module
 from apps.api.accessproof_api.db import (
-    Base, GoogleSourceOAuthState, SessionLocal, SourceConnection, engine,
+    Base, GoogleSourceOAuthState, ProviderSyncCursor, SessionLocal, SourceConnection, engine,
 )
 from connectors.google_drive.adapter import ConnectionIdentity
 from packages.auth.google_consent import GOOGLE_SCOPES, authorization_url, exchange_code, GoogleConsentError
@@ -56,6 +56,13 @@ def test_google_oauth_state_is_one_time_and_root_bound(monkeypatch):
         })
         assert created.status_code == 201, created.text
         source_id = created.json()["id"]
+        status = client.get("/api/v1/current/sources/google-oauth/status", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["configured"] is True
+        assert "test-secret" not in status.text
+        listed = client.get("/api/v1/current/sources", headers=headers)
+        assert listed.status_code == 200
+        assert listed.json()[0]["directory_sync"]["status"] == "never_synced"
         begin_url = f"/api/v1/current/sources/{source_id}/google-oauth/begin"
         def begin():
             result = client.post(begin_url, headers=headers)
@@ -76,15 +83,45 @@ def test_google_oauth_state_is_one_time_and_root_bound(monkeypatch):
                              params={"state": state, "code": "synthetic-code"},
                              follow_redirects=False)
         assert success.status_code == 303 and "consent-complete" in success.headers["location"]
+        assert parse_qs(urlparse(success.headers["location"]).query)["source_id"] == [source_id]
         with SessionLocal() as db:
             row = db.get(SourceConnection, source_id)
             assert row.status == "connected"
             assert "fake-refresh" not in row.encrypted_credentials
             creds = __import__("json").loads(api_module._secret_box.decrypt(row.encrypted_credentials))
             assert creds["refresh_token"] == "fake-refresh"
+            assert creds["oauth_credential_mode"] == "server_managed"
+            assert creds["client_id"] == "test-client"
+            assert "client_secret" not in creds
+            assert "oauth_client_secret" not in creds
+            bootstrap = list(db.query(ProviderSyncCursor).filter_by(source_id=source_id))
+            assert {item.sync_kind for item in bootstrap} == {"directory", "acl"}
+            assert all(item.status == "queued" and item.last_success_at is None for item in bootstrap)
+            assert next(item for item in bootstrap if item.sync_kind == "acl").cursor is None
             claims = list(db.query(GoogleSourceOAuthState))
             assert len(claims) == 2 and all(state.consumed_at is not None for state in claims)
             assert all("synthetic-code" not in state.encrypted_verifier for state in claims)
+
+
+def test_google_oauth_unconfigured_status_has_no_secrets(monkeypatch):
+    monkeypatch.delenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", raising=False)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(api_module.app) as client:
+        signup = client.post("/api/v1/auth/signup", json={
+            "email": "unconfigured-google@example.com",
+            "password": "correct horse battery staple",
+            "organization_name": "Unconfigured Google",
+        })
+        assert signup.status_code == 201
+        account = signup.json()
+        headers = {"Authorization": f"Bearer {account['session_token']}",
+                   "X-Organization-ID": account["organization_id"]}
+        status = client.get("/api/v1/current/sources/google-oauth/status", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["configured"] is False
+        assert "secret" not in status.text.lower()
 
 
 def test_google_oauth_helper_requires_all_readonly_scopes_and_refresh_token():
@@ -106,6 +143,7 @@ def test_google_oauth_helper_requires_all_readonly_scopes_and_refresh_token():
                                redirect_uri="https://api.example.com/callback", verifier=verifier,
                                client=client)
     assert result["refresh_token"] == "refresh"
+    assert "client_secret" not in result
     assert str(captured[0].url) == "https://oauth2.googleapis.com/token"
     assert b"code_verifier=" in captured[0].content
     def missing(req: httpx.Request):

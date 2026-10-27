@@ -65,6 +65,7 @@ def test_generated_report_is_signed_verified_and_tenant_scoped():
         assert verification.status_code == 200, verification.text
         assert verification.json()["verified"] is True
         assert verification.json()["signature_valid"] is True
+        assert verification.json()["issuer_trusted"] is True
         assert verification.json()["scope_valid"] is True
         assert verification.json()["expired"] is False
 
@@ -112,6 +113,33 @@ def test_tampered_report_payload_fails_verification():
         )
         assert verification.status_code == 200
         assert verification.json()["signature_valid"] is False
+        assert verification.json()["issuer_trusted"] is False
+        assert verification.json()["verified"] is False
+
+
+def test_database_key_swap_cannot_impersonate_the_configured_report_issuer():
+    _reset_schema()
+    with TestClient(app) as client:
+        account = _signup(client, "key-swap@example.com", "Key swap org")
+        headers = _headers(account)
+        report_id = _create_report(client, headers)["report"]["report_id"]
+
+        with SessionLocal() as db:
+            row = db.get(ControlPlaneReport, report_id)
+            manifest = json.loads(row.signed_manifest_json)
+            # Preserve a syntactically valid manifest shape while swapping its
+            # embedded issuer material.  The server trust root must reject it.
+            manifest["key_id"] = "ed25519:attacker"
+            manifest["public_key"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            row.signed_manifest_json = json.dumps(manifest, sort_keys=True)
+            row.signing_key_id = manifest["key_id"]
+            db.commit()
+
+        verification = client.get(
+            f"/api/v1/current/reports/{report_id}/verify", headers=headers
+        )
+        assert verification.status_code == 200
+        assert verification.json()["issuer_trusted"] is False
         assert verification.json()["verified"] is False
 
 

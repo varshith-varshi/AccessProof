@@ -104,10 +104,15 @@ def test_unbound_and_unsupported_applications_are_never_protected():
         account = _signup(client, "overview-states@example.com", "Overview states org")
         headers = _headers(account)
         _create_application(client, headers, "unbound-rag")
-        _create_application(
-            client, headers, "http-rag",
-            adapter_type="generic-http", adapter_contract_version="target-config/v1",
-        )
+        # Legacy app records are kept read-only for audit after V1 retires
+        # SDK and generic HTTP integrations; new POST registrations reject them.
+        with SessionLocal() as db:
+            db.add(AIApplication(
+                organization_id=account["organization_id"],
+                application_id="http-rag", name="Historical HTTP target",
+                adapter_type="generic-http", adapter_contract_version="target-config/v1",
+            ))
+            db.commit()
 
         overview = _overview(client, headers)
 

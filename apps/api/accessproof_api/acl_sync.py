@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apps.api.accessproof_api.config import settings
 from apps.api.accessproof_api.db import (
     GuardGroup,
     GuardGroupMembership,
@@ -60,7 +61,7 @@ _GOOGLE_SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
 
 
 def _google_permission_authorizes_read(permission: dict[str, Any], now: datetime) -> bool:
-    """Return whether a Drive permission is currently a usable read grant.
+    """Return whether a Drive permission authorizes RAG source content, not metadata.
 
     Expired, deleted, broad-link, and non-reader roles must remove any older
     allow path.  Treat malformed expiry metadata as non-authorizing: keeping a
@@ -69,8 +70,33 @@ def _google_permission_authorizes_read(permission: dict[str, Any], now: datetime
     """
     if permission.get("deleted") or str(permission.get("type") or "") in {"domain", "anyone"}:
         return False
-    if str(permission.get("role") or "") not in _GOOGLE_READ_ROLES:
+    role = str(permission.get("role") or "")
+    if role not in _GOOGLE_READ_ROLES:
         return False
+    # Drive can report role=reader for a *metadata-only* view of a
+    # limited-access folder. That is not permission to read folder children
+    # or their contents. Published views are likewise not source-content
+    # access. Any non-null/unknown view is deliberately non-authorizing.
+    if permission.get("view") is not None:
+        return False
+    limited = permission.get("inheritedPermissionsDisabled")
+    if limited is not None and not isinstance(limited, bool):
+        return False
+    if limited and role not in {"owner", "organizer"}:
+        details = permission.get("permissionDetails")
+        if details is not None:
+            if (not isinstance(details, list) or any(
+                not isinstance(detail, dict) or not isinstance(detail.get("inherited"), bool)
+                for detail in details
+            )):
+                return False
+            # A permission inherited solely from a limited folder's parent
+            # does not grant content access. Directly re-added permissions
+            # include an inherited=false detail on shared drives. My Drive
+            # may omit permissionDetails; there, Drive's view field is the
+            # documented discriminator between metadata-only and full access.
+            if details and all(detail["inherited"] for detail in details):
+                return False
     expiry = permission.get("expirationTime")
     if expiry is None:
         return True
@@ -209,26 +235,45 @@ def _subjects_for_principal(
             GuardSubject.provider == provider,
         )))
         email_l = (email or "").lower()
-        # Microsoft permission ingestion MUST use an Entra object ID.
-        # An email match can attach an unrelated or reassigned account.
-        return [(row.id, None) for row in candidates if row.provider_subject_id == pid or (
-            provider == "google-drive" and email_l and (row.primary_email or "").lower() == email_l
+        # Drive permission IDs and Workspace Directory subject IDs are
+        # separate opaque namespaces. Email may be recycled/renamed, so a
+        # production V1 never uses a mutable email as authorization proof.
+        # Development retains historical synthetic fixture compatibility;
+        # the release requires a provider-verified Drive permission-ID map.
+        allow_legacy_email_match = provider == "google-drive" and settings.env != "production"
+        return [(row.id, None) for row in candidates if (row.status == "active" or settings.env != "production") and (
+            (provider == "google-drive" and settings.env == "production"
+             and row.drive_permission_id is not None and row.drive_permission_id == pid)
+            or (not (provider == "google-drive" and settings.env == "production") and (
+                row.provider_subject_id == pid or (
+                    allow_legacy_email_match and email_l and (row.primary_email or "").lower() == email_l
+                )
+            ))
         )]
     if ptype == "group":
         group = db.get(GuardGroup, pid) if trusted_grant_id else None
         if group is None and not trusted_grant_id:
+            # In V1 production, pid is the Google Drive ACL permissionId,
+            # NOT a Workspace Directory group ID. Only a verified match to
+            # the independently resolved Drive ID can authorize members.
+            key_field = (GuardGroup.drive_permission_id if
+                         provider == "google-drive" and settings.env == "production"
+                         else GuardGroup.provider_group_id)
             group = db.scalar(select(GuardGroup).where(
-            GuardGroup.organization_id == source.organization_id,
-            GuardGroup.provider == provider,
-            GuardGroup.provider_group_id == pid,
+                GuardGroup.organization_id == source.organization_id,
+                GuardGroup.provider == provider,
+                key_field == pid,
             ))
-        if group is None and email and provider == "google-drive" and not trusted_grant_id:
+        if (group is None and email and provider == "google-drive"
+                and not trusted_grant_id and settings.env != "production"):
             group = db.scalar(select(GuardGroup).where(
                 GuardGroup.organization_id == source.organization_id,
                 GuardGroup.provider == provider,
                 GuardGroup.provider_email == email,
             ))
-        if group is None or group.status != "active":
+        if (group is None or group.status != "active"
+                or group.organization_id != source.organization_id
+                or group.provider != provider):
             return []
         return [(membership.subject_id, group.id) for membership in db.scalars(select(GuardGroupMembership).where(
             GuardGroupMembership.organization_id == source.organization_id,
@@ -253,12 +298,13 @@ def _group_for_principal(
     grant before a member exists lets a later directory membership sync create
     the correct effective access instead of silently dropping the ACL.
     """
+    production_drive = provider == "google-drive" and settings.env == "production"
     group = db.scalar(select(GuardGroup).where(
         GuardGroup.organization_id == source.organization_id,
         GuardGroup.provider == provider,
-        GuardGroup.provider_group_id == provider_group_id,
+        (GuardGroup.drive_permission_id if production_drive else GuardGroup.provider_group_id) == provider_group_id,
     ))
-    if group is None and email and provider == "google-drive":
+    if group is None and email and provider == "google-drive" and settings.env != "production":
         group = db.scalar(select(GuardGroup).where(
             GuardGroup.organization_id == source.organization_id,
             GuardGroup.provider == provider,
@@ -268,7 +314,8 @@ def _group_for_principal(
         group = GuardGroup(
             organization_id=source.organization_id,
             provider=provider,
-            provider_group_id=provider_group_id,
+            provider_group_id=(f"drive-unresolved:{provider_group_id}" if production_drive else provider_group_id),
+            drive_permission_id=provider_group_id if production_drive else None,
             provider_email=email,
             status="unknown",
         )

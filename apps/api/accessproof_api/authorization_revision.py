@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session as OrmSession
 
 from apps.api.accessproof_api.db import (
     AIApplication,
+    AIApplicationSourceBinding,
     AuthorizationRevision,
     AuthorizationRevisionSequence,
     GuardPolicy,
@@ -116,6 +117,26 @@ def issue_or_reuse_revision(
     if source is not None and source.organization_id != application.organization_id:
         source = None
     state = _state(db, application, policy_version, acl, directory, source)
+    source_ids = list(db.scalars(select(AIApplicationSourceBinding.source_id).where(
+        AIApplicationSourceBinding.organization_id == application.organization_id,
+        AIApplicationSourceBinding.application_row_id == application.id,
+    )).all())
+    if application.source_id:
+        source_ids.append(application.source_id)
+    state["source_states"] = []
+    for source_id in sorted(set(source_ids)):
+        extra_source = db.get(SourceConnection, source_id)
+        if extra_source is None or extra_source.organization_id != application.organization_id:
+            raise ValueError("CROSS_TENANT_APPLICATION_SOURCE_BINDING")
+        extra_acl = _cursor(db, source_id, "acl")
+        extra_dir = _cursor(db, source_id, "directory")
+        state["source_states"].append({
+            "source_id": source_id, "provider": extra_source.provider.lower(),
+            "acl_revision": extra_acl.last_provider_revision if extra_acl else None,
+            "acl_status": extra_acl.status if extra_acl else "never_synced",
+            "directory_revision": extra_dir.last_provider_revision if extra_dir else None,
+            "directory_status": extra_dir.status if extra_dir else "never_synced",
+        })
     state_hash = _hash(state)
     if latest is not None and latest.state_hash == state_hash:
         return latest

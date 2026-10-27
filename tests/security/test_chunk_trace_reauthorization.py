@@ -7,7 +7,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from packages.rag_sdk.protection import GuardClient, ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import GuardClient, ProtectedRAG, RetrievedResource
 
 CANARY = "SYNTHETIC_DENIED_CHUNK_CANARY_DO_NOT_RELEASE"
 INITIAL = RetrievedResource("drive", "same-file", "safe-chunk", "allowed extract")

@@ -1,10 +1,14 @@
-from packages.rag_sdk import adapter_registry
+"""Only the signed-retrieval Gateway is a customer-facing V1 integration."""
+from packages.rag_core import adapter_registry
 
 
-def test_registry_only_marks_enforcement_adapters_as_protect_capable() -> None:
-    registry = {item["id"]: item for item in adapter_registry()}
-    assert registry["langchain-python"]["pre_generation_filtering"] is True
-    assert registry["llamaindex-python"]["output_verification"] is True
-    assert registry["generic-http"]["pre_generation_filtering"] is False
-    assert registry["generic-http"]["protect_mode"] is False
-
+def test_registry_only_exposes_gateway_for_customer_installation() -> None:
+    entries = adapter_registry()
+    assert len(entries) == 1
+    assert entries[0]["id"] == "accessproof-gateway"
+    assert entries[0]["pre_generation_filtering"] is True
+    assert entries[0]["output_verification"] is True
+    assert entries[0]["protect_mode"] is True
+    assert entries[0]["status"] == "AVAILABLE"
+    assert "signed" not in entries[0]["installation"].lower() or "Gateway" in entries[0]["installation"]
+    assert not any("sdk" in item["installation"].lower() for item in entries)

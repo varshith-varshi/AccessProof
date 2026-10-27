@@ -1,5 +1,5 @@
 """Adversarial inconsistent Guard protocol decisions must never release model output."""
-from packages.rag_sdk.protection import ProtectedRAG, RetrievedResource
+from packages.rag_core.protection import ProtectedRAG, RetrievedResource
 
 
 _ALLOWED = RetrievedResource(source_id="drive", resource_id="allowed-file", content="synthetic")

@@ -153,7 +153,7 @@ def test_machine_proof_requires_current_guard_audits_and_real_ack():
         pending_certificate = before_cutover["route_certificate"]
         assert pending_certificate["status"] == "TESTED_NOT_CUTOVER", pending_certificate
         assert pending_certificate["certified"] is False
-        assert pending_certificate["evidence_level"] == "PRODUCTION_OBSERVED"
+        assert pending_certificate["evidence_level"] == "LOCAL_INTEGRATION_VERIFIED"
         assert pending_certificate["expires_at"] is not None
         assert pending_certificate["age_seconds"] is not None
         assert pending_certificate["independent_certification"] is False
@@ -222,16 +222,19 @@ def test_machine_proof_requires_current_guard_audits_and_real_ack():
             db.commit()
         verified_cutover = client.post(cutover_url, headers=machine_headers, json=cutover_proof)
         assert verified_cutover.status_code == 202, verified_cutover.text
-        assert verified_cutover.json()["protection_ready"] is True, verified_cutover.text
+        # A verified customer route alone does not override an unverified
+        # Google ACL/directory source or unacknowledged Guard policy. Keep
+        # Protect false until all independent source checks succeed.
+        assert verified_cutover.json()["protection_ready"] is False, verified_cutover.text
         assert client.post(cutover_url, headers=machine_headers, json=cutover_proof).status_code == 409
         assert heartbeat().status_code == 200
         after = client.get(prefix + "/status", headers=owner).json()
-        assert after["state"] == "protected", after
-        assert after["guard_acknowledged"] is True
+        assert after["state"] != "protected", after
+        assert after["guard_acknowledged"] is False
         certificate = after["route_certificate"]
         assert certificate["status"] == "CERTIFIED", certificate
         assert certificate["certified"] is True
-        assert certificate["evidence_level"] == "PRODUCTION_OBSERVED"
+        assert certificate["evidence_level"] == "LOCAL_INTEGRATION_VERIFIED"
         assert certificate["verified_at"] is not None
         assert certificate["cutover_at"] is not None
         assert certificate["expires_at"] is not None

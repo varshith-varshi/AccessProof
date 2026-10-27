@@ -214,3 +214,69 @@ def test_microsoft_consent_invalidates_when_source_changes_and_guards_tenant_sco
         assert blocked.status_code == 303
         assert "consent-failed" in blocked.headers["location"]
         assert calls == []
+
+
+def test_admin_consent_preserves_sharepoint_service_not_ready_diagnostic(monkeypatch):
+    from packages.connector_sdk.base import ProviderUnavailableError
+
+    class LicensePendingGraph(FakeGraph):
+        async def validate_connection(self):
+            raise ProviderUnavailableError("MICROSOFT_SHAREPOINT_SERVICE_NOT_READY")
+
+    monkeypatch.setenv("ACCESSPROOF_MICROSOFT_CLIENT_ID", "synthetic-client")
+    monkeypatch.setenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "synthetic-secret")
+    monkeypatch.setattr(api_module, "Microsoft365Adapter", LicensePendingGraph)
+    monkeypatch.setattr(api_module, "graph_app_token", lambda **kwargs: (
+        "synthetic-graph-token", datetime.now(timezone.utc) + timedelta(hours=1),
+    ))
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(api_module.app) as client:
+        headers = signup(client)
+        source_id = create_source(client, headers)
+        state = begin(client, headers, source_id)
+        result = client.get(
+            "/api/v1/current/sources/microsoft-admin-consent/callback",
+            params={"state": state, "admin_consent": "True", "tenant": TENANT},
+            follow_redirects=False,
+        )
+        assert result.status_code == 303
+        assert "consent-failed" in result.headers["location"]
+        with SessionLocal() as db:
+            row = db.get(SourceConnection, source_id)
+            assert row is not None
+            assert row.status == "not_configured"
+            assert row.last_error == "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+        listed = client.get("/api/v1/current/sources", headers=headers)
+        assert listed.status_code == 200
+        assert "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY" in listed.text
+        assert "synthetic-graph-token" not in listed.text
+        assert "synthetic-secret" not in listed.text
+
+
+def test_microsoft_source_validation_keeps_provider_error_private(monkeypatch):
+    from packages.connector_sdk.base import ProviderUnavailableError
+
+    class BlockedMicrosoft:
+        def __init__(self):
+            self._client = self
+
+        async def validate_connection(self):
+            raise ProviderUnavailableError("MICROSOFT_SHAREPOINT_SERVICE_NOT_READY")
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(api_module, "create_source_adapter", lambda *args: BlockedMicrosoft())
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(api_module.app) as client:
+        headers = signup(client)
+        source_id = create_source(client, headers)
+        result = client.post(f"/api/v1/sources/{source_id}/validate", headers=headers)
+        assert result.status_code == 502
+        with SessionLocal() as db:
+            row = db.get(SourceConnection, source_id)
+            assert row is not None
+            assert row.last_error == "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+        assert "synthetic-graph-token" not in result.text

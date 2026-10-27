@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
 
 from connectors.google_drive.ingest_cli import _private_signer, write_private_manifest
-from packages.rag_sdk.ingestion import IngestionError
+from packages.rag_core.ingestion import IngestionError
 
 
 def test_provider_signer_requires_private_file_mode_and_never_logs_key(tmp_path: Path) -> None:

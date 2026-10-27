@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
+from apps.api.accessproof_api import app as api_module
 from apps.api.accessproof_api.app import app
-from apps.api.accessproof_api.db import Base, GuardGroup, GuardGroupMembership, GuardSubject, engine
+from apps.api.accessproof_api.config import Settings
+from apps.api.accessproof_api.db import Base, GuardGroup, GuardGroupMembership, GuardSubject, SessionLocal, User, engine
 
 
 def test_source_validate_refresh_rotate_and_disconnect_lifecycle():
@@ -92,6 +94,54 @@ def test_current_source_flow_hides_legacy_project_and_is_tenant_scoped():
             "X-Organization-ID": second["organization_id"],
         }
         assert client.get("/api/v1/current/sources", headers=second_headers).json() == []
+
+
+def test_production_v1_rejects_unsupported_source_creation_server_side(monkeypatch):
+    """Hiding a connector in web-v2 must not leave a direct API bypass."""
+    monkeypatch.setattr(api_module, "settings", Settings(env="production", v1_provider="google-workspace-drive"))
+    monkeypatch.setattr(api_module, "validate_production_settings", lambda _: None)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(api_module.app) as client:
+        signup = client.post("/api/v1/auth/signup", json={
+            "email": "v1-scope@example.com", "password": "correct horse battery staple",
+            "organization_name": "V1 scope",
+        })
+        assert signup.status_code == 201
+        organization_id = signup.json()["organization_id"]
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.email == "v1-scope@example.com").one()
+            user.email_verified = True
+            token = api_module.create_session(db, user.id)
+            db.commit()
+        headers = {"Authorization": f"Bearer {token}", "X-Organization-ID": organization_id}
+        rejected = client.post("/api/v1/current/sources", headers=headers, json={
+            "provider": "sharepoint", "name": "Unsupported", "boundary": "root", "credentials": {},
+        })
+        assert rejected.status_code == 422
+        assert rejected.json()["detail"]["code"] == "V1_PROVIDER_NOT_SUPPORTED"
+        credentials_rejected = client.post("/api/v1/current/sources", headers=headers, json={
+            "provider": "google-drive", "name": "Leaky credentials", "boundary": "approved-root",
+            "credentials": {"access_token": "must-not-be-accepted-from-browser"},
+        })
+        assert credentials_rejected.status_code == 422
+        assert credentials_rejected.json()["detail"]["code"] == "V1_BROWSER_CREDENTIALS_NOT_ALLOWED"
+        accepted = client.post("/api/v1/current/sources", headers=headers, json={
+            "provider": "google-drive", "name": "Workspace", "boundary": "approved-root", "credentials": {},
+        })
+        assert accepted.status_code == 201, accepted.text
+        source_id = accepted.json()["id"]
+        # Direct API calls must not bypass consent by rotating or replacing
+        # the per-source credential record, even for a tenant owner.
+        for path in (
+            f"/api/v1/sources/{source_id}/rotate-credential",
+            f"/api/v1/sources/{source_id}/reauthorize",
+        ):
+            bypass = client.post(path, headers=headers, json={
+                "credentials": {"access_token": "browser-submitted-token", "client_secret": "browser-secret"},
+            })
+            assert bypass.status_code == 422, bypass.text
+            assert bypass.json()["detail"]["code"] == "V1_BROWSER_CREDENTIALS_NOT_ALLOWED"
 
 
 def test_current_directory_sync_and_employee_list_are_tenant_scoped(monkeypatch):

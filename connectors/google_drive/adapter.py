@@ -135,7 +135,7 @@ class GoogleDriveAdapter(SourceAdapter):
         while True:
             params = {
                 "supportsAllDrives": "true", "pageSize": 100,
-                 "fields": "kind,permissions(id,type,emailAddress,domain,role,expirationTime,deleted,permissionDetails,displayName),nextPageToken",
+                 "fields": "kind,permissions(id,type,emailAddress,domain,role,expirationTime,deleted,view,inheritedPermissionsDisabled,permissionDetails,displayName),nextPageToken",
             }
             if token:
                 params["pageToken"] = token

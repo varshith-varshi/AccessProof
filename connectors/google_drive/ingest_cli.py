@@ -24,8 +24,8 @@ from connectors.google_drive.adapter import GoogleDriveAdapter
 from connectors.google_drive.trusted_ingestion import (
     GoogleDriveIngestionSettings, GoogleDriveTrustedIngestion,
 )
-from packages.rag_sdk.attestation import SourceAttestationSigner
-from packages.rag_sdk.ingestion import IngestionError, TrustedSourceIngestor
+from packages.rag_core.attestation import SourceAttestationSigner
+from packages.rag_core.ingestion import IngestionError, TrustedSourceIngestor
 
 
 def _private_signer(key_file: Path, key_id: str) -> SourceAttestationSigner:

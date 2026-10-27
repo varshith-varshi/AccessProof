@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
 
 from packages.demo_cache.trusted_snapshot import write_snapshot
-from packages.rag_sdk import (
+from packages.rag_core import (
     ContentBinding, RetrievedResource, SourceAttestationSigner,
 )
 

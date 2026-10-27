@@ -11,7 +11,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from packages.rag_sdk import (
+from packages.rag_core import (
     CacheDependency, CachedAnswerManifest, CachedAnswerManifestSigner,
     CachedAnswerManifestVerifier, ContentBinding, RetrievedResource,
     SourceAttestationVerifier,

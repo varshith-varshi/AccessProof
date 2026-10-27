@@ -21,7 +21,7 @@ from apps.gateway.accessproof_gateway.app import GatewaySettings, create_app
 from apps.gateway.accessproof_gateway.challenge_agent import GatewayRouteChallenge, Probe
 from apps.guard.accessproof_guard import app as guard_app
 from apps.guard.accessproof_guard.cache import PolicyCache
-from packages.rag_sdk import (
+from packages.rag_core import (
     SourceAttestationSigner, SourceAttestationVerifier, TrustedSourceIngestor,
     VerifiedSourceDocument,
 )

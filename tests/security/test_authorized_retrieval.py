@@ -7,11 +7,11 @@ import pytest
 from sqlalchemy import Column, MetaData, String, Table
 from sqlalchemy.dialects import postgresql
 
-from packages.rag_sdk.authorized_retrieval import (
+from packages.rag_core.authorized_retrieval import (
     AuthorizedVectorRetriever, AuthorizationScope,
 )
-from packages.rag_sdk.pgvector_retrieval import PgVectorAuthorizedBackend
-from packages.rag_sdk.protection import RetrievedResource
+from packages.rag_core.pgvector_retrieval import PgVectorAuthorizedBackend
+from packages.rag_core.protection import RetrievedResource
 
 REVISION = 4
 REVISION_HASH = "c" * 64

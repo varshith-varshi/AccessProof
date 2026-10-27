@@ -3,7 +3,7 @@
 The test deliberately uses only loopback listeners, synthetic JWTs and opaque
 fake source credentials.  It covers the seams a customer deploys separately:
 the control plane, a source ACL snapshot, Guard enrollment/synchronization,
-the customer RAG SDK boundary, audit upload, revocation, and stale-source
+the customer RAG enforcement boundary, audit upload, revocation, and stale-source
 fail-closed behavior.
 """
 from __future__ import annotations
@@ -38,8 +38,7 @@ from apps.api.accessproof_api.guard_pipeline import process_guard_event
 from apps.guard.accessproof_guard import app as guard_app
 from apps.guard.accessproof_guard.cache import PolicyCache
 from apps.guard.accessproof_guard.sync import GuardMachineCredentials, GuardSyncClient
-from packages.rag_sdk.protection import GuardClient, ProtectedRAG, RetrievedResource
-from packages.rag_sdk.adapters import RAGAdapter, LangChainAdapter, LlamaIndexAdapter
+from packages.rag_core.protection import GuardClient, ProtectedRAG, RetrievedResource
 
 
 def _port() -> int:
@@ -86,13 +85,13 @@ def _event(
     process_guard_event(db, row.id)
 
 
-@pytest.mark.parametrize(("customer_name", "admin_email", "adapter_type"), [
-    ("Northstar Technologies", "northstar-admin@example.com", "generic-python"),
-    ("BlueHarbor Financial", "blueharbor-admin@example.com", "langchain-python"),
-    ("Meridian Global Systems", "meridian-admin@example.com", "llamaindex-python"),
+@pytest.mark.parametrize(("customer_name", "admin_email"), [
+    ("Northstar Technologies", "northstar-admin@example.com"),
+    ("BlueHarbor Financial", "blueharbor-admin@example.com"),
+    ("Meridian Global Systems", "meridian-admin@example.com"),
 ])
 def test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http(
-    monkeypatch: Any, tmp_path: Path, customer_name: str, admin_email: str, adapter_type: str,
+    monkeypatch: Any, tmp_path: Path, customer_name: str, admin_email: str,
 ) -> None:
     """A customer never receives a denied document before or after revocation."""
     Base.metadata.drop_all(engine)
@@ -149,7 +148,7 @@ def test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http(
             application = control.post("/api/v1/current/ai-applications", headers=headers, json={
                 "application_id": "customer-rag", "name": "Customer RAG",
                 "guard_id": guard_id, "source_id": source_id,
-                "adapter_type": adapter_type, "adapter_contract_version": "accessproof.rag/v1",
+                "adapter_type": "accessproof-gateway", "adapter_contract_version": "accessproof.rag/v1",
             })
             assert application.status_code == 201, application.text
 
@@ -225,6 +224,11 @@ def test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http(
         ))
         assert sync.sync_once()
         assert cache.application_binding("customer-rag") == (source_id, "protect")
+        # The first machine poll still sees uninstalled policy distributions.
+        # Only after the installed ACK reaches the control plane and a second
+        # authenticated sync may this source become ready for Protect.
+        assert not cache.source_acl_healthy("customer-rag")
+        assert not sync.sync_once()
         assert cache.source_acl_healthy("customer-rag")
 
         for name, value in {
@@ -254,34 +258,9 @@ def test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http(
             assert alice_result.response == "PUBLIC_CUSTOMER_FACT"
             assert "FINANCE_CANARY_DO_NOT_RELEASE" not in (alice_result.response or "")
 
-            # The registered framework adapter must also run against the real
-            # local Guard HTTP boundary, not merely carry a UI registry label.
-            adapter_class = {
-                "generic-python": RAGAdapter,
-                "langchain-python": LangChainAdapter,
-                "llamaindex-python": LlamaIndexAdapter,
-            }[adapter_type]
-            seen_model_inputs: list[list[str]] = []
-            framework_docs = [
-                {"page_content": "PUBLIC_CUSTOMER_FACT",
-                 "metadata": {"source_id": source_id, "resource_id": "public-file"}},
-                {"page_content": "FINANCE_CANARY_DO_NOT_RELEASE",
-                 "metadata": {"source_id": source_id, "resource_id": "finance-file"}},
-            ]
-            framework_result = adapter_class(
-                ProtectedRAG(client, allow_unattested_metadata=True), source_id=source_id,
-            ).run(
-                employee_token=employee("alice-oid"), application_id="customer-rag",
-                documents=framework_docs,
-                generate=lambda allowed: (
-                    seen_model_inputs.append([doc["page_content"] for doc in allowed])
-                    or "\\n".join(doc["page_content"] for doc in allowed)
-                ),
-                source_trace=lambda: [retrieved[0]],
-            )
-            assert framework_result.decision == "allow"
-            assert framework_result.response == "PUBLIC_CUSTOMER_FACT"
-            assert seen_model_inputs == [["PUBLIC_CUSTOMER_FACT"]]
+            # The internal Gateway authorization engine already exercised the
+            # real Guard HTTP boundary. No framework SDK integration remains
+            # part of the customer-facing lifecycle.
 
             bob_result = rag.run(
                 employee_token=employee("bob-oid"), application_id="customer-rag",
@@ -318,7 +297,16 @@ def test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http(
                 retrieved=[retrieved[0]], generate=lambda allowed: allowed[0].content,
             )
             assert revoked.response is None
-            assert revoked.reason == "NO_AUTHORIZED_RESOURCES"
+            # While the newly revoked policy awaits installed ACK, the Guard
+            # deliberately refuses to serve responses (safe 503 / block).
+            assert revoked.reason in {"GUARD_REQUEST_FAILED", "NO_AUTHORIZED_RESOURCES"}
+            assert not sync.sync_once()
+            settled = ProtectedRAG(client, allow_unattested_metadata=True).run(
+                employee_token=employee("alice-oid"), application_id="customer-rag",
+                retrieved=[retrieved[0]], generate=lambda allowed: allowed[0].content,
+            )
+            assert settled.response is None
+            assert settled.reason == "NO_AUTHORIZED_RESOURCES"
         finally:
             client.close()
 

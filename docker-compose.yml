@@ -107,6 +107,18 @@ services:
     environment:
       DRIVE_OWNER_TOKEN: ${DRIVE_OWNER_TOKEN:-}
       DRIVE_ROOT_FOLDER_ID: ${DRIVE_ROOT_FOLDER_ID:-}
+      ACCESSPROOF_DEMO_GOOGLE_CLIENT_ID: ${ACCESSPROOF_DEMO_GOOGLE_CLIENT_ID:-}
+      ACCESSPROOF_DEMO_GOOGLE_CLIENT_SECRET: ${ACCESSPROOF_DEMO_GOOGLE_CLIENT_SECRET:-}
+      ACCESSPROOF_DEMO_GOOGLE_HOSTED_DOMAIN: ${ACCESSPROOF_DEMO_GOOGLE_HOSTED_DOMAIN:-}
+      ACCESSPROOF_DEMO_GOOGLE_REDIRECT_URI: ${ACCESSPROOF_DEMO_GOOGLE_REDIRECT_URI:-}
+      ACCESSPROOF_DEMO_SOURCE_PROVIDER: ${ACCESSPROOF_DEMO_SOURCE_PROVIDER:-google}
+      ACCESSPROOF_DEMO_ENTRA_TENANT_ID: ${ACCESSPROOF_DEMO_ENTRA_TENANT_ID:-}
+      ACCESSPROOF_DEMO_ENTRA_CLIENT_ID: ${ACCESSPROOF_DEMO_ENTRA_CLIENT_ID:-}
+      ACCESSPROOF_DEMO_ENTRA_CLIENT_SECRET: ${ACCESSPROOF_DEMO_ENTRA_CLIENT_SECRET:-}
+      ACCESSPROOF_DEMO_ENTRA_DOMAIN: ${ACCESSPROOF_DEMO_ENTRA_DOMAIN:-}
+      ACCESSPROOF_DEMO_ENTRA_REDIRECT_URI: ${ACCESSPROOF_DEMO_ENTRA_REDIRECT_URI:-}
+      ACCESSPROOF_DEMO_ENTRA_ALICE_EMAIL: ${ACCESSPROOF_DEMO_ENTRA_ALICE_EMAIL:-}
+      ACCESSPROOF_DEMO_ENTRA_BOB_EMAIL: ${ACCESSPROOF_DEMO_ENTRA_BOB_EMAIL:-}
       ALICE_EMAIL: ${ALICE_EMAIL:-}
       ALICE_RAG_TOKEN: ${ALICE_RAG_TOKEN:-}
       BOB_EMAIL: ${BOB_EMAIL:-}
@@ -174,6 +186,48 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     restart: unless-stopped
+  sharepoint-rag-ingester:
+    # Customer-side Microsoft Graph app credentials and signing key never
+    # enter the RAG, LLM, web or Gateway containers.
+    profiles: ["sharepoint-rag-ingest"]
+    build:
+      context: .
+      dockerfile: drive-rag-demo/Dockerfile.ingester
+    environment:
+      ACCESSPROOF_MICROSOFT_CLIENT_ID: ${ACCESSPROOF_MICROSOFT_CLIENT_ID:-}
+      ACCESSPROOF_MICROSOFT_CLIENT_SECRET: ${ACCESSPROOF_MICROSOFT_CLIENT_SECRET:-}
+    command:
+      - python
+      - -m
+      - connectors.microsoft365.snapshot_agent
+      - --tenant-id
+      - ${ACCESSPROOF_MICROSOFT_TENANT_ID:-}
+      - --site-id
+      - ${ACCESSPROOF_SHAREPOINT_SITE_ID:-}
+      - --list-id
+      - ${ACCESSPROOF_SHAREPOINT_LIST_ID:-}
+      - --drive-id
+      - ${ACCESSPROOF_SHAREPOINT_DRIVE_ID:-}
+      - --root-folder-id
+      - ${ACCESSPROOF_SHAREPOINT_ROOT_ITEM_ID:-}
+      - --application-id
+      - ${ACCESSPROOF_DEMO_APPLICATION_ID:-}
+      - --source-id
+      - ${ACCESSPROOF_DEMO_SOURCE_ID:-}
+      - --key-id
+      - ${ACCESSPROOF_DEMO_ATTESTATION_KEY_ID:-}
+      - --private-key
+      - /run/secrets/sharepoint-ingestion-signing.key
+      - --output
+      - /run/accessproof/trusted/sharepoint.snapshot.json
+      - --interval-seconds
+      - "60"
+    volumes:
+      - trusted_drive_snapshots:/run/accessproof/trusted
+      - ${ACCESSPROOF_DEMO_SOURCE_SIGNING_KEY_PATH:-./.secrets/missing-drive-ingestion-signing.key}:/run/secrets/sharepoint-ingestion-signing.key:ro
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: unless-stopped
   runner:
     profiles: ["runner"]
     build:
@@ -230,7 +284,10 @@ services:
       ACCESSPROOF_GATEWAY_SYSTEM_INSTRUCTION: ${ACCESSPROOF_GATEWAY_SYSTEM_INSTRUCTION:-}
       ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON: ${ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON:-}
       ACCESSPROOF_GATEWAY_CACHE_PUBLIC_KEYS_JSON: ${ACCESSPROOF_GATEWAY_CACHE_PUBLIC_KEYS_JSON:-}
+      ACCESSPROOF_GATEWAY_SOURCE_SNAPSHOTS_JSON: ${ACCESSPROOF_GATEWAY_SOURCE_SNAPSHOTS_JSON:-}
       ACCESSPROOF_GATEWAY_MAX_RESPONSE_BYTES: ${ACCESSPROOF_GATEWAY_MAX_RESPONSE_BYTES:-1000000}
+    volumes:
+      - trusted_drive_snapshots:/run/accessproof/trusted:ro
     read_only: true
     tmpfs: [/tmp]
     ports: ["127.0.0.1:${GATEWAY_PORT:-8090}:8090"]

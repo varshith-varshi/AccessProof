@@ -51,6 +51,10 @@ from packages.observability.tracing import configure_tracing
 POLL_SECONDS = float(os.getenv("ACCESSPROOF_WORKER_POLL_SECONDS", "2"))
 DIRECTORY_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_DIRECTORY_SYNC_SECONDS", "900")))
 ACL_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_ACL_SYNC_SECONDS", "300")))
+# Poll for source-scoped queued bootstrap jobs without making every healthy
+# Google source resynchronize more frequently than its configured cadence.
+SOURCE_SYNC_CHECK_SECONDS = max(10, int(os.getenv("ACCESSPROOF_SOURCE_SYNC_CHECK_SECONDS", "30")))
+SOURCE_SYNC_FAILURE_BACKOFF_SECONDS = max(60, int(os.getenv("ACCESSPROOF_SOURCE_SYNC_FAILURE_BACKOFF_SECONDS", "60")))
 GOOGLE_WATCH_CALLBACK_URL = os.getenv("ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL", "").strip()
 GOOGLE_WATCH_CHECK_SECONDS = max(60, int(os.getenv("ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS", "900")))
 ACL_RECONCILE_SECONDS = max(
@@ -121,11 +125,27 @@ async def refresh_source_credentials_if_needed(
         if (credentials.get("access_token")
                 and expiry > datetime.now(timezone.utc) + timedelta(minutes=5)):
             return credentials
+        # Microsoft app credentials are control-plane operator secrets, not
+        # tenant-source secrets. Older records may still contain them; use the
+        # configured operator identity and scrub the legacy copies on the next
+        # successful renewal.
+        operator_client_id = os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_ID", "").strip()
+        operator_client_secret = os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "").strip()
+        stored_client_id = str(credentials.get("client_id") or "")
+        # Retain a development-only compatibility path for encrypted legacy
+        # records so an upgrade does not strand local/test sources before the
+        # operator configures its app identity. Production never uses it.
+        legacy_client_secret = str(credentials.get("client_secret") or "")
+        if not operator_client_id or not operator_client_secret:
+            if settings.env == "production" or not stored_client_id or not legacy_client_secret:
+                raise OAuthRefreshError("MICROSOFT_OPERATOR_CREDENTIALS_NOT_CONFIGURED")
+            operator_client_id, operator_client_secret = stored_client_id, legacy_client_secret
+        if stored_client_id and stored_client_id != operator_client_id:
+            raise OAuthRefreshError("MICROSOFT_OPERATOR_CLIENT_MISMATCH")
         try:
             access_token, new_expiry = await asyncio.to_thread(
                 graph_app_token, tenant_id=tenant,
-                client_id=str(credentials.get("client_id") or ""),
-                client_secret=str(credentials.get("client_secret") or ""),
+                client_id=operator_client_id, client_secret=operator_client_secret,
             )
         except MicrosoftConsentError as exc:
             raise OAuthRefreshError(str(exc)) from exc
@@ -133,10 +153,37 @@ async def refresh_source_credentials_if_needed(
         updated["access_token"] = access_token
         updated["expires_at"] = new_expiry.isoformat()
         updated["token_endpoint"] = expected
+        updated["client_id"] = operator_client_id
+        if os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "").strip():
+            updated["oauth_credential_mode"] = "server_managed"
+            updated.pop("client_secret", None)
+            updated.pop("oauth_client_secret", None)
         source.encrypted_credentials = box.encrypt(json.dumps(updated, sort_keys=True))
         return updated
+    original_source_credentials = credentials
+    provider = str(getattr(source, "provider", "")).lower()
     client_id = credentials.get("client_id") or credentials.get("oauth_client_id")
     client_secret = credentials.get("client_secret") or credentials.get("oauth_client_secret")
+    # Public production Google OAuth uses exactly the operator's registered
+    # client. Never trust a customer-source record to specify the app secret
+    # or client ID; legacy records are migrated/scrubbed opportunistically.
+    operator_managed_google = provider == "google-drive" and (
+        settings.env == "production" or credentials.get("oauth_credential_mode") == "server_managed"
+    )
+    if operator_managed_google:
+        operator_client_id = os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "").strip()
+        operator_secret = os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+        if not operator_client_id or not operator_secret:
+            raise OAuthRefreshError("GOOGLE_OPERATOR_OAUTH_NOT_CONFIGURED")
+        if client_id and client_id != operator_client_id:
+            raise OAuthRefreshError("GOOGLE_OPERATOR_OAUTH_CLIENT_MISMATCH")
+        client_id, client_secret = operator_client_id, operator_secret
+        credentials = dict(credentials)
+        credentials.pop("client_secret", None)
+        credentials.pop("oauth_client_secret", None)
+        credentials.pop("oauth_client_id", None)
+        credentials["client_id"] = operator_client_id
+        credentials["oauth_credential_mode"] = "server_managed"
     refresh_token = credentials.get("refresh_token")
     expires_at_raw = credentials.get("expires_at")
     if not (endpoint and client_id and client_secret and refresh_token and expires_at_raw):
@@ -155,6 +202,8 @@ async def refresh_source_credentials_if_needed(
         scopes=tuple(str(credentials.get("scope") or "").split()),
     )
     if not current.needs_refresh():
+        if operator_managed_google and credentials != original_source_credentials:
+            source.encrypted_credentials = box.encrypt(json.dumps(credentials, sort_keys=True))
         return credentials
     holder: dict[str, OAuthCredentials] = {}
 
@@ -550,25 +599,28 @@ def claim_one_guard_event() -> str | None:
     # live worker is never raced by another worker.
     now = datetime.now(timezone.utc)
     retry_before = now - timedelta(minutes=5)
+    eligible = or_(
+        GuardPermissionEvent.processing_status.in_(["received", "queued"]),
+        and_(
+            GuardPermissionEvent.processing_status == "processing",
+            GuardPermissionEvent.processing_started_at < retry_before,
+        ),
+    )
     with SessionLocal() as db:
-        row = db.scalar(
-            select(GuardPermissionEvent)
-            .where(
-                (GuardPermissionEvent.processing_status.in_(["received", "queued"]))
-                | (
-                    (GuardPermissionEvent.processing_status == "processing")
-                    & (GuardPermissionEvent.processing_started_at < retry_before)
-                )
-            )
-            .order_by(GuardPermissionEvent.received_at.asc())
-            .limit(1)
+        # Row selection and lease acquisition must be one conditional UPDATE.
+        # The old SELECT -> set -> COMMIT sequence allowed two workers to
+        # claim the same event before either had committed its local change.
+        candidate = (select(GuardPermissionEvent.id).where(eligible)
+                     .order_by(GuardPermissionEvent.received_at, GuardPermissionEvent.id)
+                     .limit(1).scalar_subquery())
+        claimed = db.scalar(
+            update(GuardPermissionEvent)
+            .where(GuardPermissionEvent.id == candidate, eligible)
+            .values(processing_status="processing", processing_started_at=now)
+            .returning(GuardPermissionEvent.id)
         )
-        if row is None:
-            return None
-        row.processing_status = "processing"
-        row.processing_started_at = now
         db.commit()
-        return row.id
+        return claimed
 
 
 def process_claimed_guard_event(event_id: str) -> None:
@@ -584,6 +636,26 @@ def process_claimed_guard_event(event_id: str) -> None:
                 event.completed_at = datetime.now(timezone.utc)
                 db.commit()
         logger.exception("guard_permission_event_processing_failed event_id=%s", event_id)
+
+
+def _record_directory_failure(db: Session, source: SourceConnection, code: str) -> None:
+    """Persist retry backoff and fail-closed directory freshness after rollback."""
+    cursor = db.scalar(select(ProviderSyncCursor).where(
+        ProviderSyncCursor.organization_id == source.organization_id,
+        ProviderSyncCursor.source_id == source.id,
+        ProviderSyncCursor.sync_kind == "directory",
+    ))
+    if cursor is None:
+        cursor = ProviderSyncCursor(
+            organization_id=source.organization_id, source_id=source.id,
+            provider=source.provider, sync_kind="directory",
+        )
+        db.add(cursor)
+    cursor.status = "reauthorization_required" if code == "REAUTHORIZATION_REQUIRED" else "degraded"
+    cursor.last_error_code = code
+    cursor.last_error_at = datetime.now(timezone.utc)
+    source.status = cursor.status
+    source.last_error = code
 
 
 async def synchronize_due_directories() -> int:
@@ -604,20 +676,29 @@ async def synchronize_due_directories() -> int:
                 )
             )
         )
-        cursor_success = {
-            row.source_id: row.last_success_at
+        cursors = {
+            row.source_id: row
             for row in db.scalars(select(ProviderSyncCursor).where(
                 ProviderSyncCursor.sync_kind == "directory"
             ))
         }
         due: list[str] = []
         for source in sources:
-            last_success = cursor_success.get(source.id)
+            cursor = cursors.get(source.id)
+            last_success = cursor.last_success_at if cursor else None
             if last_success is None:
+                if cursor and cursor.last_error_at:
+                    last_error = cursor.last_error_at.replace(tzinfo=cursor.last_error_at.tzinfo or timezone.utc)
+                    if (now - last_error).total_seconds() < SOURCE_SYNC_FAILURE_BACKOFF_SECONDS:
+                        continue
                 due.append(source.id)
                 continue
             checked_at = last_success.replace(tzinfo=last_success.tzinfo or timezone.utc)
             if (now - checked_at).total_seconds() >= DIRECTORY_SYNC_SECONDS:
+                if cursor and cursor.last_error_at:
+                    last_error = cursor.last_error_at.replace(tzinfo=cursor.last_error_at.tzinfo or timezone.utc)
+                    if (now - last_error).total_seconds() < SOURCE_SYNC_FAILURE_BACKOFF_SECONDS:
+                        continue
                 due.append(source.id)
     completed = 0
     for source_id in due:
@@ -636,29 +717,20 @@ async def synchronize_due_directories() -> int:
                 )
                 db.commit()
                 completed += 1
-            except DirectorySyncError as exc:
-                stored_source.status, stored_source.last_error = (
-                    (
-                        "reauthorization_required"
-                        if exc.code == "REAUTHORIZATION_REQUIRED"
-                        else "degraded"
-                    ),
-                    exc.code,
-                )
-                db.commit()
-            except OAuthRefreshError as exc:
-                stored_source.status, stored_source.last_error = (
-                    (
-                        "reauthorization_required"
-                        if exc.code == "REAUTHORIZATION_REQUIRED"
-                        else "degraded"
-                    ),
-                    exc.code,
-                )
-                db.commit()
+            except (DirectorySyncError, OAuthRefreshError) as exc:
+                # Provider/ORM failures cannot commit a partial employee graph.
+                # Roll back even if a synchronizer mutated rows before raising.
+                db.rollback()
+                retry_source = db.get(SourceConnection, source_id)
+                if retry_source is not None:
+                    _record_directory_failure(db, retry_source, exc.code)
+                    db.commit()
             except Exception as exc:
-                stored_source.status, stored_source.last_error = "degraded", "DIRECTORY_SYNC_INCOMPLETE"
-                db.commit()
+                db.rollback()
+                retry_source = db.get(SourceConnection, source_id)
+                if retry_source is not None:
+                    _record_directory_failure(db, retry_source, "DIRECTORY_SYNC_INCOMPLETE")
+                    db.commit()
                 logger.warning(
                     "scheduled_directory_sync_failed source_id=%s error=%s",
                     source_id,
@@ -692,10 +764,18 @@ async def synchronize_due_acls() -> int:
             cursor = cursors.get(candidate_source.id)
             last_success = cursor.last_success_at if cursor else None
             if last_success is None:
+                if cursor and cursor.last_error_at:
+                    last_error = cursor.last_error_at.replace(tzinfo=cursor.last_error_at.tzinfo or timezone.utc)
+                    if (now - last_error).total_seconds() < SOURCE_SYNC_FAILURE_BACKOFF_SECONDS:
+                        continue
                 due.append(candidate_source.id)
                 continue
             normalized_success = last_success.replace(tzinfo=last_success.tzinfo or timezone.utc)
             if (now - normalized_success).total_seconds() >= ACL_SYNC_SECONDS:
+                if cursor and cursor.last_error_at:
+                    last_error = cursor.last_error_at.replace(tzinfo=cursor.last_error_at.tzinfo or timezone.utc)
+                    if (now - last_error).total_seconds() < SOURCE_SYNC_FAILURE_BACKOFF_SECONDS:
+                        continue
                 due.append(candidate_source.id)
     completed = 0
     for source_id in due:
@@ -856,11 +936,11 @@ async def main() -> None:
             scan_operational_alerts()
             last_retention = now
             did_work = True
-        if (now - last_directory_sync).total_seconds() >= DIRECTORY_SYNC_SECONDS:
+        if (now - last_directory_sync).total_seconds() >= SOURCE_SYNC_CHECK_SECONDS:
             if await synchronize_due_directories():
                 did_work = True
             last_directory_sync = now
-        if (now - last_acl_sync).total_seconds() >= ACL_SYNC_SECONDS:
+        if (now - last_acl_sync).total_seconds() >= SOURCE_SYNC_CHECK_SECONDS:
             if await synchronize_due_acls():
                 did_work = True
             last_acl_sync = now

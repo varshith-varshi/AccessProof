@@ -92,6 +92,30 @@ download or automatic API guessing. Standard installer `InstallationSpec`
 still rejects `custom` unless a separately reviewed deployment package
 supports that adapter. This preserves fail-closed behavior for unknown APIs.
 
+## Gateway upstream transport and readiness safety
+
+The Gateway now validates both the Guard service URL and the model service
+URL before startup. **Plaintext HTTP is accepted only for explicitly
+private-network destinations** (IPv4 RFC1918, loopback, IPv6 ULA, or an
+isolated single-label Docker service name). Public IP addresses, dotted
+DNS names, and other off-network destinations must use HTTPS. Link-local
+metadata services, wildcard bind addresses and special-use IPs are not
+permitted even with HTTPS. This prevents accidental cleartext transmission
+of verified employee identity or protected document context.
+
+A single-label Docker name remains permitted only because the approved
+reference deployment independently verifies that the RAG cannot reach
+the model without crossing the Gateway. Network isolation, customer ingress
+TLS, and a no-bypass cutover challenge are **separate mandatory release
+checks**. Arbitrary custom DNS suffixes (even `.internal`) do not grant an
+automatic HTTP exception; configure HTTPS or a reviewed private service name.
+
+The Gateway `GET /health/ready` endpoint now checks the Guard for the
+**configured application ID**. A healthy Guard bound to another app, a Shadow
+application or a stale permission source is not a ready Gateway. Liveness
+(`/health/live`) is only process health; neither endpoint alone is a
+certification or a substitute for independent customer-route testing.
+
 ## Network isolation and release constraints
 
 The supported Docker reference static network checker now permits official

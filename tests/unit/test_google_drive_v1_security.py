@@ -376,3 +376,145 @@ async def test_shared_drive_change_rechecks_known_file_permissions(monkeypatch):
         assert db.scalar(select(GuardPermissionGrant).where(GuardPermissionGrant.active.is_(True))) is None
     finally:
         db.close()
+
+
+@pytest.mark.asyncio
+async def test_drive_permission_snapshot_requests_view_and_limited_access_fields():
+    def response(request):
+        fields = request.url.params["fields"]
+        assert "view" in fields
+        assert "inheritedPermissionsDisabled" in fields
+        assert "permissionDetails" in fields
+        return httpx.Response(200, json={"kind": "drive#permissionList", "permissions": [
+            {"id": "p", "type": "user", "role": "reader", "view": "metadata",
+             "inheritedPermissionsDisabled": True,
+             "permissionDetails": [{"inherited": True}]},
+        ]})
+
+    adapter = GoogleDriveAdapter(access_token="fake", test_root_folder_id="root")
+    await adapter._client.aclose()
+    adapter._client = httpx.AsyncClient(transport=httpx.MockTransport(response))
+    try:
+        permissions = await adapter.permissions_snapshot("limited-folder")
+        assert permissions[0]["view"] == "metadata"
+    finally:
+        await adapter._client.aclose()
+
+
+@pytest.mark.parametrize(("facets", "expected"), [
+    ({}, True),
+    ({"view": "metadata", "inheritedPermissionsDisabled": True,
+      "permissionDetails": [{"inherited": True}]}, False),
+    ({"view": "published"}, False),
+    ({"view": "unrecognized"}, False),
+    ({"inheritedPermissionsDisabled": True,
+      "permissionDetails": [{"inherited": True}, {"inherited": True}]}, False),
+    ({"inheritedPermissionsDisabled": True,
+      "permissionDetails": [{"inherited": True}, {"inherited": False}]}, True),
+    # Direct My Drive permissions may not include permissionDetails.
+    ({"inheritedPermissionsDisabled": True}, True),
+    ({"inheritedPermissionsDisabled": "true"}, False),
+    ({"inheritedPermissionsDisabled": True, "permissionDetails": [{"role": "reader"}]}, False),
+])
+def test_drive_content_read_denies_metadata_only_but_keeps_direct_grants(facets, expected):
+    permission = {"id": "p", "type": "user", "role": "reader", **facets}
+    assert acl_sync._google_permission_authorizes_read(permission, acl_sync._now()) is expected
+
+
+def test_drive_limited_folder_organizer_exception_is_not_a_metadata_view():
+    permission = {
+        "id": "p", "type": "user", "role": "organizer",
+        "inheritedPermissionsDisabled": True,
+        "permissionDetails": [{"inherited": True}],
+    }
+    assert acl_sync._google_permission_authorizes_read(permission, acl_sync._now())
+    permission["view"] = "metadata"
+    assert not acl_sync._google_permission_authorizes_read(permission, acl_sync._now())
+
+
+@pytest.mark.asyncio
+async def test_drive_metadata_only_transition_revokes_old_allow_and_direct_regrant_restores_it(monkeypatch):
+    class LimitedFolderDrive(InventoriedDrive):
+        phase = "direct"
+
+        async def list_boundary_resources(self):
+            return [
+                {"id": "folder-A", "mimeType": GoogleDriveAdapter.FOLDER_MIME, "parents": ["root"]},
+                {"id": "file-B", "mimeType": "text/plain", "parents": ["root"]},
+            ]
+
+        async def acl_change_page(self, page_token=None):
+            if page_token is None:
+                return {"startPageToken": "before-scan"}
+            return {"changes": [{"fileId": "folder-A", "file": {
+                "id": "folder-A", "mimeType": GoogleDriveAdapter.FOLDER_MIME,
+                "parents": ["root"],
+            }}], "newStartPageToken": "after-scan"}
+
+        async def is_inside_boundary(self, file_id):
+            return True
+
+        async def permissions_snapshot(self, file_id):
+            if file_id == "root":
+                return []
+            permission = {
+                "id": "grant-A" if file_id == "folder-A" else "grant-B",
+                "type": "user", "emailAddress": "alice@example.com", "role": "reader",
+            }
+            if file_id == "folder-A" and self.phase == "metadata":
+                permission.update({
+                    "view": "metadata", "inheritedPermissionsDisabled": True,
+                    "permissionDetails": [{"inherited": True}],
+                })
+            elif file_id == "folder-A" and self.phase == "direct-again":
+                permission.update({
+                    "inheritedPermissionsDisabled": True,
+                    "permissionDetails": [{"inherited": True}, {"inherited": False}],
+                })
+            return [permission]
+
+    fake = LimitedFolderDrive()
+    monkeypatch.setattr(acl_sync, "GoogleDriveAdapter", lambda **_: fake)
+    db, source = _db_rows()
+    try:
+        credentials = {"access_token": "fake", "test_root_folder_id": "root"}
+        assert (await synchronize_acls(db, source, credentials))["events"] == 2
+        db.commit()
+        for event in list(db.scalars(select(GuardPermissionEvent))):
+            process_guard_event(db, event.id)
+        db.commit()
+
+        folder = db.scalar(select(GuardResource).where(
+            GuardResource.provider_resource_id == "folder-A"))
+        other = db.scalar(select(GuardResource).where(
+            GuardResource.provider_resource_id == "file-B"))
+
+        def active(resource):
+            return list(db.scalars(select(GuardPermissionGrant).where(
+                GuardPermissionGrant.resource_id == resource.id,
+                GuardPermissionGrant.active.is_(True),
+            )))
+
+        assert len(active(folder)) == len(active(other)) == 1
+        fake.phase = "metadata"
+        assert (await synchronize_acls(db, source, credentials))["events"] == 1
+        db.commit()
+        for event in list(db.scalars(select(GuardPermissionEvent).where(
+            GuardPermissionEvent.processing_status == "queued",
+        ))):
+            process_guard_event(db, event.id)
+        db.commit()
+        assert not active(folder)
+        assert len(active(other)) == 1
+
+        fake.phase = "direct-again"
+        assert (await synchronize_acls(db, source, credentials))["events"] == 1
+        db.commit()
+        for event in list(db.scalars(select(GuardPermissionEvent).where(
+            GuardPermissionEvent.processing_status == "queued",
+        ))):
+            process_guard_event(db, event.id)
+        db.commit()
+        assert len(active(folder)) == len(active(other)) == 1
+    finally:
+        db.close()

@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from apps.gateway.accessproof_gateway.app import GatewaySettings, create_app
 from apps.gateway.accessproof_gateway.installer import InstallationError, InstallationSpec, private_environment
 from apps.gateway.accessproof_gateway.model_adapters import ModelProtocolError
-from packages.rag_sdk import (
+from packages.rag_core import (
     ContentBinding, SourceAttestationSigner, SourceAttestationVerifier,
 )
 

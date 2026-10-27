@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 import httpx
+from urllib.parse import quote
 
 
 class DirectorySyncError(RuntimeError):
@@ -99,6 +100,39 @@ class GoogleWorkspaceDirectoryAdapter(_DirectoryClient):
     """Google Admin SDK Directory API reader with provider pagination."""
 
     API = "https://admin.googleapis.com/admin/directory/v1"
+
+    async def drive_permission_id(self, email: str) -> str:
+        """Resolve Drive's opaque grantee ID, not a mutable email alias.
+
+        Official Drive v2 permissions.getIdForEmail with fixed Google host,
+        using the same read-only OAuth credential as the Drive v3 connector.
+        An incomplete/error response never certifies an employee identity.
+        """
+        if (not isinstance(email, str) or not 3 <= len(email) <= 320
+                or "@" not in email or any(ord(ch) < 33 for ch in email)):
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_EMAIL_INVALID")
+        url = f"https://www.googleapis.com/drive/v2/permissionIds/{quote(email, safe='')}"
+        try:
+            response = await self._client.get(url, follow_redirects=False)
+        except httpx.HTTPError as exc:
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_UNAVAILABLE") from exc
+        if response.status_code == 401:
+            raise DirectorySyncError("REAUTHORIZATION_REQUIRED")
+        if response.status_code == 403:
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_FORBIDDEN")
+        if response.status_code in {429, 500, 502, 503, 504}:
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_UNAVAILABLE")
+        if response.status_code != 200:
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_UNRESOLVED")
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_INVALID") from exc
+        if (not isinstance(body, dict) or body.get("kind") != "drive#permissionId"
+                or not isinstance(body.get("id"), str) or not body["id"]
+                or len(body["id"]) > 255):
+            raise DirectorySyncError("GOOGLE_DRIVE_PERMISSION_ID_INVALID")
+        return str(body["id"])
 
     async def users(self) -> list[DirectoryUser]:
         result: list[DirectoryUser] = []

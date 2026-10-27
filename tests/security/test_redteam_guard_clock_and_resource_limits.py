@@ -143,7 +143,7 @@ def test_invalid_principal_or_resource_type_cannot_become_a_string_grant(tmp_pat
 
 
 def test_mutated_retrieval_list_during_guard_io_cannot_change_model_input():
-    from packages.rag_sdk.protection import ProtectedRAG, RetrievedResource
+    from packages.rag_core.protection import ProtectedRAG, RetrievedResource
 
     original = RetrievedResource("drive", "approved", content="PUBLIC_SAFE")
     shared_list = [original]

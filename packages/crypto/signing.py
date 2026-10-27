@@ -4,6 +4,7 @@ from typing import Any
 
 import base64
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 
@@ -75,3 +76,30 @@ def verify_manifest(payload: dict[str, Any], manifest: dict[str, Any]) -> bool:
         return expected_key_id == manifest.get("key_id")
     except (KeyError, ValueError, InvalidSignature):
         return False
+
+
+def verify_manifest_with_trust(
+    payload: dict[str, Any], manifest: dict[str, Any],
+    trusted_public_keys: dict[str, str], revoked_key_ids: set[str] | frozenset[str] = frozenset(),
+) -> bool:
+    """Verify a manifest against a caller-owned issuer trust store.
+
+    ``manifest.public_key`` is deliberately not a trust root.  The configured
+    key for its ``key_id`` must match exactly before the normal signature check
+    is accepted.  This keeps a self-signed report visibly separate from an
+    authentic AccessProof evidence export.
+    """
+    key_id = manifest.get("key_id")
+    if not isinstance(key_id, str) or key_id in revoked_key_ids:
+        return False
+    expected_public_key = trusted_public_keys.get(key_id)
+    if not isinstance(expected_public_key, str):
+        return False
+    supplied_public_key = manifest.get("public_key")
+    if not isinstance(supplied_public_key, str):
+        return False
+    # Compare encoded keys before cryptographic verification to prevent a
+    # different key with a fabricated/aliased key identifier being trusted.
+    if not hmac.compare_digest(expected_public_key.rstrip("="), supplied_public_key.rstrip("=")):
+        return False
+    return verify_manifest(payload, manifest)

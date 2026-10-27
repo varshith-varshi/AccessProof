@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,7 @@ _SKIP_DIRS = {
     "__pycache__", ".mypy_cache", ".pytest_cache", ".next", "coverage",
     "tests", "test", "__tests__", "vendor",
 }
+_ARCHIVE_DIR_NAMES = {"archive", "archives", "snapshot", "snapshots", "backup", "backups", "old"}
 _SKIP_NAMES = re.compile(
     r"(^\.env($|\.)|\.pem$|\.key$|\.p12$|\.pfx$|id_rsa|secrets?\.|credentials?\.)",
     re.IGNORECASE,
@@ -38,6 +40,16 @@ class Finding:
     status: str
     evidence: str
     reason: str
+
+    @property
+    def confidence(self) -> str:
+        # Static matching is evidence, never a proof of a runtime bypass.
+        return "HIGH" if self.status == "UNSUPPORTED" else "MEDIUM" if self.status == "PARTIAL" else "LOW"
+
+    @property
+    def finding_id(self) -> str:
+        normalized = "|".join((self.type, self.status, self.evidence, self.reason))
+        return "APCS-" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 @dataclass
@@ -110,12 +122,12 @@ _BACKGROUND = re.compile(r"(Celery|celery|BackgroundTasks|dramatiq|rq\.Queue|enq
 
 
 def _iter_files(
-    root: Path, max_bytes: int, skipped: dict[str, int],
+    root: Path, max_bytes: int, skipped: dict[str, int], excluded_dirs: set[str],
 ) -> Iterable[tuple[Path, str]]:
     for current, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames[:] = sorted(
             name for name in dirnames
-            if name not in _SKIP_DIRS and not name.startswith(".")
+            if name not in _SKIP_DIRS and name not in excluded_dirs and not name.startswith(".")
         )
         for name in sorted(filenames):
             path = Path(current) / name
@@ -146,13 +158,17 @@ def _evidence(root: Path, path: Path, line: int) -> str:
     return f"{relative.as_posix()}:{line}"
 
 
-def scan(root: Path, *, max_files: int = 5000, max_bytes: int = 512 * 1024) -> ScanResult:
+def scan(
+    root: Path, *, max_files: int = 5000, max_bytes: int = 512 * 1024,
+    excluded_dirs: Iterable[str] = _ARCHIVE_DIR_NAMES,
+) -> ScanResult:
     root = root.resolve()
     if not root.is_dir():
         raise ValueError("SCAN_ROOT_NOT_A_DIRECTORY")
     result = ScanResult()
     skipped = {"secret": 0}
-    for path, text in _iter_files(root, max_bytes, skipped):
+    clean_exclusions = {item.strip() for item in excluded_dirs if item and item.strip()}
+    for path, text in _iter_files(root, max_bytes, skipped, clean_exclusions):
         result.skipped_secret = skipped["secret"]
         if result.files_scanned >= max_files:
             result.blocker("SCAN_FILE_LIMIT_REACHED")
@@ -320,16 +336,22 @@ def scan(root: Path, *, max_files: int = 5000, max_bytes: int = 512 * 1024) -> S
 
 
 def _dedupe(findings: Iterable[Finding]) -> list[dict[str, str]]:
+    # Multiple lines in the same execution artifact are one root-cause lead;
+    # retain the first precise location rather than flooding reviewers.
     seen: set[tuple[str, str, str]] = set()
     output: list[dict[str, str]] = []
     for item in findings:
-        key = (item.type, item.status, item.evidence)
+        path = item.evidence.rsplit(":", 1)[0]
+        key = (item.type, item.status, path)
         if key in seen:
             continue
         seen.add(key)
         output.append({
             "type": item.type, "status": item.status,
             "evidence": item.evidence, "reason": item.reason,
+            "finding_id": item.finding_id,
+            "confidence": item.confidence,
+            "classification": "SUSPECTED_RISK" if item.status != "UNSUPPORTED" else "STATIC_BYPASS_CANDIDATE",
         })
     return output
 
@@ -399,11 +421,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=("json", "text", "prometheus"), default="json")
     parser.add_argument("--max-files", type=int, default=5000)
     parser.add_argument("--max-file-bytes", type=int, default=512 * 1024)
+    parser.add_argument(
+        "--exclude-dir", action="append", default=[],
+        help="Additional directory basename to skip (repeatable). Archive-like directories are skipped by default.",
+    )
     args = parser.parse_args(argv)
     if not 1 <= args.max_files <= 50_000 or not 1024 <= args.max_file_bytes <= 10 * 1024 * 1024:
         parser.error("bounds are invalid")
     try:
-        result = scan(Path(args.path), max_files=args.max_files, max_bytes=args.max_file_bytes)
+        result = scan(
+            Path(args.path), max_files=args.max_files, max_bytes=args.max_file_bytes,
+            excluded_dirs=set(_ARCHIVE_DIR_NAMES) | set(args.exclude_dir),
+        )
     except ValueError as exc:
         print(json.dumps({"error": str(exc)}))
         return 2

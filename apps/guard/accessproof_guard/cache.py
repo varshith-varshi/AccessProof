@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 import json
+from contextlib import contextmanager
+from collections.abc import Iterator
 from threading import RLock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,10 +24,14 @@ class PolicyCache:
         # connection so policy checks cannot race an installation transaction.
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self._lock = RLock()
+        self._transaction_depth = 0
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS decisions (subject_id TEXT NOT NULL, source_id TEXT NOT NULL, resource_id TEXT NOT NULL, scope TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(subject_id, source_id, resource_id, scope))")
         self.db.execute("CREATE TABLE IF NOT EXISTS bound_applications (application_id TEXT PRIMARY KEY, source_id TEXT NOT NULL, mode TEXT NOT NULL, source_acl_healthy INTEGER NOT NULL DEFAULT 0)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS bound_application_sources (application_id TEXT NOT NULL, source_id TEXT NOT NULL, source_acl_healthy INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(application_id, source_id))")
+        # Migrating an existing single-source local cache never synthesizes a new permission.
+        self.db.execute("INSERT OR IGNORE INTO bound_application_sources (application_id, source_id, source_acl_healthy) SELECT application_id, source_id, 0 FROM bound_applications")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS identity_mappings "
             "(source_id TEXT NOT NULL, issuer TEXT NOT NULL, subject TEXT NOT NULL, "
@@ -38,6 +44,7 @@ class PolicyCache:
         # A process restart invalidates previously recorded source health.
         # Re-enable Protect only after fresh authenticated control-plane sync.
         self.db.execute("UPDATE bound_applications SET source_acl_healthy=0 WHERE mode='protect'")
+        self.db.execute("UPDATE bound_application_sources SET source_acl_healthy=0")
         self.db.execute("CREATE TABLE IF NOT EXISTS request_contexts (decision_id TEXT PRIMARY KEY, application_id TEXT NOT NULL, subject_id TEXT NOT NULL, request_id TEXT NOT NULL DEFAULT '', resources_json TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT, revision_hash TEXT NOT NULL DEFAULT '')")
         self.db.execute("CREATE TABLE IF NOT EXISTS authorization_revisions (application_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, revision_hash TEXT NOT NULL, generated_at TEXT NOT NULL, installed_at TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS audit_buffer (event_id TEXT PRIMARY KEY, decision_id TEXT, application_id TEXT NOT NULL, subject_id TEXT NOT NULL, request_id TEXT NOT NULL, layer TEXT NOT NULL DEFAULT 'layer1', result TEXT NOT NULL, reason TEXT NOT NULL, policy_version INTEGER NOT NULL, resources_json TEXT NOT NULL DEFAULT '[]', authorization_revision INTEGER, authorization_revision_hash TEXT, created_at TEXT NOT NULL, delivered_at TEXT)")
@@ -64,6 +71,90 @@ class PolicyCache:
                 self.db.execute(f"ALTER TABLE audit_buffer ADD COLUMN {name} {declaration}")
         self.db.commit()
 
+    @contextmanager
+    def _write_transaction(self) -> Iterator[None]:
+        """One SQLite commit boundary shared by nested cache writers.
+
+        Callers hold _lock. Individual setters retain their standalone
+        transactions, but a complete Guard snapshot either commits as one
+        durable transaction or rolls back all decisions and metadata.
+        """
+        if self._transaction_depth:
+            self._transaction_depth += 1
+            try:
+                yield
+            finally:
+                self._transaction_depth -= 1
+            return
+        self._transaction_depth = 1
+        try:
+            with self.db:
+                yield
+        finally:
+            self._transaction_depth = 0
+
+    def apply_sync_snapshot(
+        self, version: int, decisions: list[dict[str, object]], *,
+        full_snapshot: bool, applications: list[dict[str, object]],
+        mappings: list[dict[str, object]], revisions: list[dict[str, object]] | None,
+        ack_versions: list[int] | None = None,
+    ) -> bool:
+        """Crash-atomic Guard authorization state installation.
+
+        Failures in policy rows, app bindings, identity mapping or revision
+        installation cannot commit a newer effective ALLOW. Both newer-policy
+        and equal-version refreshes use the same transaction boundary.
+        """
+        with self._lock:
+            with self._write_transaction():
+                self.validate_identity_mappings(mappings)
+                if revisions is not None:
+                    self.validate_authorization_revisions(revisions)
+                installed = self.install(version, decisions, full_snapshot=full_snapshot)
+                if revisions is not None:
+                    self.set_authorization_revisions(revisions)
+                self.set_application_bindings(applications)
+                self.set_identity_mappings(mappings)
+                self.mark_sync_success()
+                if installed and ack_versions:
+                    self.queue_installed_policy_acks(ack_versions)
+            return installed
+
+    def queue_installed_policy_acks(self, versions: list[int]) -> None:
+        """Record durable installed-ACK work within the policy commit."""
+        if any(type(v) is not int or v < 1 or v > self.version() for v in versions):
+            raise ValueError("INVALID_POLICY_ACK_VERSION")
+        with self._lock:
+            with self._write_transaction():
+                existing = self.db.execute(
+                    "SELECT value FROM metadata WHERE key='pending_installed_acks'"
+                ).fetchone()
+                pending = set(json.loads(str(existing[0]))) if existing else set()
+                pending.update(versions)
+                self.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('pending_installed_acks', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (json.dumps(sorted(pending)),),
+                )
+
+    def pending_installed_policy_acks(self) -> list[int]:
+        with self._lock:
+            result = self.db.execute(
+                "SELECT value FROM metadata WHERE key='pending_installed_acks'"
+            ).fetchone()
+        return [int(v) for v in json.loads(str(result[0]))] if result else []
+
+    def mark_installed_policy_ack_delivered(self, version: int) -> None:
+        with self._lock:
+            with self._write_transaction():
+                pending = set(self.pending_installed_policy_acks())
+                pending.discard(version)
+                self.db.execute(
+                    "INSERT INTO metadata(key,value) VALUES('pending_installed_acks', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (json.dumps(sorted(pending)),),
+                )
+
     def install(self, version: int, decisions: list[dict[str, object]], *, full_snapshot: bool = False) -> bool:
         """Atomically install a newer policy; returns False for an idempotent retry.
 
@@ -77,7 +168,7 @@ class PolicyCache:
                 raise ValueError("STALE_POLICY")
             if version == current:
                 return False
-            with self.db:
+            with self._write_transaction():
                 if full_snapshot:
                     self.db.execute("DELETE FROM decisions")
                 for row in decisions:
@@ -123,38 +214,135 @@ class PolicyCache:
         return int(row[0]) if row else 0
 
     def set_application_bindings(self, applications: list[dict[str, object]]) -> None:
-        """Atomically replace authoritative bindings on every Guard sync poll.
+        """Install authoritative per-app source allowlists, crash atomically.
 
-        An empty list is meaningful: the Guard is not authorized to serve any
-        applications until explicitly assigned by the control plane.
+        Legacy source_id envelopes are accepted unchanged. Multi-source inputs
+        explicitly carry source_ids and source_health; missing health denies.
         """
         validated: list[tuple[str, str, str, int]] = []
+        all_sources: list[tuple[str, str, int]] = []
+        seen_apps: set[str] = set()
         for item in applications:
             application_id = item.get("application_id")
-            source_id = item.get("source_id")
+            primary = item.get("source_id")
             mode = item.get("mode")
-            if (
-                not isinstance(application_id, str)
-                or not application_id
-                or not isinstance(source_id, str)
-                or not source_id
-                or mode not in {"shadow", "protect"}
-            ):
-                raise ValueError("INVALID_APPLICATION_BINDINGS")
-            # Missing source-health evidence is UNKNOWN, never healthy.
-            # This cache-level check also protects future sync/adapter callers.
             health = item.get("source_acl_healthy", False)
+            sources = item.get("source_ids", [primary])
+            health_map = item.get("source_health", {primary: health})
             if not isinstance(health, bool):
                 raise ValueError("INVALID_SOURCE_ACL_HEALTH")
-            validated.append((application_id, source_id, mode, int(health)))
+            if (
+                not isinstance(application_id, str) or not application_id
+                or application_id in seen_apps
+                or not isinstance(primary, str) or not primary
+                or mode not in {"shadow", "protect"}
+                or not isinstance(health, bool)
+                or not isinstance(sources, list) or not 1 <= len(sources) <= 16
+                or any(not isinstance(src, str) or not src for src in sources)
+                or len(sources) != len(set(sources)) or primary not in sources
+                or not isinstance(health_map, dict)
+                or any(not isinstance(health_map.get(src), bool) for src in sources)
+            ):
+                raise ValueError("INVALID_APPLICATION_BINDINGS")
+            seen_apps.add(application_id)
+            # Do not accept untracked or ambiguously mapped source-health entries.
+            if set(health_map) != set(sources):
+                raise ValueError("INVALID_APPLICATION_SOURCE_HEALTH")
+            healthy = all(health_map[src] for src in sources)
+            if health != healthy:
+                raise ValueError("INVALID_APPLICATION_SOURCE_HEALTH")
+            validated.append((application_id, primary, str(mode), int(healthy)))
+            all_sources.extend(
+                (application_id, src, int(health_map[src])) for src in sources
+            )
         with self._lock:
-            with self.db:
+            with self._write_transaction():
+                self.db.execute("DELETE FROM bound_application_sources")
                 self.db.execute("DELETE FROM bound_applications")
                 self.db.executemany(
-                    "INSERT INTO bound_applications (application_id, source_id, mode, source_acl_healthy) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO bound_applications "
+                    "(application_id, source_id, mode, source_acl_healthy) VALUES (?, ?, ?, ?)",
                     validated,
                 )
-                self.db.execute("INSERT INTO metadata (key, value) VALUES ('applications_synced', '1') ON CONFLICT(key) DO UPDATE SET value='1'")
+                self.db.executemany(
+                    "INSERT INTO bound_application_sources "
+                    "(application_id, source_id, source_acl_healthy) VALUES (?, ?, ?)",
+                    all_sources,
+                )
+                self.db.execute(
+                    "INSERT INTO metadata (key, value) VALUES ('applications_synced', '1') "
+                    "ON CONFLICT(key) DO UPDATE SET value='1'"
+                )
+
+    def application_sources(self, application_id: str) -> dict[str, bool]:
+        """Source bindings originate only from authenticated control-plane sync."""
+        with self._lock:
+            rows = self.db.execute(
+                "SELECT source_id, source_acl_healthy FROM bound_application_sources "
+                "WHERE application_id=?", (application_id,),
+            ).fetchall()
+        return {str(source): bool(healthy) for source, healthy in rows}
+
+    def validate_authorization_revisions(self, revisions: list[dict[str, object]]) -> None:
+        """Preflight the complete revision snapshot before installing new ALLOW decisions.
+
+        No database mutation or acknowledgement occurs here. The existing
+        set_authorization_revisions check remains the final authority at commit.
+        """
+        seen: set[str] = set()
+        with self._lock:
+            existing = {
+                str(row[0]): (int(row[1]), str(row[2]))
+                for row in self.db.execute(
+                    "SELECT application_id, revision, revision_hash FROM authorization_revisions"
+                )
+            }
+            for item in revisions:
+                if not isinstance(item, dict):
+                    raise ValueError("INVALID_AUTHORIZATION_REVISION")
+                application_id = item.get("application_id")
+                revision = item.get("revision")
+                revision_hash = item.get("revision_hash")
+                generated_at = item.get("generated_at", "")
+                if (
+                    not isinstance(application_id, str) or not application_id
+                    or not isinstance(revision, int) or isinstance(revision, bool)
+                    or revision < 1 or not isinstance(revision_hash, str)
+                    or len(revision_hash) != 64
+                    or any(char not in "0123456789abcdef" for char in revision_hash)
+                    or not isinstance(generated_at, str)
+                ):
+                    raise ValueError("INVALID_AUTHORIZATION_REVISION")
+                if application_id in seen:
+                    raise ValueError("DUPLICATE_AUTHORIZATION_REVISION")
+                seen.add(application_id)
+                prior = existing.get(application_id)
+                if prior is not None:
+                    if revision < prior[0]:
+                        raise ValueError("STALE_AUTHORIZATION_REVISION")
+                    if revision == prior[0] and revision_hash != prior[1]:
+                        raise ValueError("AUTHORIZATION_REVISION_FORK")
+
+    def validate_identity_mappings(self, mappings: list[dict[str, object]]) -> None:
+        """Reject malformed or duplicated identity snapshots before changing policy."""
+        seen: set[tuple[str, str, str, str]] = set()
+        for item in mappings:
+            if not isinstance(item, dict):
+                raise ValueError("INVALID_IDENTITY_MAPPINGS")
+            source = item.get("source_id")
+            issuer = item.get("issuer")
+            subject = item.get("subject")
+            tenant = item.get("tenant_id", "") or ""
+            provider_subject = item.get("source_subject_id")
+            if (
+                not all(isinstance(value, str) and value for value in (source, issuer, subject, provider_subject))
+                or not isinstance(tenant, str)
+            ):
+                raise ValueError("INVALID_IDENTITY_MAPPINGS")
+            key = (str(source), str(issuer), str(subject), tenant)
+            if key in seen:
+                raise ValueError("CONFLICTING_IDENTITY_MAPPINGS")
+            seen.add(key)
 
     def set_authorization_revisions(self, revisions: list[dict[str, object]]) -> None:
         """Install a monotonic signed-revision snapshot for bound applications.
@@ -181,7 +369,7 @@ class PolicyCache:
             validated[application_id] = (revision, revision_hash, generated_at)
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 existing = {
                     str(row[0]): (int(row[1]), str(row[2]))
                     for row in self.db.execute(
@@ -274,7 +462,7 @@ class PolicyCache:
             seen.add(key)
             validated.append((source_id, issuer, subject, tenant_id, source_subject_id))
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 self.db.execute("DELETE FROM identity_mappings")
                 self.db.executemany(
                     "INSERT INTO identity_mappings (source_id, issuer, subject, tenant_id, source_subject_id) VALUES (?, ?, ?, ?, ?)",
@@ -299,7 +487,7 @@ class PolicyCache:
         """Record the last successful trusted control-plane policy poll."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 self.db.execute(
                     "INSERT INTO metadata (key, value) VALUES ('last_policy_sync', ?) "
                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -391,7 +579,7 @@ class PolicyCache:
     def save_context(self, decision_id: str, application_id: str, subject_id: str, resource_ids: list[str], *, request_id: str = "", source_id: str = "", revision_hash: str = "", ttl_seconds: int = 300) -> None:
         expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 self.db.execute("DELETE FROM request_contexts WHERE expires_at < ?", (datetime.now(timezone.utc).isoformat(),))
                 self.db.execute("INSERT INTO request_contexts (decision_id, application_id, subject_id, request_id, resources_json, expires_at, consumed_at, source_id, revision_hash) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)", (decision_id, application_id, subject_id, request_id, json.dumps(sorted(set(resource_ids))), expires_at, source_id, revision_hash))
 
@@ -426,7 +614,7 @@ class PolicyCache:
         now = datetime.now(timezone.utc).isoformat()
         placeholders = ",".join("?" for _ in decision_ids)
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 self.db.execute("BEGIN IMMEDIATE")
                 rows = self.db.execute(
                     f"SELECT decision_id, resources_json, source_id, revision_hash FROM request_contexts "
@@ -500,7 +688,7 @@ class PolicyCache:
         with self._lock:
             if expected_policy_version is not None and self.version() != expected_policy_version:
                 return False
-            with self.db:
+            with self._write_transaction():
                 rows = self.db.execute(
                     f"SELECT decision_id FROM request_contexts WHERE decision_id IN ({placeholders}) "
                     "AND application_id=? AND subject_id=? AND request_id=? "
@@ -537,7 +725,7 @@ class PolicyCache:
     ) -> bool:
         """Persist only decision metadata. Raw prompts, documents, and output are never stored."""
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 inserted = self.db.execute(
                     "INSERT OR IGNORE INTO audit_buffer (event_id, decision_id, application_id, subject_id, request_id, layer, result, reason, policy_version, resources_json, authorization_revision, authorization_revision_hash, created_at, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
                     (event_id, decision_id, application_id, subject_id, request_id, layer, result, reason, policy_version, json.dumps(sorted(set(resource_ids or []))), authorization_revision, authorization_revision_hash, datetime.now(timezone.utc).isoformat()),
@@ -595,7 +783,7 @@ class PolicyCache:
         if not event_ids:
             return
         with self._lock:
-            with self.db:
+            with self._write_transaction():
                 self.db.executemany(
                     "UPDATE audit_buffer SET delivered_at=? WHERE event_id=? AND delivered_at IS NULL",
                     [(datetime.now(timezone.utc).isoformat(), event_id) for event_id in event_ids],

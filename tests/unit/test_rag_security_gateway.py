@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from apps.gateway.accessproof_gateway.app import GatewaySettings, create_app
-from packages.rag_sdk import ContentBinding, SourceAttestationSigner, SourceAttestationVerifier
+from packages.rag_core import ContentBinding, SourceAttestationSigner, SourceAttestationVerifier
 
 
 def _gateway(*, layer1: str = "allow", layer2: str = "allow", upstream_seen: list[dict[str, object]] | None = None) -> TestClient:
@@ -223,8 +223,8 @@ def test_unauthenticated_invalid_body_is_rejected_before_schema_validation() -> 
 
 
 def test_gateway_never_releases_a_shadow_would_allow_result(monkeypatch) -> None:
-    from packages.rag_sdk.protection import ProtectedResponse
-    from packages.rag_sdk import ProtectedRAG
+    from packages.rag_core.protection import ProtectedResponse
+    from packages.rag_core import ProtectedRAG
     client = _gateway()
     # Defense in depth: even if an SDK regression/adapter erroneously returns
     # a permissive observational result, the Gateway must not release it.

@@ -69,8 +69,7 @@ export type ProtectionOverview = {
   applications: ProtectionOverviewApplication[];
 };
 export type ProtectionStatus = { application_id: string; state: string; checks: ApplicationReadinessCheck[]; reason_code: string; message: string; last_checked_at: string | null; run_id: string | null; guard_acknowledged: boolean };
-export type AIApplication = { id: string; application_id: string; name: string; mode: string; guard_id: string | null; source_id: string | null; adapter_type: string; adapter_contract_version: string; readiness: ApplicationReadinessCheck[] };
-export type AdapterRegistration = { id: string; name: string; category: string; status: string; language: string; contract_version: string; pre_generation_filtering: boolean; output_verification: boolean; shadow_mode: boolean; protect_mode: boolean; installation: string; limitation: string; adapter_version?: string; framework?: string; framework_versions?: string[]; required_guard_version?: string; required_configuration?: string[]; deployment_models?: string[]; validation_requirements?: string[]; certification?: string };
+export type AIApplication = { id: string; application_id: string; name: string; mode: string; guard_id: string | null; source_id: string | null; source_ids?: string[]; adapter_type: string; adapter_contract_version: string; readiness: ApplicationReadinessCheck[] };
 
 export type Guard = {
   id: string; name: string; environment: string; version: string | null;
@@ -78,7 +77,8 @@ export type Guard = {
   last_heartbeat_at: string | null; enrolled_at: string | null; revoked_at: string | null;
 };
 
-export type Source = { id: string; name: string; provider: string; boundary: string; status: string; capabilities?: Record<string,string>; last_validated_at?: string | null; last_error?: string | null };
+export type SourceSyncStatus = { status: string; fresh: boolean; last_success_at: string | null; last_error_code: string | null };
+export type Source = { id: string; name: string; provider: string; boundary: string; status: string; capabilities?: Record<string,string>; last_validated_at?: string | null; last_error?: string | null; directory_sync?: SourceSyncStatus; acl_sync?: SourceSyncStatus };
 export type Employee = { id: string; name: string; email: string | null; provider: string; stable_id: string; status: string; last_synced_at: string | null; groups: Array<{ id: string; name: string; provider: string; stable_id: string }> };
 export type PermissionEvent = { id: string; source_id: string; provider: string; subject_id: string; resource_id: string; change_type: string; provider_revision: number; status: string; error_code: string | null; policy_id: string | null };
 export type AuditEvent = { id: string; actor: string | null; action: string; target_type: string; target_id: string; created_at: string; metadata: Record<string,unknown> };

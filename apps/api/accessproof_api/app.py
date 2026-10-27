@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from packages.connector_sdk.base import SourceAdapter
 from packages.capability_registry import snapshot as capability_registry_snapshot
-from packages.rag_sdk import adapter_registry
+from packages.rag_core import adapter_registry
 from apps.api.accessproof_api.rag_challenge_verifier import verify_reference_evidence, request_ids
 from apps.api.accessproof_api.source_certification import effective_source_certified
 from apps.api.accessproof_api.protection_state import (
@@ -46,7 +46,14 @@ from apps.api.accessproof_api.auth import (
     get_db,
     require,
 )
-from apps.api.accessproof_api.config import settings, validate_production_settings
+from apps.api.accessproof_api.config import (
+    V1ProviderScopeError,
+    enforce_v1_browser_credential_policy,
+    enforce_v1_source_provider,
+    settings,
+    validate_production_settings,
+    v1_source_provider_allowed,
+)
 from apps.api.accessproof_api.db import (
     AITarget,
     AlertRecord,
@@ -97,6 +104,7 @@ from apps.api.accessproof_api.db import (
     GuardProtectionDecision,
     AuthorizationRevision,
     AIApplication,
+    AIApplicationSourceBinding,
     ProtectionActivationRun,
     RAGRouteChallenge,
     WebhookDelivery,
@@ -171,13 +179,14 @@ from apps.api.accessproof_api.schemas import (
 from packages.crypto.passwords import hash_password, verify_password
 from packages.crypto.totp import generate_totp_secret, provisioning_uri, verify_totp
 from packages.crypto.secrets import build_secret_backend, hash_token
-from packages.crypto.signing import Ed25519Signer, verify_manifest
+from packages.crypto.signing import Ed25519Signer, verify_manifest, verify_manifest_with_trust
 from packages.auth.oidc import OidcDiscovery, OidcError, OidcProviderClient
 from packages.auth.microsoft_consent import (
     MicrosoftConsentError, authorization_url as microsoft_consent_url,
     graph_app_token, tenant_uuid,
 )
 from connectors.microsoft365.adapter import Microsoft365Adapter
+from packages.connector_sdk.base import ProviderUnavailableError
 from connectors.google_drive.adapter import GoogleDriveAdapter
 from packages.auth.google_consent import (
     GoogleConsentError, authorization_url as google_consent_url, exchange_code as exchange_google_code,
@@ -1206,6 +1215,38 @@ def guard_heartbeat(
     return {"ok": True}
 
 
+def _production_google_drive_permission_ids_ready(db: OrmSession, organization_id: str) -> bool:
+    """No Protect health before a complete provider-backed Drive identity map.
+
+    Google Workspace Directory IDs, Drive permission IDs, and emails are
+    distinct trust domains. A successful legacy directory cursor predating
+    the bridge migration is never proof that Drive ACL grants are bound to
+    those employees. Removed/suspended principals aren't ALLOW subjects.
+    """
+    if settings.env != "production":
+        return True
+    known_active = db.scalar(select(GuardSubject.id).where(
+        GuardSubject.organization_id == organization_id,
+        GuardSubject.provider == "google-drive",
+        GuardSubject.status == "active",
+    ).limit(1))
+    if known_active is None:
+        return False
+    unresolved_user = db.scalar(select(GuardSubject.id).where(
+        GuardSubject.organization_id == organization_id,
+        GuardSubject.provider == "google-drive",
+        GuardSubject.status == "active",
+        GuardSubject.drive_permission_id.is_(None),
+    ).limit(1))
+    unresolved_group = db.scalar(select(GuardGroup.id).where(
+        GuardGroup.organization_id == organization_id,
+        GuardGroup.provider == "google-drive",
+        GuardGroup.status == "active",
+        GuardGroup.drive_permission_id.is_(None),
+    ).limit(1))
+    return unresolved_user is None and unresolved_group is None
+
+
 @app.get("/api/v1/guards/{guard_id}/policies")
 def guard_policies(
     guard_id: str,
@@ -1241,7 +1282,23 @@ def guard_policies(
             SourceConnection.id == source_id,
             SourceConnection.organization_id == guard.organization_id,
         ))
-        if bound_source is None:
+        if (bound_source is None or bound_source.status != "connected"
+                or bound_source.last_validated_at is None or bound_source.last_error):
+            return False
+        # A previously synchronized cursor is not proof that the OAuth source
+        # still has usable credentials. In particular, a disconnected Google
+        # source with no token must never become a healthy Protect binding.
+        if bound_source.provider.lower() == "google-drive":
+            try:
+                credentials = json.loads(_secret_box.decrypt(bound_source.encrypted_credentials or ""))
+                if (not isinstance(credentials.get("access_token"), str)
+                        or not credentials["access_token"]
+                        or credentials.get("test_root_folder_id") != bound_source.boundary):
+                    return False
+            except Exception:
+                return False
+        if (bound_source.provider == "google-drive" and
+                not _production_google_drive_permission_ids_ready(db, guard.organization_id)):
             return False
         # Microsoft Graph sharing records are never sufficient. Only a
         # source-bound, independently issued, fresh provider-live certificate
@@ -1262,9 +1319,27 @@ def guard_policies(
             if checked_at.tzinfo is None:
                 checked_at = checked_at.replace(tzinfo=timezone.utc)
             age = (now - checked_at).total_seconds()
-            if not 0 <= age <= threshold:
+            if not 0 <= age <= threshold or cursor.last_error_code:
                 return False
-        return True
+        # Provider freshness only proves that an ACL/directory snapshot was
+        # fetched. Pending GuardPermissionEvent rows have not yet become
+        # effective policy. Do not declare the source healthy in that gap.
+        unresolved = db.scalar(select(GuardPermissionEvent.id).where(
+            GuardPermissionEvent.organization_id == guard.organization_id,
+            GuardPermissionEvent.source_id == source_id,
+            GuardPermissionEvent.processing_status != "resolved",
+        ).limit(1))
+        if unresolved is not None:
+            return False
+        outstanding = db.scalar(select(GuardPolicyDistribution.id).join(
+            GuardPolicy, GuardPolicy.id == GuardPolicyDistribution.policy_id
+        ).where(
+            GuardPolicyDistribution.organization_id == guard.organization_id,
+            GuardPolicyDistribution.guard_id == guard.id,
+            GuardPolicy.source_id == source_id,
+            GuardPolicyDistribution.status.in_(["pending", "received"]),
+        ).limit(1))
+        return outstanding is None
 
     # Bindings are delivered even when the policy version is unchanged.
     bound_rows = list(db.scalars(select(AIApplication).where(
@@ -1272,12 +1347,25 @@ def guard_policies(
         AIApplication.guard_id == guard.id,
         AIApplication.source_id.is_not(None),
     )).all())
-    bound_applications = [
-        {"application_id": row.application_id, "source_id": row.source_id,
-         "source_acl_healthy": source_acl_healthy(row.source_id),
-         "mode": "protect" if row.mode == "protect_pending" else row.mode}
-        for row in bound_rows
-    ]
+    binding_rows = db.execute(select(
+        AIApplicationSourceBinding.application_row_id,
+        AIApplicationSourceBinding.source_id,
+    ).where(
+        AIApplicationSourceBinding.organization_id == guard.organization_id,
+    )).all()
+    bindings_by_app: dict[str, list[str]] = {}
+    for app_row_id, source_id in binding_rows:
+        bindings_by_app.setdefault(str(app_row_id), []).append(str(source_id))
+    bound_applications = []
+    for row in bound_rows:
+        source_ids = sorted(set(bindings_by_app.get(row.id, []) + [row.source_id]))
+        health = {source_id: source_acl_healthy(source_id) for source_id in source_ids}
+        bound_applications.append({
+            "application_id": row.application_id, "source_id": row.source_id,
+            "source_ids": source_ids, "source_health": health,
+            "source_acl_healthy": all(health.values()),
+            "mode": "protect" if row.mode == "protect_pending" else row.mode,
+        })
     # A revision is issued only when stable authorization state changes. It
     # binds every subsequent Guard decision to this exact source/policy state.
     authorization_revisions = [
@@ -2974,6 +3062,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
         and adapter["pre_generation_filtering"]
         and adapter["output_verification"]
         and adapter["protect_mode"]
+        and row.adapter_type == "accessproof-gateway"
     )
     checks.append({
         "code": "ENFORCEMENT_ADAPTER_CONFIGURED",
@@ -2997,8 +3086,35 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
         GuardPolicyDistribution.status == "installed",
     )) is not None)
     checks.append({"code": "GUARD_POLICY_INSTALLED", "ok": installed, "reason": None if installed else "The Guard has not installed a policy."})
-    source_connected = bool(source and source.status == "connected" and source.last_validated_at is not None)
-    checks.append({"code": "PERMISSION_SOURCE_CONFIGURED", "ok": source is not None and source.encrypted_credentials is not None, "reason": None if source and source.encrypted_credentials else "Configure a permission source."})
+    source_credentials_ok = bool(source and source.encrypted_credentials)
+    if source_credentials_ok and source and source.provider.lower() == "google-drive":
+        try:
+            credentials = json.loads(_secret_box.decrypt(source.encrypted_credentials or ""))
+            source_credentials_ok = bool(
+                isinstance(credentials.get("access_token"), str)
+                and credentials["access_token"]
+                and credentials.get("test_root_folder_id") == source.boundary
+            )
+        except Exception:
+            source_credentials_ok = False
+    source_connected = bool(source and source.status == "connected"
+                            and source.last_validated_at is not None
+                            and not source.last_error and source_credentials_ok)
+    if source and source.provider == "google-drive":
+        permission_ids_ready = _production_google_drive_permission_ids_ready(db, organization_id)
+        checks.append({
+            "code": "GOOGLE_DRIVE_PERMISSION_IDENTITIES_VERIFIED",
+            "ok": permission_ids_ready,
+            "reason": None if permission_ids_ready else "Resolve each active Workspace principal to Google's verified Drive permission ID before Protect.",
+        })
+        source_connected = source_connected and permission_ids_ready
+    source_in_v1_scope = bool(source and v1_source_provider_allowed(source.provider, settings))
+    checks.append({
+        "code": "V1_PROVIDER_SCOPE",
+        "ok": source_in_v1_scope,
+        "reason": None if source_in_v1_scope else "This source is outside the deployed Google Workspace + Google Drive V1 Protect scope.",
+    })
+    checks.append({"code": "PERMISSION_SOURCE_CONFIGURED", "ok": source_credentials_ok, "reason": None if source_credentials_ok else "Connect a permission source with valid, approved credentials."})
     checks.append({"code": "PERMISSION_SOURCE_TRUSTED", "ok": source_connected, "reason": None if source_connected else "Connect and validate a permission source."})
     microsoft_preview = bool(source and source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"})
     if microsoft_preview:
@@ -3046,7 +3162,16 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
                    "reason": None if acl_trusted else "Complete a recent, trusted permission synchronization."})
     checks.append({"code": "PERMISSION_DIRECTORY_SYNCED", "ok": directory_trusted,
                    "reason": None if directory_trusted else "Synchronize source employees and groups with the necessary provider directory permissions."})
-    usable = source_connected and acl_trusted and directory_trusted
+    unresolved_events = bool(source and db.scalar(select(GuardPermissionEvent.id).where(
+        GuardPermissionEvent.organization_id == organization_id,
+        GuardPermissionEvent.source_id == source.id,
+        GuardPermissionEvent.processing_status != "resolved",
+    ).limit(1)) is not None)
+    checks.append({
+        "code": "PERMISSION_EVENTS_RESOLVED", "ok": not unresolved_events,
+        "reason": None if not unresolved_events else "Provider permissions are synchronized but authorization policy events remain unresolved.",
+    })
+    usable = source_connected and acl_trusted and directory_trusted and not unresolved_events
     checks.append({"code": "PERMISSION_SOURCE_USABLE", "ok": usable,
                    "reason": None if usable else "Connect and synchronize both document permissions and the employee directory."})
     # OIDC is configured on the *customer-side Guard*, not the SaaS API.
@@ -3082,30 +3207,43 @@ def create_current_ai_application(
 ) -> dict[str, Any]:
     org_id = actor.membership.organization_id
     adapter = next((item for item in adapter_registry() if item["id"] == payload.adapter_type), None)
-    if adapter is None or adapter["contract_version"] != payload.adapter_contract_version:
-        raise HTTPException(422, "The adapter and contract version must match a reviewed AccessProof adapter.")
+    if (payload.adapter_type != "accessproof-gateway" or adapter is None
+            or adapter["contract_version"] != payload.adapter_contract_version):
+        raise HTTPException(422, "GATEWAY_ONLY_V1: Register an AccessProof Gateway deployment; SDK integrations are retired.")
     guard = db.get(GuardRegistration, payload.guard_id) if payload.guard_id else None
     if payload.guard_id and (guard is None or guard.organization_id != org_id):
         raise HTTPException(404, "Guard not found")
-    source = db.get(SourceConnection, payload.source_id) if payload.source_id else None
-    if payload.source_id and (source is None or source.organization_id != org_id):
-        raise HTTPException(404, "Permission source not found")
+    sources = payload.source_ids or ([payload.source_id] if payload.source_id else [])
+    if (len(sources) != len(set(sources))
+            or (payload.source_id and payload.source_ids and payload.source_id not in sources)):
+        raise HTTPException(422, "INVALID_APPLICATION_SOURCE_BINDINGS")
+    for selected in sources:
+        source = db.get(SourceConnection, selected)
+        if source is None or source.organization_id != org_id:
+            raise HTTPException(404, "Permission source not found")
+    primary = payload.source_id or (sources[0] if sources else None)
     row = AIApplication(
         organization_id=org_id,
         application_id=payload.application_id,
         name=payload.name,
         guard_id=payload.guard_id,
-        source_id=payload.source_id,
+        source_id=primary,
         adapter_type=payload.adapter_type,
         adapter_contract_version=payload.adapter_contract_version,
     )
     db.add(row)
     try:
+        db.flush()
+        for source_id in sources:
+            db.add(AIApplicationSourceBinding(
+                organization_id=org_id, application_row_id=row.id, source_id=source_id,
+            ))
         db.commit()
     except Exception as exc:
         db.rollback()
         raise HTTPException(409, "An application with this ID already exists.") from exc
     return {
+        "source_ids": sources,
         "id": row.id,
         "application_id": row.application_id,
         "name": row.name,
@@ -3123,6 +3261,15 @@ def list_current_ai_applications(
     rows = db.scalars(select(AIApplication).where(
         AIApplication.organization_id == actor.membership.organization_id,
     ).order_by(AIApplication.created_at.desc())).all()
+    source_rows = db.execute(select(
+        AIApplicationSourceBinding.application_row_id,
+        AIApplicationSourceBinding.source_id,
+    ).where(
+        AIApplicationSourceBinding.organization_id == actor.membership.organization_id,
+    )).all()
+    source_map: dict[str, list[str]] = {}
+    for app_row, source in source_rows:
+        source_map.setdefault(str(app_row), []).append(str(source))
     return [{
         "id": row.id,
         "application_id": row.application_id,
@@ -3130,6 +3277,7 @@ def list_current_ai_applications(
         "mode": row.mode,
         "guard_id": row.guard_id,
         "source_id": row.source_id,
+        "source_ids": sorted(set(source_map.get(row.id, []) + ([row.source_id] if row.source_id else []))),
         "adapter_type": row.adapter_type,
         "adapter_contract_version": row.adapter_contract_version,
         "readiness": _automatic_activation_checklist(db, row),
@@ -3151,6 +3299,17 @@ def current_ai_application_readiness(
 
 def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[dict[str, Any]]:
     checks = _application_checks(db, row, row.organization_id)
+    # Legacy one-source checks are NOT evidence for a multi-source release.
+    bound_source_count = int(db.scalar(select(func.count(AIApplicationSourceBinding.id)).where(
+        AIApplicationSourceBinding.organization_id == row.organization_id,
+        AIApplicationSourceBinding.application_row_id == row.id,
+    )) or 0)
+    if bound_source_count > 1:
+        checks.append({
+            "code": "MULTISOURCE_ROUTE_VALIDATION_REQUIRED", "ok": False,
+            "reason": "Run source-qualified V2 Guard, mixed-source cached answer and "
+                      "real customer-route cutover challenges before enabling Protect.",
+        })
     # This is a *reference-only* machine result, not generic zero-code proof.
     # Challenge verification separately matches all four real-response probes
     # to uploaded authenticated Guard audit decisions. Never count an
@@ -3985,7 +4144,7 @@ def acknowledge_enrolled_guard_customer_cutover(
 def list_current_adapters(
     actor: Actor = Depends(require(Permission.RESULT_READ)),
 ) -> list[dict[str, object]]:
-    """Return reviewed adapter metadata; customer code is never loaded here."""
+    """Return the single supported customer Gateway integration profile."""
     return adapter_registry()
 
 
@@ -5282,6 +5441,38 @@ def _enforce_microsoft_tenant_boundary(
             raise HTTPException(422, "Conflicting Microsoft Entra tenant IDs")
     credentials["tenant_id"] = tenant
     credentials["tenant_hint"] = tenant
+    # Graph driveItem permissions are not a complete SharePoint effective-ACL
+    # oracle. Bind each explicit provider profile to the identifiers needed
+    # for independent effective-permission certification. Legacy microsoft365
+    # drafts remain possible, but cannot enter Protect without these bindings.
+    if provider.lower() == "sharepoint":
+        site = credentials.get("site_id")
+        library = credentials.get("list_id")
+        if (not isinstance(site, str) or not 0 < len(site) <= 512
+                or any(ch in site for ch in "/?\\#\r\n")
+                or not isinstance(library, str)):
+            raise HTTPException(422, "SharePoint requires site_id and list_id")
+        site_components = site.split(",")
+        if len(site_components) != 3 or not site_components[0].lower().endswith(".sharepoint.com"):
+            raise HTTPException(422, "SharePoint site_id must be hostname,site-collection-GUID,web-GUID")
+        try:
+            UUID(site_components[1])
+            UUID(site_components[2])
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise HTTPException(422, "Invalid SharePoint site GUID") from exc
+        try:
+            credentials["list_id"] = str(UUID(library))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise HTTPException(422, "SharePoint list_id must be a GUID") from exc
+        credentials["site_id"] = site
+    elif provider.lower() == "onedrive":
+        try:
+            owner = str(UUID(str(credentials.get("owner_object_id"))))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise HTTPException(422, "OneDrive requires an Entra owner_object_id UUID") from exc
+        if owner == "00000000-0000-0000-0000-000000000000":
+            raise HTTPException(422, "OneDrive owner_object_id must not be empty")
+        credentials["owner_object_id"] = owner
     if replace_source_id:
         previous_source = db.scalar(select(SourceConnection).where(
             SourceConnection.id == replace_source_id,
@@ -5295,6 +5486,9 @@ def _enforce_microsoft_tenant_boundary(
                     if previous_source.encrypted_credentials else {})
         if previous.get("drive_id") and previous.get("drive_id") != credentials.get("drive_id"):
             raise HTTPException(409, "Cannot silently switch the Microsoft drive")
+        for scope_field in ("site_id", "list_id", "owner_object_id"):
+            if previous.get(scope_field) != credentials.get(scope_field):
+                raise HTTPException(409, "Cannot silently change the Microsoft certification scope")
     for source in db.scalars(select(SourceConnection).where(
         SourceConnection.organization_id == organization_id,
         SourceConnection.provider.in_(["microsoft365", "sharepoint", "onedrive"]),
@@ -5321,6 +5515,12 @@ def create_source(
     actor: Actor = Depends(require(Permission.SOURCE_WRITE)),
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
+    try:
+        enforce_v1_source_provider(payload.provider, settings)
+        enforce_v1_browser_credential_policy(payload.provider, payload.credentials, settings)
+    except V1ProviderScopeError as exc:
+        message = str(exc)
+        raise HTTPException(422, {"code": message.split(":", 1)[0], "message": message}) from exc
     project = _project_for_actor(db, actor, payload.project_id)
     _enforce_connector_entitlement(db, project.organization_id, payload.provider)
     count = (
@@ -5373,6 +5573,12 @@ def create_current_source(
     one hidden compatibility workspace instead of asking an administrator to
     create or select a project.
     """
+    try:
+        enforce_v1_source_provider(payload.provider, settings)
+        enforce_v1_browser_credential_policy(payload.provider, payload.credentials, settings)
+    except V1ProviderScopeError as exc:
+        message = str(exc)
+        raise HTTPException(422, {"code": message.split(":", 1)[0], "message": message}) from exc
     organization_id = actor.membership.organization_id
     _enforce_connector_entitlement(db, organization_id, payload.provider)
     count = db.scalar(select(func.count(SourceConnection.id)).where(
@@ -5415,6 +5621,26 @@ def _google_consent_fingerprint(source: SourceConnection) -> str:
         "source_id": source.id, "organization_id": source.organization_id,
         "provider": source.provider, "root": source.boundary,
     }, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+@app.get("/api/v1/current/sources/google-oauth/status")
+def google_source_oauth_status(
+    actor: Actor = Depends(current_actor),
+) -> dict[str, Any]:
+    """Expose OAuth readiness without exposing the server-owned OAuth credentials.
+
+    Normal customers authorize through Google's consent screen. They must
+    never supply NeuralMatrix's OAuth client secret in the dashboard.
+    """
+    configured = bool(
+        os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "").strip()
+        and os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+    )
+    return {
+        "configured": configured,
+        "message": "Google Workspace connection is available."
+        if configured else "Google Workspace connection is not configured by the AccessProof operator.",
+    }
 
 
 @app.post("/api/v1/current/sources/{source_id}/google-oauth/begin")
@@ -5510,7 +5736,18 @@ async def complete_google_source_oauth(
         # Root-bound validation is necessary but does not certify all employee
         # and Google Group ACL semantics. Directory/ACL sync remains required.
         existing = json.loads(_secret_box.decrypt(source.encrypted_credentials)) if source.encrypted_credentials else {}
-        existing.update(tokens)
+        # OAuth client credentials belong to the NeuralMatrix deployment, not
+        # individual customer-source records. Persist only source-bound tokens;
+        # the worker obtains the operator client secret from its own runtime
+        # secret configuration when performing an authorized refresh.
+        existing.update({key: value for key, value in tokens.items() if key not in {
+            "client_secret", "oauth_client_secret", "client_id", "oauth_client_id",
+        }})
+        existing.pop("client_secret", None)
+        existing.pop("oauth_client_secret", None)
+        existing.pop("oauth_client_id", None)
+        existing["oauth_credential_mode"] = "server_managed"
+        existing["client_id"] = os.getenv("ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID", "").strip()
         existing["test_root_folder_id"] = source.boundary
         source.encrypted_credentials = _secret_box.encrypt(json.dumps(existing, sort_keys=True))
         source.status, source.last_error, source.last_validated_at = "connected", None, now
@@ -5518,12 +5755,38 @@ async def complete_google_source_oauth(
             "provider": identity.provider, "tenant": identity.tenant,
             "boundary": identity.boundary, "metadata": identity.metadata,
         }, sort_keys=True)
+        # Durable post-consent bootstrap: the worker resumes these source-
+        # scoped cursors even if the administrator closes their browser.
+        # Previously cached policy health becomes untrusted immediately;
+        # neither the old directory nor old ACL cursor certifies this login.
+        for kind in ("directory", "acl"):
+            cursor = db.scalar(select(ProviderSyncCursorModel).where(
+                ProviderSyncCursorModel.organization_id == source.organization_id,
+                ProviderSyncCursorModel.source_id == source.id,
+                ProviderSyncCursorModel.sync_kind == kind,
+            ).with_for_update())
+            if cursor is None:
+                cursor = ProviderSyncCursorModel(
+                    organization_id=source.organization_id,
+                    source_id=source.id, provider="google-drive", sync_kind=kind,
+                )
+                db.add(cursor)
+            cursor.status = "queued"
+            cursor.cursor = None
+            cursor.last_provider_revision = None
+            cursor.last_success_at = None
+            cursor.last_started_at = None
+            cursor.last_error_at = None
+            cursor.last_error_code = None
         db.commit()
     except Exception:
         db.rollback()
         # Never persist an unvalidated provider token or partial consent state.
         return RedirectResponse(failure, status_code=303)
-    return RedirectResponse(success, status_code=303)
+    # Source-scoped return enables an authenticated, one-time directory sync
+    # after OAuth without requiring the customer to find another manual button.
+    # This identifier is a public source UUID, not a credential or OAuth state.
+    return RedirectResponse(f"{success}&source_id={source.id}", status_code=303)
 
 
 def _microsoft_consent_fingerprint(source: SourceConnection, credentials: dict[str, Any]) -> str:
@@ -5535,8 +5798,27 @@ def _microsoft_consent_fingerprint(source: SourceConnection, credentials: dict[s
         "tenant_id": credentials.get("tenant_id"),
         "drive_id": credentials.get("drive_id"),
         "root_item_id": credentials.get("test_root_item_id"),
+        "site_id": credentials.get("site_id"),
+        "list_id": credentials.get("list_id"),
+        "owner_object_id": credentials.get("owner_object_id"),
     }
     return hashlib.sha256(json.dumps(fields, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+@app.get("/api/v1/current/sources/microsoft-admin-consent/status")
+def microsoft_source_consent_status(
+    actor: Actor = Depends(current_actor),
+) -> dict[str, Any]:
+    """Allow the UI to prevent unusable Microsoft consent drafts."""
+    configured = bool(
+        os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_ID", "").strip()
+        and os.getenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "").strip()
+    )
+    return {
+        "configured": configured,
+        "message": "Microsoft admin consent is available."
+        if configured else "Microsoft admin consent is not configured by the AccessProof operator.",
+    }
 
 
 @app.post("/api/v1/current/sources/{source_id}/microsoft-admin-consent/begin")
@@ -5637,24 +5919,41 @@ async def complete_microsoft_source_admin_consent(
             access_token=token, drive_id=str(prior["drive_id"]),
             test_root_item_id=str(prior["test_root_item_id"]),
             tenant_hint=expected_tenant,
+            sharepoint_site_id=prior.get("site_id") if source.provider.lower() in {"microsoft365", "sharepoint"} else None,
+            sharepoint_list_id=prior.get("list_id") if source.provider.lower() in {"microsoft365", "sharepoint"} else None,
+            onedrive_owner_object_id=prior.get("owner_object_id") if source.provider.lower() in {"microsoft365", "onedrive"} else None,
         )
         try:
             identity = await adapter.validate_connection()
         finally:
             await adapter._client.aclose()
-    except Exception:
+    except Exception as exc:
         # Consent does not establish that an app can read the configured drive.
+        # Keep Microsoft error bodies and tokens private, but distinguish the
+        # reproducible Business Basic SharePoint service/provisioning blocker
+        # from credentials or source-boundary validation failures.
         source.status = "not_configured"
-        source.last_error = "MICROSOFT_CONSENT_OR_DRIVE_VALIDATION_FAILED"
+        source.last_error = (
+            "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+            if isinstance(exc, ProviderUnavailableError)
+            and str(exc) == "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+            else "MICROSOFT_CONSENT_OR_DRIVE_VALIDATION_FAILED"
+        )
         db.commit()
         return RedirectResponse(failure, status_code=303)
     prior.update({
         "tenant_id": expected_tenant, "tenant_hint": expected_tenant,
         "access_token": token, "expires_at": token_expiry.isoformat(),
-        "client_id": client_id, "client_secret": client_secret,
+        # The operator's app secret belongs only in control-plane/worker
+        # runtime configuration. A source record carries its tenant binding
+        # and short-lived token, never a reusable customer application secret.
+        "client_id": client_id, "oauth_credential_mode": "server_managed",
         "token_endpoint": f"https://login.microsoftonline.com/{expected_tenant}/oauth2/v2.0/token",
         "grant_type": "client_credentials",
     })
+    prior.pop("client_secret", None)
+    prior.pop("oauth_client_secret", None)
+    prior.pop("oauth_client_id", None)
     source.encrypted_credentials = _secret_box.encrypt(json.dumps(prior, sort_keys=True))
     source.status = "connected"
     source.last_validated_at = now
@@ -5663,6 +5962,28 @@ async def complete_microsoft_source_admin_consent(
         "provider": identity.provider, "tenant": expected_tenant,
         "boundary": identity.boundary, "metadata": identity.metadata,
     }, sort_keys=True)
+    # Consent establishes a new provider credential boundary. Existing ACL and
+    # directory observations cannot certify it; durable worker jobs rebuild
+    # both snapshots even if the browser closes immediately after redirect.
+    for kind in ("directory", "acl"):
+        cursor = db.scalar(select(ProviderSyncCursorModel).where(
+            ProviderSyncCursorModel.organization_id == source.organization_id,
+            ProviderSyncCursorModel.source_id == source.id,
+            ProviderSyncCursorModel.sync_kind == kind,
+        ).with_for_update())
+        if cursor is None:
+            cursor = ProviderSyncCursorModel(
+                organization_id=source.organization_id, source_id=source.id,
+                provider="microsoft365", sync_kind=kind,
+            )
+            db.add(cursor)
+        cursor.status = "queued"
+        cursor.cursor = None
+        cursor.last_provider_revision = None
+        cursor.last_success_at = None
+        cursor.last_started_at = None
+        cursor.last_error_at = None
+        cursor.last_error_code = None
     db.commit()
     return RedirectResponse(success, status_code=303)
 
@@ -5674,7 +5995,39 @@ def list_current_sources(
     rows = db.scalars(select(SourceConnection).where(
         SourceConnection.organization_id == actor.membership.organization_id
     ).order_by(SourceConnection.name.asc(), SourceConnection.id.asc())).all()
-    return [_source_payload(row) for row in rows]
+    cursors = list(db.scalars(select(ProviderSyncCursorModel).where(
+        ProviderSyncCursorModel.organization_id == actor.membership.organization_id,
+        ProviderSyncCursorModel.sync_kind.in_(["acl", "directory"]),
+        ProviderSyncCursorModel.source_id.in_([row.id for row in rows]),
+    ))) if rows else []
+    by_source = {(cursor.source_id, cursor.sync_kind): cursor for cursor in cursors}
+    now = datetime.now(timezone.utc)
+    thresholds = {
+        "acl": max(60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900"))),
+        "directory": max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400"))),
+    }
+    result = []
+    for row in rows:
+        payload = _source_payload(row)
+        for kind in ("directory", "acl"):
+            cursor = by_source.get((row.id, kind))
+            last_success = cursor.last_success_at if cursor else None
+            if last_success is not None and last_success.tzinfo is None:
+                last_success = last_success.replace(tzinfo=timezone.utc)
+            age = (now - last_success).total_seconds() if last_success is not None else None
+            fresh = bool(
+                row.status == "connected" and not row.last_error and cursor
+                and cursor.status == "connected" and not cursor.last_error_code
+                and age is not None and 0 <= age <= thresholds[kind]
+            )
+            payload[f"{kind}_sync"] = {
+                "status": cursor.status if cursor else "never_synced",
+                "fresh": fresh,
+                "last_success_at": last_success.isoformat() if last_success else None,
+                "last_error_code": cursor.last_error_code if cursor else None,
+            }
+        result.append(payload)
+    return result
 
 
 @app.post("/api/v1/current/sources/{source_id}/sync-directory")
@@ -5696,21 +6049,46 @@ async def sync_current_source_directory(
     ))
     if row is None:
         raise HTTPException(404, "Source not found")
+    def record_failed_sync(error_code: str) -> None:
+        # An exception can occur *after* a directory adapter has created
+        # users, groups or queued ALLOW events. Never commit those partial
+        # graph mutations just to record an error on the source.
+        db.rollback()
+        failed = db.scalar(select(SourceConnection).where(
+            SourceConnection.id == source_id,
+            SourceConnection.organization_id == actor.membership.organization_id,
+        ))
+        if failed is None:
+            return
+        code = error_code[:100]
+        status = "reauthorization_required" if code == "REAUTHORIZATION_REQUIRED" else "degraded"
+        failed.status, failed.last_error = status, code
+        cursor = db.scalar(select(ProviderSyncCursorModel).where(
+            ProviderSyncCursorModel.organization_id == failed.organization_id,
+            ProviderSyncCursorModel.source_id == failed.id,
+            ProviderSyncCursorModel.sync_kind == "directory",
+        ))
+        if cursor is None:
+            cursor = ProviderSyncCursorModel(
+                organization_id=failed.organization_id, source_id=failed.id,
+                provider=failed.provider, sync_kind="directory",
+            )
+            db.add(cursor)
+        cursor.status, cursor.last_error_code, cursor.last_error_at = (
+            status, code, datetime.now(timezone.utc),
+        )
+        _audit(db, actor, failed.organization_id, "directory.sync_degraded", "source", failed.id, {"code": code})
+        db.commit()
+
     try:
         credentials = json.loads(_secret_box.decrypt(row.encrypted_credentials)) if row.encrypted_credentials else {}
         result = await synchronize_directory(db, row, credentials)
     except DirectorySyncError as exc:
-        row.status = "degraded"
-        row.last_error = exc.code
-        _audit(db, actor, row.organization_id, "directory.sync_degraded", "source", row.id, {"code": exc.code})
-        db.commit()
+        record_failed_sync(exc.code)
         raise HTTPException(424, f"Directory synchronization failed: {exc.code}") from exc
     except Exception as exc:
-        row.status = "degraded"
-        row.last_error = "DIRECTORY_SYNC_INCOMPLETE"
-        _audit(db, actor, row.organization_id, "directory.sync_degraded", "source", row.id, {"code": row.last_error})
-        db.commit()
-        logger.warning("directory_sync_failed source_id=%s error=%s", row.id, type(exc).__name__)
+        record_failed_sync("DIRECTORY_SYNC_INCOMPLETE")
+        logger.warning("directory_sync_failed source_id=%s error=%s", source_id, type(exc).__name__)
         raise HTTPException(502, "Directory synchronization could not complete") from exc
     row.status = "connected"
     row.last_error = None
@@ -5718,6 +6096,50 @@ async def sync_current_source_directory(
     _audit(db, actor, row.organization_id, "directory.sync_completed", "source", row.id, result)
     db.commit()
     return {"source": _source_payload(row), "synchronized": result}
+
+
+@app.post("/api/v1/current/sources/{source_id}/sync-permissions", status_code=202)
+def queue_current_source_permission_sync(
+    source_id: str,
+    actor: Actor = Depends(require(Permission.SOURCE_WRITE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, str]:
+    """Durably request a fresh ACL inventory without accepting browser tokens.
+
+    The worker owns provider access and performs the authoritative read. Reset
+    the cursor rather than treating an older completed snapshot as fresh while
+    a customer explicitly asks for a new permissions synchronization.
+    """
+    source = db.scalar(select(SourceConnection).where(
+        SourceConnection.id == source_id,
+        SourceConnection.organization_id == actor.membership.organization_id,
+    ))
+    if source is None:
+        raise HTTPException(404, "Source not found")
+    if source.status == "disconnected" or not source.encrypted_credentials:
+        raise HTTPException(409, "Connect or reauthorize the source before synchronizing permissions")
+    cursor = db.scalar(select(ProviderSyncCursorModel).where(
+        ProviderSyncCursorModel.organization_id == source.organization_id,
+        ProviderSyncCursorModel.source_id == source.id,
+        ProviderSyncCursorModel.sync_kind == "acl",
+    ).with_for_update())
+    if cursor is None:
+        cursor = ProviderSyncCursorModel(
+            organization_id=source.organization_id, source_id=source.id,
+            provider="microsoft365" if source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"} else source.provider,
+            sync_kind="acl",
+        )
+        db.add(cursor)
+    cursor.status = "queued"
+    cursor.cursor = None
+    cursor.last_provider_revision = None
+    cursor.last_success_at = None
+    cursor.last_started_at = None
+    cursor.last_error_at = None
+    cursor.last_error_code = None
+    _audit(db, actor, source.organization_id, "source.permission_sync_queued", "source", source.id)
+    db.commit()
+    return {"status": "queued"}
 
 
 @app.get("/api/v1/current/employees")
@@ -5823,7 +6245,17 @@ async def _validate_source_record(
         raise HTTPException(422, row.last_error) from exc
     except Exception as exc:
         row.status = "error"
-        row.last_error = f"{type(exc).__name__}: {exc}"[:2000]
+        if row.provider.lower() in {"microsoft365", "sharepoint", "onedrive"}:
+            # Graph may include continuation URLs and opaque credentials in
+            # provider errors. Persist a stable code, never arbitrary text.
+            row.last_error = (
+                "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+                if isinstance(exc, ProviderUnavailableError)
+                and str(exc) == "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+                else "MICROSOFT_SOURCE_VALIDATION_INCOMPLETE"
+            )
+        else:
+            row.last_error = f"{type(exc).__name__}: {exc}"[:2000]
         queue_alert(
             db,
             organization_id=row.organization_id,
@@ -5900,6 +6332,10 @@ def rotate_source_credential(
     if not row:
         raise HTTPException(404, "Source not found")
     credentials = dict(payload.credentials)
+    try:
+        enforce_v1_browser_credential_policy(row.provider, credentials, settings)
+    except V1ProviderScopeError as exc:
+        raise HTTPException(422, {"code": "V1_BROWSER_CREDENTIALS_NOT_ALLOWED", "message": str(exc)}) from exc
     _enforce_microsoft_tenant_boundary(
         db, row.organization_id, row.provider, credentials, replace_source_id=row.id
     )
@@ -5937,6 +6373,10 @@ async def reauthorize_source(
     if not payload.credentials:
         raise HTTPException(422, "Replacement credentials are required")
     credentials = dict(payload.credentials)
+    try:
+        enforce_v1_browser_credential_policy(row.provider, credentials, settings)
+    except V1ProviderScopeError as exc:
+        raise HTTPException(422, {"code": "V1_BROWSER_CREDENTIALS_NOT_ALLOWED", "message": str(exc)}) from exc
     _enforce_microsoft_tenant_boundary(
         db, row.organization_id, row.provider, credentials, replace_source_id=row.id
     )
@@ -6851,6 +7291,14 @@ def _verify_control_plane_report(row: ControlPlaneReport, now: datetime) -> dict
     payload = json.loads(row.payload_json)
     manifest = json.loads(row.signed_manifest_json)
     signature_valid = verify_manifest(payload, manifest)
+    # The server-owned signing key is the local trust root.  The report's
+    # embedded public key remains export metadata and cannot establish issuer
+    # authenticity by itself.
+    trusted_manifest = _report_signer.sign({}).as_dict()
+    issuer_trusted = verify_manifest_with_trust(
+        payload, manifest,
+        {trusted_manifest["key_id"]: trusted_manifest["public_key"]},
+    )
     scope_valid = bool(
         payload.get("schema") == _CONTROL_PLANE_REPORT_SCHEMA
         and payload.get("report_id") == row.id
@@ -6862,8 +7310,9 @@ def _verify_control_plane_report(row: ControlPlaneReport, now: datetime) -> dict
     return {
         "report_id": row.id,
         "report_type": row.report_type,
-        "verified": signature_valid and scope_valid and not expired,
+        "verified": signature_valid and issuer_trusted and scope_valid and not expired,
         "signature_valid": signature_valid,
+        "issuer_trusted": issuer_trusted,
         "scope_valid": scope_valid,
         "expired": expired,
         "generated_at": row.generated_at.isoformat(),

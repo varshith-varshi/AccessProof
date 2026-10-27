@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .cache import AuditBufferFull, PolicyCache
+from .multisource import MultiSourceGuard, principal_key
 from .identity import IdentityError, OidcVerifier
 from .onboarding import EnrollmentError, enroll_guard, public_status, setup_page
 from .sync import GuardMachineCredentials, GuardSyncClient
@@ -299,6 +300,7 @@ class Resource(BaseModel):
     resource_id: str = Field(max_length=1024)
     scope: str = Field(default="read", max_length=64)
     chunk_ids: list[str] = Field(default_factory=list, max_length=128)
+    content_version: str | None = Field(default=None, max_length=1024)
 
 
 class FilterRequest(BaseModel):
@@ -411,7 +413,10 @@ def _mapped_subject(authorization: str | None, source_id: str | None) -> str:
 
 
 @app.get("/health")
-def health() -> dict[str, object]:
+def health(application_id: str | None = None) -> dict[str, object]:
+    # Gateway readiness is always scoped to one configured application.
+    # A globally healthy Guard may still be missing this application's
+    # binding, be in Shadow, or lack fresh Google source authorization.
     configured = bool(control_plane_url and guard_id and guard_credential)
     sync_age = cache.sync_age_seconds()
     fresh = sync_age is not None and sync_age <= max_policy_age_seconds
@@ -431,6 +436,20 @@ def health() -> dict[str, object]:
         cache.version() > 0 and source_healthy and audit_buffer_ready and bindings_ready
         and revisions_ready and (not configured or fresh)
     )
+    if application_id is not None:
+        binding = cache.application_binding(application_id) if cache.application_bindings_received() else None
+        production = os.getenv("ACCESSPROOF_ENV", "").lower() == "production"
+        app_ready = bool(
+            binding is not None and binding[1] == "protect"
+            and cache.source_acl_healthy(application_id)
+            and (not production or (
+                cache.identity_mappings_received() and
+                cache.authorization_revisions_received()
+            ))
+            and (not cache.authorization_revisions_received()
+                 or cache.authorization_revision(application_id) is not None)
+        )
+        ready = ready and app_ready
     return {
         "status": "ok" if ready and _sync_error is None else "degraded",
         "policy_version": cache.version(),
@@ -451,6 +470,13 @@ def _application_mode(application_id: str) -> tuple[str, str | None]:
             raise HTTPException(403, "APPLICATION_NOT_BOUND")
         source_id, application_mode = binding
         if application_mode == "protect":
+            # A production Guard without a received revision envelope cannot
+            # correlate Layer 1 with the authorization state at Layer 2.
+            # Never treat "not yet synced" as "no revisions required".
+            if os.getenv("ACCESSPROOF_ENV", "").lower() == "production":
+                if (not cache.authorization_revisions_received()
+                        or cache.authorization_revision(application_id) is None):
+                    raise HTTPException(503, "AUTHORIZATION_REVISION_NOT_SYNCED")
             age = cache.sync_age_seconds()
             if age is None or age > max_policy_age_seconds:
                 raise HTTPException(503, "POLICY_SYNC_STALE")
@@ -472,6 +498,96 @@ def _application_mode(application_id: str) -> tuple[str, str | None]:
     return mode, None
 
 
+class ScopedResource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: str = Field(min_length=1, max_length=255)
+    resource_id: str = Field(min_length=1, max_length=1024)
+    chunk_id: str | None = Field(default=None, max_length=1024)
+    content_version: str | None = Field(default=None, max_length=1024)
+
+
+class ScopedOutputRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision_id: str = Field(min_length=1, max_length=255)
+    application_id: str = Field(min_length=1, max_length=255)
+    request_id: str = Field(min_length=1, max_length=255)
+    used_resources: list[ScopedResource] = Field(min_length=1, max_length=5000)
+    provenance: list[ScopedResource] = Field(min_length=1, max_length=5000)
+
+
+@app.post("/guard/v2/filter-resources")
+def multisource_filter_resources(
+    payload: FilterRequest, authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Source-qualified Layer 1, never accepting a source without a live binding."""
+    _application_mode(payload.application_id)
+    if not payload.resources:
+        raise HTTPException(422, "NO_RETRIEVED_RESOURCES")
+    sources = {item.source_id for item in payload.resources}
+    bound = cache.application_sources(payload.application_id)
+    if not sources.issubset(bound) or not bound:
+        raise HTTPException(403, "APPLICATION_SOURCE_MISMATCH")
+    if cache.application_binding(payload.application_id)[1] != "protect":
+        raise HTTPException(403, "PROTECT_MODE_REQUIRED")
+    subject, token_issuer, tenant_id = _identity(authorization)
+    mapped = {src: _mapped_subject(authorization, src) for src in sources}
+    if any(not item.content_version for item in payload.resources):
+        raise HTTPException(422, "SOURCE_CONTENT_VERSION_REQUIRED")
+    resources = [
+        {
+            "source_id": item.source_id, "resource_id": item.resource_id,
+            "chunk_id": (item.chunk_ids[0] if len(item.chunk_ids) == 1 else ""),
+            "content_version": item.content_version,
+        } for item in payload.resources
+    ]
+    if any(len(item.chunk_ids) > 1 for item in payload.resources):
+        raise HTTPException(422, "AMBIGUOUS_CHUNK_SCOPE")
+    result = MultiSourceGuard(cache).filter(
+        application_id=payload.application_id, request_id=payload.request_id,
+        principal=principal_key(subject, token_issuer, tenant_id),
+        mapped_subjects=mapped, resources=resources,
+    )
+    cache.buffer_audit(
+        str(result.get("decision_id", uuid4())),
+        application_id=payload.application_id,
+        subject_id=principal_key(subject, token_issuer, tenant_id),
+        request_id=payload.request_id, result=str(result["decision"]),
+        reason=str(result["reason"]), policy_version=cache.version(),
+        layer="layer1",
+        resource_ids=sorted(f"{item.source_id}:{item.resource_id}" for item in payload.resources),
+    )
+    return result
+
+
+@app.post("/guard/v2/check-output")
+def multisource_check_output(
+    payload: ScopedOutputRequest, authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """One-time, atomic release with all source-specific ACLs re-evaluated."""
+    _application_mode(payload.application_id)
+    subject, token_issuer, tenant_id = _identity(authorization)
+    sources = {item.source_id for item in payload.used_resources + payload.provenance}
+    if not sources.issubset(cache.application_sources(payload.application_id)):
+        raise HTTPException(403, "APPLICATION_SOURCE_MISMATCH")
+    mapped = {src: _mapped_subject(authorization, src) for src in sources}
+    result = MultiSourceGuard(cache).release(
+        application_id=payload.application_id, request_id=payload.request_id,
+        principal=principal_key(subject, token_issuer, tenant_id),
+        decision_id=payload.decision_id, mapped_subjects=mapped,
+        used_resources=[entry.model_dump() for entry in payload.used_resources],
+        provenance=[entry.model_dump() for entry in payload.provenance],
+    )
+    cache.buffer_audit(
+        f"{payload.decision_id}:v2layer2", application_id=payload.application_id,
+        subject_id=principal_key(subject, token_issuer, tenant_id),
+        request_id=payload.request_id, result=str(result["decision"]),
+        reason=str(result["reason"]), policy_version=cache.version(),
+        decision_id=payload.decision_id, layer="layer2",
+        resource_ids=sorted(f"{item.source_id}:{item.resource_id}" for item in payload.used_resources),
+    )
+    return result
+
+
 @app.post("/guard/v1/authorization-scope")
 def authorization_scope(
     payload: AuthorizationScopeRequest,
@@ -485,6 +601,8 @@ def authorization_scope(
     safe degradation.
     """
     effective_mode, bound_source = _application_mode(payload.application_id)
+    if len(cache.application_sources(payload.application_id)) != 1:
+        raise HTTPException(403, "MULTISOURCE_REQUIRES_V2")
     if bound_source is None:
         raise HTTPException(503, "APPLICATION_BINDINGS_NOT_SYNCED")
     subject = _mapped_subject(authorization, bound_source)
@@ -532,6 +650,8 @@ def authorization_scope(
 @app.post("/guard/v1/filter-resources")
 def filter_resources(payload: FilterRequest, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     effective_mode, bound_source = _application_mode(payload.application_id)
+    if len(cache.application_sources(payload.application_id)) > 1:
+        raise HTTPException(403, "MULTISOURCE_REQUIRES_V2")
     if bound_source and any(resource.source_id != bound_source for resource in payload.resources):
         raise HTTPException(403, "APPLICATION_SOURCE_MISMATCH")
     subject = _mapped_subject(authorization, bound_source)
@@ -592,6 +712,8 @@ def filter_resources(payload: FilterRequest, authorization: str | None = Header(
 def check_output(payload: OutputRequest, authorization: str | None = Header(default=None)) -> dict[str, str | int]:
     """Block output whose trusted provenance escapes the Layer 1 context."""
     effective_mode, bound_source = _application_mode(payload.application_id)
+    if len(cache.application_sources(payload.application_id)) > 1:
+        raise HTTPException(403, "MULTISOURCE_REQUIRES_V2")
     subject = _mapped_subject(authorization, bound_source)
     context_ids = [payload.decision_id, *payload.additional_decision_ids]
     context_valid = len(context_ids) == len(set(context_ids))

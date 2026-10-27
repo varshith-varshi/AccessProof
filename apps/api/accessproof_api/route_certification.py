@@ -146,7 +146,10 @@ def describe_route_certificate(
             verified = _aware(previous.verified_at)
             base["verified_at"] = verified.isoformat()
             base["age_seconds"] = max(0.0, (now - verified).total_seconds())
-            base["evidence_level"] = "PRODUCTION_OBSERVED"
+            # A route challenge proves an exact integration boundary was
+            # exercised, not where it was exercised.  There is currently no
+            # authenticated deployment/environment attestation on this record.
+            base["evidence_level"] = "LOCAL_INTEGRATION_VERIFIED"
         return base
     verified_at = _aware(challenge.verified_at) if challenge.verified_at else None
     cutover_at = _aware(challenge.cutover_at) if challenge.cutover_at else None
@@ -156,7 +159,10 @@ def describe_route_certificate(
         "cutover_at": cutover_at.isoformat() if cutover_at else None,
         "expires_at": (verified_at + CERTIFICATE_TTL).isoformat() if verified_at else None,
         "age_seconds": max(0.0, (now - verified_at).total_seconds()) if verified_at else None,
-        "evidence_level": "PRODUCTION_OBSERVED" if verified_at else None,
+        # Do not promote a successful nonce challenge to a production claim.
+        # A later environment-attestation extension may raise this only after
+        # validating a production deployment identity and its runtime evidence.
+        "evidence_level": "LOCAL_INTEGRATION_VERIFIED" if verified_at else None,
     })
     if challenge.status == "cutover_verified" and cutover_at is not None:
         base["status"] = "CERTIFIED"

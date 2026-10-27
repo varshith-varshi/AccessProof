@@ -78,7 +78,7 @@ def test_missing_tested_expired_and_certified_states():
         assert tested["status"] == "TESTED_NOT_CUTOVER"
         assert tested["certified"] is False
         assert tested["cutover_at"] is None
-        assert tested["evidence_level"] == "PRODUCTION_OBSERVED"
+        assert tested["evidence_level"] == "LOCAL_INTEGRATION_VERIFIED"
         assert tested["expires_at"] is not None
 
         challenge = db.scalar(select(RAGRouteChallenge))

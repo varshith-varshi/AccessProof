@@ -15,7 +15,7 @@ def _write(root: Path, name: str, content: str) -> Path:
 def test_protected_route_and_reauth_cache_are_reported_without_certification(tmp_path):
     _write(tmp_path, "app.py", '''\
 from fastapi import FastAPI
-from packages.rag_sdk import ProtectedRAG
+from packages.rag_core import ProtectedRAG
 
 app = FastAPI()
 
@@ -103,3 +103,15 @@ def test_cli_outputs_json_and_prometheus_without_source_text(tmp_path, capsys):
     assert "CACHE_WITHOUT_REAUTH" in metrics
     data = payload(tmp_path, scan(tmp_path))
     assert prometheus_text(data).startswith("# HELP accessproof_scanner_bypass_finding_total")
+
+
+def test_archived_snapshots_are_excluded_and_findings_have_stable_metadata(tmp_path):
+    _write(tmp_path, "archive/obsolete.py", "import redis\ncache.get('legacy')\n")
+    _write(tmp_path, "live.py", "import redis\ncache.get('current')\n")
+    first = payload(tmp_path, scan(tmp_path))
+    second = payload(tmp_path, scan(tmp_path))
+    assert first["scanner"]["files_scanned"] == 1
+    finding = first["cache_paths"][0]
+    assert finding["evidence"] == "live.py:1"
+    assert finding["finding_id"] == second["cache_paths"][0]["finding_id"]
+    assert finding["classification"] == "STATIC_BYPASS_CANDIDATE"

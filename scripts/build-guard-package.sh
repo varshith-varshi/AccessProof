@@ -16,11 +16,13 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/accessproof-guard-$VERSION/apps" "$STAGE/accessproof-guard-$VERSION/packages" "$OUT"
 cp "$ROOT/pyproject.toml" "$STAGE/accessproof-guard-$VERSION/"
 cp -R "$ROOT/apps/guard" "$STAGE/accessproof-guard-$VERSION/apps/"
-# Ship only the Guard's public RAG SDK, never unrelated server-side business
-# logic, reporting, authorization backend, or development utilities.
+# Ship only the Guard's internal OIDC/HTTP verification dependencies.
+# The customer Guard must not bundle a public RAG SDK, Gateway internals,
+# server-side business logic or development utilities.
 mkdir -p "$STAGE/accessproof-guard-$VERSION/packages"
 cp "$ROOT/packages/__init__.py" "$STAGE/accessproof-guard-$VERSION/packages/"
-cp -R "$ROOT/packages/rag_sdk" "$STAGE/accessproof-guard-$VERSION/packages/"
+cp -R "$ROOT/packages/connector_sdk" "$STAGE/accessproof-guard-$VERSION/packages/"
+cp -R "$ROOT/packages/domain" "$STAGE/accessproof-guard-$VERSION/packages/"
 find "$STAGE/accessproof-guard-$VERSION" -type d -name __pycache__ -prune -exec rm -rf {} +
 find "$STAGE/accessproof-guard-$VERSION" -type f \( -name '*.pyc' -o -name '*.db' \) -delete
 cp "$ROOT/packaging/guard/compose.yml" "$STAGE/accessproof-guard-$VERSION/compose.yml"

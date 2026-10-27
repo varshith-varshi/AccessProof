@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Iterable
 
-from packages.rag_sdk.registry import adapter_registry
+from packages.rag_core.registry import adapter_registry
 
 
 CAPABILITY_REGISTRY_SCHEMA = "accessproof.capability_registry/v1"

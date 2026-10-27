@@ -60,7 +60,7 @@ services:
       ACCESSPROOF_SMTP_USERNAME: ${ACCESSPROOF_SMTP_USERNAME:?set ACCESSPROOF_SMTP_USERNAME}
       ACCESSPROOF_SMTP_PASSWORD: ${ACCESSPROOF_SMTP_PASSWORD:?set ACCESSPROOF_SMTP_PASSWORD}
       ACCESSPROOF_SMTP_STARTTLS: ${ACCESSPROOF_SMTP_STARTTLS:-1}
-    command: ["sh", "-c", "alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips 172.30.0.10"]
+    command: ["sh", "-c", "python scripts/check_schema.py && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips 172.30.0.10"]
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -69,6 +69,25 @@ services:
       interval: 15s
       timeout: 5s
       retries: 8
+    networks: [accessproof]
+
+  # Execute once before bringing up/restarting API replicas.  This is the only
+  # service allowed to perform schema changes during a deployment.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    environment:
+      ACCESSPROOF_ENV: production
+      DATABASE_URL: postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof
+      REDIS_URL: redis://redis:6379/0
+      SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:?set SESSION_HMAC_KEY}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY}
+      REPORT_SIGNING_KEY: ${REPORT_SIGNING_KEY:?set REPORT_SIGNING_KEY}
+    depends_on:
+      db: {condition: service_healthy}
     networks: [accessproof]
 
   worker:
@@ -82,6 +101,8 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     environment:
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
       ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL: ${ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL:-}
       ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS: ${ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS:-900}
       ACCESSPROOF_ENV: production
@@ -102,10 +123,8 @@ services:
     networks: [accessproof]
 
   web:
-    image: accessproof/web-v2:ab59ffd
-    build:
-      context: ./web-v2
-      dockerfile: Dockerfile
+    # Set ACCESSPROOF_WEB_IMAGE to a release digest.  Never use latest.
+    image: ${ACCESSPROOF_WEB_IMAGE:?set ACCESSPROOF_WEB_IMAGE to a digest}
     restart: unless-stopped
     init: true
     read_only: true

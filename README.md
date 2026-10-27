@@ -1,21 +1,52 @@
-# AccessProof
+# AccessProof — Google Workspace and Google Drive RAG Security Gateway
 
-AccessProof is a CI/CD and continuous-regression platform for enterprise AI permission propagation. It answers one measurable question: **when access changes at the source, does the connected AI actually follow that change?**
+**Production V1 direction: Gateway-only customer integration.** AccessProof
+runs a customer-side security Gateway and Guard beside a supported enterprise
+RAG deployment. It synchronizes an explicitly approved Google Drive corpus and
+Google Workspace employee/group permissions; the Guard enforces Layer 1 before
+model context and Layer 2 before releasing a buffered response. Every retrieved
+resource must carry independently signed content provenance.
 
-The repository contains a FastAPI control plane, deterministic permission-regression engine, private runner, durable worker/outboxes, provider adapters, CLI/CI integrations, signed reports and a Next.js operator UI.
+## Supported customer integration
 
-## What the core flow does
+1. An authorized Workspace administrator connects Google Workspace / Drive
+   using the server-owned OAuth consent flow and selects an approved root.
+2. Directory and Drive ACL synchronization complete and fresh trusted policy is
+   installed by a customer-hosted, enrolled AccessProof Guard.
+3. The customer registers one AccessProof Gateway application and follows
+   Gateway setup in the web-v2 console. The guided installer supports a
+   reviewed Docker Compose RAG deployment with signed retrieval manifests.
+4. The customer explicitly approves routing the supported application path
+   through Gateway; the real employee-facing route is tested for allow, deny,
+   provenance forgery and in-flight revocation.
+5. Protect is eligible only when all source, Guard, route and policy checks
+   pass. Merely deploying the Gateway or receiving a heartbeat is not proof
+   of protection.
 
-1. Create unique synthetic test content/canary inside an explicitly authorized test boundary.
-2. Prove the allowed identity can retrieve it from the connected AI.
-3. Prove a denied control identity cannot retrieve it.
-4. Persist mutation intent/checkpoint and change source access.
-5. Confirm authoritative source ground truth changed.
-6. Probe the connected AI repeatedly.
-7. Measure last exposure, first denial and stable denial.
-8. Compare measured propagation to the configured SLO.
-9. Return PASS/FAIL/INCONCLUSIVE/PRECONDITION_FAILURE/ERROR/CANCELED with evidence.
-10. Clean up tracked synthetic resources and generate signed reports/CI output.
+There is no customer RAG SDK, framework adapter catalog, or TypeScript RAG
+SDK in this V1 product. Cryptographic provenance, cached-answer
+reauthorization and Layer 1/2 algorithms live in the internal
+packages/rag_core package and are used by Gateway. Legacy framework
+registrations are retained for historical audit but cannot be newly created
+or certified as Protect.
+
+### Explicit limitations
+
+- Gateway is not a transparent proxy for arbitrary customer RAGs. The
+  upstream RAG must provide a reviewed, signed retrieval manifest, verified
+  employee identity and complete intercepted model/cache return path.
+- Native model token streaming, WebSocket responses, tool/agent actions and
+  arbitrary background return paths are outside V1 certification.
+- Google Drive effective permissions, shared drives, limited folders, live
+  revocation latency and customer RAG bypass coverage still require
+  authorized real enterprise validation.
+- This checkout is not certified for unrestricted enterprise production
+  Protect. Local builds and synthetic tests are not live-provider proof.
+
+The repository also retains the earlier permission-regression testing engine,
+synthetic canaries, private runner, CLI/CI checks and signed audit reports;
+those are supporting internal validation tools, not customer RAG integration
+choices.
 
 ## Local verification
 
@@ -47,7 +78,7 @@ metrics at `http://localhost:8000/metrics`, and OpenAPI at
 For the web UI outside Docker:
 
 ```bash
-cd apps/web
+cd web-v2
 npm ci
 npm run lint
 npm run typecheck
@@ -67,13 +98,12 @@ downloads, and signed-manifest verification. CI exit codes are `0` for PASS, `1`
 for a security FAIL, `2` for a blocking inconclusive result, and `3` for an
 operational error.
 
-## Providers and private runners
+## Scope and private runners
 
-Microsoft 365/SharePoint, Google Drive, Confluence, Slack and Salesforce adapters
-are capability-gated and contract-tested. Configure each only against a dedicated
-test boundary; see `docs/*-setup.md`. None is real-provider validated without a
-customer test tenant. Private endpoints and mTLS targets require the outbound-only
-runner described in `docs/private-runner.md`.
+Google Workspace / Drive is the sole customer permission source in production
+V1. Other provider connectors remain in legacy/internal code paths but are not
+production onboarding choices. Outbound-only private runners support regression
+testing; the customer RAG Protect integration is Gateway.
 
 ## Troubleshooting
 

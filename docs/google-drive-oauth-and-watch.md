@@ -70,3 +70,35 @@ moves, repeated notification delivery, channel renewal, provider 403/429/5xx,
 OAuth token expiry, negative controls, Guard wake-up and measured source-change
 to employee denial. The current worker still reconciles directory state
 periodically; no Google Workspace group-membership push guarantee is claimed.
+
+
+## Limited-access folder metadata is not RAG content authorization (2026-10-25)
+
+Google Drive v3 can return a `reader` permission with `view=metadata` for
+a limited-access folder. This permits folder metadata visibility, **not** folder
+contents. The AccessProof ACL ingester now explicitly requests `view` and
+`inheritedPermissionsDisabled` in every paginated permission snapshot.
+Only permissions granting source-content access can create a Guard `read` grant;
+`view=metadata`, `view=published`, and unknown view values are rejected.
+For limited folders, a non-owner/non-organizer permission whose shared-drive
+`permissionDetails` are exclusively inherited is also non-authorizing.
+A direct grant re-added to a limited folder can authorize content; the
+implementation does **not** reject all `inheritedPermissionsDisabled=true`
+permissions. Drive shortcuts remain excluded rather than authorizing their
+target through the shortcut ACL.
+
+**Rollout safety:** This change affects new ACL snapshots, delta-driven
+rechecks, and reconciliation. It does **not** retroactively invalidate grants
+or signed Guard policies already persisted before the updated resolver runs.
+Before enabling Protect with an existing Google Drive source, force a complete,
+authoritative source ACL reconciliation (not just an empty changes-page sweep),
+process every resulting grant-revoke event, rebuild and install Guard policy,
+and prove a formerly metadata-only account is denied at both retrieval and
+buffered output release. Keep Protect disabled while any source or policy
+revision remains stale. The current code does not automate this cutover, and
+no live Google Workspace effective-access certification has been performed.
+
+Provider references:
+- https://developers.google.com/workspace/drive/api/guides/limited-expansive-access
+- https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions
+- https://developers.google.com/workspace/drive/api/guides/ref-roles

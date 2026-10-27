@@ -4,6 +4,13 @@ import os
 from dataclasses import dataclass
 
 
+GOOGLE_WORKSPACE_DRIVE_V1 = "google-workspace-drive"
+
+
+class V1ProviderScopeError(ValueError):
+    """Raised when a new production V1 source is outside the released scope."""
+
+
 def _csv_env(name: str, default: str) -> tuple[str, ...]:
     return tuple(value.strip().rstrip("/") for value in os.getenv(name, default).split(",") if value.strip())
 
@@ -54,9 +61,46 @@ class Settings:
     runner_offline_seconds: int = int(os.getenv("ACCESSPROOF_RUNNER_OFFLINE_SECONDS", "90"))
     retention_sweep_seconds: int = int(os.getenv("ACCESSPROOF_RETENTION_SWEEP_SECONDS", "3600"))
     rls_bypass: bool = os.getenv("ACCESSPROOF_RLS_BYPASS", "0").lower() in {"1", "true", "yes"}
+    # Development keeps legacy connectors for compatibility coverage. The
+    # production V1 contract is enforced server-side below.
+    v1_provider: str = os.getenv("ACCESSPROOF_V1_PROVIDER", GOOGLE_WORKSPACE_DRIVE_V1).strip().lower()
 
 
 settings = Settings()
+
+
+def v1_source_provider_allowed(provider: str, value: Settings = settings) -> bool:
+    """Return whether a *new* source is allowed by the deployed V1 contract."""
+    if value.env != "production":
+        return True
+    return (
+        value.v1_provider == GOOGLE_WORKSPACE_DRIVE_V1
+        and provider == "google-drive"  # canonical persisted value required by workers/adapters
+    )
+
+
+def enforce_v1_source_provider(provider: str, value: Settings = settings) -> None:
+    if not v1_source_provider_allowed(provider, value):
+        raise V1ProviderScopeError(
+            "V1_PROVIDER_NOT_SUPPORTED: production V1 supports only Google Workspace + Google Drive"
+        )
+
+
+def enforce_v1_browser_credential_policy(
+    provider: str, credentials: dict[str, object], value: Settings = settings
+) -> None:
+    """Keep operator OAuth credentials and user tokens off customer APIs.
+
+    The Google OAuth callback is a server-to-server code exchange and does not
+    use this function. Development remains permissive for deterministic
+    connector fixtures and isolated compatibility tests.
+    """
+    if value.env != "production" or provider.strip().lower() != "google-drive":
+        return
+    if credentials:
+        raise V1ProviderScopeError(
+            "V1_BROWSER_CREDENTIALS_NOT_ALLOWED: connect Google Workspace using the server-configured OAuth flow"
+        )
 
 
 def validate_production_settings(value: Settings = settings) -> None:
@@ -104,5 +148,9 @@ def validate_production_settings(value: Settings = settings) -> None:
         problems.append("ACCESSPROOF_ALLOWED_HOSTS must contain explicit production hostnames")
     if value.rls_bypass:
         problems.append("ACCESSPROOF_RLS_BYPASS must not be enabled in production")
+    if value.v1_provider != GOOGLE_WORKSPACE_DRIVE_V1:
+        problems.append(
+            "ACCESSPROOF_V1_PROVIDER must be google-workspace-drive in production"
+        )
     if problems:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))

@@ -817,11 +817,15 @@ class ProviderEventJournal(Base):
 
 class GuardSubject(Base):
     __tablename__ = "guard_subjects"
-    __table_args__ = (UniqueConstraint("organization_id", "provider", "provider_subject_id"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "provider", "provider_subject_id"),
+        UniqueConstraint("organization_id", "provider", "drive_permission_id", name="uq_guard_subject_drive_permission_id"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(50))
     provider_subject_id: Mapped[str] = mapped_column(String(255))
+    drive_permission_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     primary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
@@ -1061,6 +1065,19 @@ class AIApplication(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AIApplicationSourceBinding(Base):
+    """Explicit tenant/application/source relationship; never an implicit grant."""
+    __tablename__ = "ai_application_source_bindings"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "application_row_id", "source_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_connections.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ProtectionActivationRun(Base):
     """Durable, tenant-bound automatic preflight state; not authorization proof.
 
@@ -1122,11 +1139,15 @@ class GuardEnrollment(Base):
 
 class GuardGroup(Base):
     __tablename__ = "guard_groups"
-    __table_args__ = (UniqueConstraint("organization_id", "provider", "provider_group_id"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "provider", "provider_group_id"),
+        UniqueConstraint("organization_id", "provider", "drive_permission_id", name="uq_guard_group_drive_permission_id"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(50))
     provider_group_id: Mapped[str] = mapped_column(String(255))
+    drive_permission_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     provider_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")

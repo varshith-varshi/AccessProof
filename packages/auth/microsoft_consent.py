@@ -70,6 +70,10 @@ def graph_app_token(
                     "scope": "https://graph.microsoft.com/.default",
                     "grant_type": "client_credentials",
                 },
+                # An injected session may default to redirect-following. Never
+                # forward an app's confidential client secret to a Location
+                # returned by the token endpoint.
+                follow_redirects=False,
             )
         except httpx.HTTPError as exc:
             raise MicrosoftConsentError("MICROSOFT_TOKEN_ENDPOINT_UNAVAILABLE") from exc

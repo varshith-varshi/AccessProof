@@ -25,12 +25,13 @@ class SharePointPermissionError(RuntimeError):
 def _trusted_site_url(site_url: str) -> str:
     try:
         url = urlsplit(site_url)
+        host = (url.hostname or "").lower()
+        port = url.port  # Accessing .port can itself raise ValueError.
     except (ValueError, TypeError) as exc:
         raise SharePointPermissionError("SHAREPOINT_SITE_URL_INVALID") from exc
-    host = (url.hostname or "").lower()
     if (url.scheme != "https" or not host.endswith(".sharepoint.com")
             or host in {".sharepoint.com", "sharepoint.com"}
-            or url.port not in (None, 443) or url.username or url.password
+            or port not in (None, 443) or url.username or url.password
             or url.query or url.fragment or "//" in url.path
             or any(segment in (".", "..") for segment in url.path.split("/"))):
         raise SharePointPermissionError("SHAREPOINT_SITE_URL_UNTRUSTED")
@@ -108,6 +109,9 @@ class SharePointEffectiveAccessProbe:
                     "Authorization": self._authorization,
                     "Accept": "application/json;odata=nometadata",
                 },
+                # Never trust the injected client's redirect policy: another
+                # origin could forge an ALLOW permission result after a 3xx.
+                follow_redirects=False,
             )
         except httpx.HTTPError as exc:
             raise SharePointPermissionError("SHAREPOINT_PERMISSION_ENDPOINT_UNAVAILABLE") from exc

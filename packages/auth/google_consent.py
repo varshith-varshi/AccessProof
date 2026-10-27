@@ -87,7 +87,7 @@ def exchange_code(*, code: str, client_id: str, client_secret: str,
             raise GoogleConsentError("GOOGLE_OAUTH_SCOPES_OR_OFFLINE_ACCESS_MISSING") from exc
         return {
             "access_token": access, "refresh_token": refresh,
-            "client_id": client_id, "client_secret": client_secret,
+            "client_id": client_id,
             "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=lifetime)).isoformat(),
             "token_endpoint": "https://oauth2.googleapis.com/token",
             "scope": " ".join(scopes),

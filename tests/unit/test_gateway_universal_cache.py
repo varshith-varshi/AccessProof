@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from apps.gateway.accessproof_gateway.app import GatewaySettings, create_app
-from packages.rag_sdk import (
+from packages.rag_core import (
     CacheDependency, CachedAnswerManifest, CachedAnswerManifestSigner,
     CachedAnswerManifestVerifier, ContentBinding, SourceAttestationSigner,
     SourceAttestationVerifier,
@@ -176,3 +176,35 @@ def test_gateway_loads_pinned_cache_verification_keys_from_environment(monkeypat
     monkeypatch.setenv("ACCESSPROOF_GATEWAY_CACHE_PUBLIC_KEYS_JSON", '{"cache-key":"bad"}')
     with pytest.raises(RuntimeError, match="cache public key configuration invalid"):
         GatewaySettings.from_env()
+
+
+def test_signed_answer_release_alias_covers_non_redis_customer_return_paths():
+    """Exactly the same signed policy gate for cache/custom app/tool responses."""
+    client, payload, state = _reference()
+    with client:
+        headers = {"Authorization": "Bearer synthetic-employee-token"}
+        accepted = client.post("/v1/responses/authorize", headers=headers, json=payload)
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["answer"] == "signed cached answer"
+        assert accepted.headers["cache-control"] == "no-store"
+        assert accepted.headers["pragma"] == "no-cache"
+        assert accepted.headers["vary"] == "Authorization, Cookie"
+        state["allowed"] = False
+        denied = client.post("/v1/responses/authorize", headers=headers, json=payload)
+        assert denied.status_code == 403
+        assert "signed cached answer" not in denied.text
+        assert denied.headers["cache-control"] == "no-store"
+        assert not any(path.startswith("/v1/chat") for path in state["seen"])
+
+
+def test_signed_answer_release_alias_never_accepts_unsigned_content():
+    client, payload, state = _reference()
+    with client:
+        headers = {"Authorization": "Bearer synthetic-employee-token"}
+        forbidden = client.post("/v1/responses/authorize", headers=headers,
+                                json={"answer": payload["answer"]})
+        assert forbidden.status_code == 422
+        tampered = client.post("/v1/responses/authorize", headers=headers,
+                               json={**payload, "answer": "tampered answer"})
+        assert tampered.status_code == 403
+        assert not state["seen"]

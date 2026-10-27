@@ -276,12 +276,12 @@ class AIApplicationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     guard_id: str | None = None
     source_id: str | None = None
-    adapter_type: Literal[
-        "generic-python", "generic-typescript", "langchain-python",
-        "llamaindex-python", "langchain-typescript", "haystack-python",
-        "generic-http", "accessproof-gateway",
-    ] = "generic-python"
-    adapter_contract_version: Literal["accessproof.rag/v1", "target-config/v1"] = "accessproof.rag/v1"
+    source_ids: list[str] | None = Field(default=None, min_length=1, max_length=16)
+    # SDK and framework adapters are retired from customer registration in
+    # Google Workspace + Google Drive Gateway-only V1. Existing stored legacy
+    # applications are preserved for historical audit, never auto-certified.
+    adapter_type: Literal["accessproof-gateway"] = "accessproof-gateway"
+    adapter_contract_version: Literal["accessproof.rag/v1"] = "accessproof.rag/v1"
 
 
 class AIApplicationModeUpdate(BaseModel):

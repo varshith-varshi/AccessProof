@@ -12,8 +12,8 @@ from typing import Any
 from urllib.parse import quote
 
 from connectors.google_drive.adapter import GoogleDriveAdapter
-from packages.rag_sdk.ingestion import IngestionError, TrustedSourceIngestor, VerifiedSourceDocument
-from packages.rag_sdk.protection import RetrievedResource
+from packages.rag_core.ingestion import IngestionError, TrustedSourceIngestor, VerifiedSourceDocument
+from packages.rag_core.protection import RetrievedResource
 
 
 @dataclass(frozen=True)

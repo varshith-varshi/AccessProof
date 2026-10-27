@@ -6,7 +6,7 @@ Does not initialize database tables or mutate customer cache entries.
 from __future__ import annotations
 
 from packages.demo_cache.factory import CacheConfigurationError, configured_cache_backend
-from packages.rag_sdk.cache_backends import CacheBackendError
+from packages.rag_core.cache_backends import CacheBackendError
 
 
 def main() -> int:

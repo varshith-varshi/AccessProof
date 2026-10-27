@@ -5,6 +5,7 @@ from packages.domain.models import Principal, Capability, CapabilityStatus
 from packages.test_engine.clock import SimulatedClock
 from connectors.mock_source.adapter import MockSourceAdapter
 from connectors.microsoft365.adapter import Microsoft365Adapter
+from packages.connector_sdk.base import UnsupportedCapabilityError
 from connectors.google_drive.adapter import GoogleDriveAdapter
 
 
@@ -60,9 +61,14 @@ async def test_microsoft_graph_contract_paths():
     r = await a.create_resource(name="AP_TEST", content="x", marker="AP-CANARY")
     alice = Principal("alice", email="alice@example.com")
     assert await a.grant_access(r, alice) == "p1"
-    assert await a.verify_user_can_access(r, alice)
+    # Admin-visible ACLs are not independent proof of employee access.
+    assert (await a.permissions_snapshot(r.provider_id))[0]["id"] == "p1"
+    with pytest.raises(UnsupportedCapabilityError, match="delegated token"):
+        await a.verify_user_can_access(r, alice)
     await a.revoke_access(r, alice)
-    assert not await a.verify_user_can_access(r, alice)
+    assert await a.permissions_snapshot(r.provider_id) == []
+    with pytest.raises(UnsupportedCapabilityError, match="delegated token"):
+        await a.verify_user_can_access(r, alice)
     await a.delete_resource(r)
     await a._client.aclose()
 
@@ -430,15 +436,17 @@ async def test_microsoft_advanced_test_group_contract_and_effective_access():
     assert group_id == "G1"
     await a.add_group_member(group_id, alice)
     await a.grant_group_access(r, group_id)
-    assert await a.verify_user_can_access(r, alice)
+    assert members == {"U1"}
+    assert permissions.get("gp1") == "ap-test-group@example.com"
+    with pytest.raises(UnsupportedCapabilityError, match="delegated token"):
+        await a.verify_user_can_access(r, alice)
 
     await a.remove_group_member(group_id, alice)
-    assert not await a.verify_user_can_access(r, alice)
+    assert members == set()
 
     await a.grant_parent_access(r, alice)
-    assert await a.verify_user_can_access(r, alice)
+    assert root_permissions == {"parent-p1": "alice@example.com"}
     await a.revoke_parent_access(r, alice)
-    assert not await a.verify_user_can_access(r, alice)
     assert not root_permissions
 
     link_id = await a.create_share_link(r, alice)
