@@ -63,12 +63,13 @@ class MultiSourceGuard:
                     return {"decision": "block", "reason": "AUTHORIZATION_REVISION_MISSING"}
                 allowed: list[dict[str, Any]] = []
                 denied: list[dict[str, Any]] = []
-                seen: set[tuple[str, str, str, str]] = set()
+                seen: set[tuple[str, str, str]] = set()
                 for item in resources:
                     source, resource, chunk, version = _resource_key(item)
                     if source not in mapped_subjects:
                         return {"decision": "block", "reason": "APPLICATION_SOURCE_MISMATCH"}
-                    key = (source, resource, chunk, version)
+                    key = (source, resource, chunk)
+                    # Also reject conflicting versions of the same chunk.
                     if key in seen:
                         return {"decision": "block", "reason": "DUPLICATE_RESOURCE"}
                     seen.add(key)

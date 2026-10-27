@@ -506,6 +506,61 @@ class ScopedResource(BaseModel):
     content_version: str | None = Field(default=None, max_length=1024)
 
 
+class MultiSourceAuthorizationScopeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    application_id: str = Field(min_length=1, max_length=255)
+    request_id: str = Field(min_length=1, max_length=255)
+    source_ids: list[str] = Field(min_length=1, max_length=4)
+
+
+@app.post("/guard/v2/authorization-scope")
+def multisource_authorization_scope(
+    payload: MultiSourceAuthorizationScopeRequest,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    effective_mode, _ = _application_mode(payload.application_id)
+    if effective_mode != "protect":
+        raise HTTPException(403, "PROTECT_MODE_REQUIRED")
+    if len(set(payload.source_ids)) != len(payload.source_ids):
+        raise HTTPException(422, "DUPLICATE_SOURCES")
+    bindings = cache.application_sources(payload.application_id)
+    if not set(payload.source_ids).issubset(bindings):
+        raise HTTPException(403, "APPLICATION_SOURCE_MISMATCH")
+    if any(not bindings[s] for s in payload.source_ids):
+        raise HTTPException(503, "SOURCE_ACL_STALE")
+    revision = cache.authorization_revision(payload.application_id)
+    if not cache.authorization_revisions_received() or revision is None:
+        raise HTTPException(503, "AUTHORIZATION_REVISION_NOT_SYNCED")
+    subject, token_issuer, tenant_id = _identity(authorization)
+    scoped: list[dict[str, Any]] = []
+    total = 0
+    for source in payload.source_ids:
+        mapped = _mapped_subject(authorization, source)
+        resource_ids, truncated = cache.allowed_resources(mapped, source, limit=5000)
+        total += len(resource_ids)
+        if truncated or total > 5000:
+            raise HTTPException(503, "AUTHORIZATION_SCOPE_TRUNCATED")
+        scoped.append({"source_id": source, "allowed_resource_ids": resource_ids})
+    result = "allow" if total else "block"
+    cache.buffer_audit(
+        str(uuid4()), application_id=payload.application_id,
+        subject_id=principal_key(subject, token_issuer, tenant_id),
+        request_id=payload.request_id, result=result,
+        reason="MULTISOURCE_AUTHORIZATION_SCOPE",
+        policy_version=cache.version(), layer="layer1",
+        resource_ids=[f"{entry['source_id']}:{rid}" for entry in scoped for rid in entry["allowed_resource_ids"]],
+        authorization_revision=revision[0], authorization_revision_hash=revision[1],
+    )
+    return {
+        "decision": result, "mode": "protect",
+        "reason": "MULTISOURCE_AUTHORIZATION_SCOPE",
+        "sources": scoped, "scope_complete": True,
+        "policy_version": cache.version(),
+        "authorization_revision": revision[0],
+        "authorization_revision_hash": revision[1],
+    }
+
+
 class ScopedOutputRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision_id: str = Field(min_length=1, max_length=255)
@@ -531,6 +586,8 @@ def multisource_filter_resources(
         raise HTTPException(403, "PROTECT_MODE_REQUIRED")
     subject, token_issuer, tenant_id = _identity(authorization)
     mapped = {src: _mapped_subject(authorization, src) for src in sources}
+    if any(item.scope != "read" for item in payload.resources):
+        raise HTTPException(422, "MULTISOURCE_SCOPE_UNSUPPORTED")
     if any(not item.content_version for item in payload.resources):
         raise HTTPException(422, "SOURCE_CONTENT_VERSION_REQUIRED")
     resources = [
