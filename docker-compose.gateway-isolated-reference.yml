@@ -10,7 +10,6 @@ services:
       ACCESSPROOF_CHAT_URL: http://accessproof-gateway:8090/v1/chat/completions
       ACCESSPROOF_ENV: production
     networks: [rag-isolated]
-    ports: ["127.0.0.1:${ACCESSPROOF_REFERENCE_RAG_PORT:-18200}:8200"]
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
