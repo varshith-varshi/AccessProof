@@ -144,6 +144,40 @@ class GuardClient:
             raise ValueError("Guard returned an invalid authorization scope")
         return data
 
+    def multisource_authorization_scope(
+        self, *, employee_token: str, application_id: str,
+        request_id: str, source_ids: list[str],
+    ) -> dict[str, Any]:
+        """Source-qualified allowset for compatible pre-retrieval ANN search."""
+        if not self.multisource or not source_ids:
+            raise ValueError("MULTISOURCE_GUARD_V2_REQUIRED")
+        response = self.client.post(
+            f"{self.base_url}/guard/v2/authorization-scope",
+            headers={"Authorization": f"Bearer {employee_token}"},
+            json={"application_id": application_id, "request_id": request_id,
+                  "source_ids": source_ids},
+        )
+        response.raise_for_status()
+        data = response.json()
+        if (not isinstance(data, dict) or data.get("mode") != "protect"
+                or data.get("scope_complete") is not True
+                or data.get("decision") not in {"allow", "block"}
+                or not isinstance(data.get("sources"), list)):
+            raise ValueError("INVALID_MULTISOURCE_AUTHORIZATION_SCOPE")
+        returned_sources = data["sources"]
+        if (len(source_ids) != len(set(source_ids))
+                or len(returned_sources) != len(source_ids)
+                or any(not isinstance(item, dict)
+                       or not isinstance(item.get("source_id"), str)
+                       or not isinstance(item.get("allowed_resource_ids"), list)
+                       or any(not isinstance(rid, str) or not rid
+                              for rid in item["allowed_resource_ids"])
+                       for item in returned_sources)
+                or {item["source_id"] for item in returned_sources} != set(source_ids)):
+            raise ValueError("INVALID_MULTISOURCE_AUTHORIZATION_SCOPE")
+        authorization_revision_binding(data)
+        return data
+
     def filter_resources(self, *, employee_token: str, application_id: str, request_id: str, resources: list[RetrievedResource]) -> dict[str, Any]:
         payload = {"application_id": application_id, "request_id": request_id, "resources": [
             {"source_id": item.source_id, "resource_id": item.resource_id, "scope": "read", "chunk_ids": [item.chunk_id] if item.chunk_id else [],

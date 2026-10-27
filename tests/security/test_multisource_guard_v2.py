@@ -220,3 +220,50 @@ def test_v2_rejects_substituted_content_version_chunk_and_source(tmp_path, monke
             "used_resources": original, "provenance": original,
         })
         assert result.status_code == 403 or result.json()["decision"] == "block"
+
+
+def test_v2_scoped_ann_retrieval_is_source_qualified(tmp_path, monkeypatch):
+    client, _ = _ready(tmp_path, monkeypatch)
+    for employee, expected in (
+        ("alice", [DOC]),
+        ("bob", []),
+    ):
+        response = client.post("/guard/v2/authorization-scope", headers={
+            "Authorization": "Bearer " + _token(employee),
+        }, json={
+            "application_id": APP, "request_id": "ann-"+employee,
+            "source_ids": [GOOGLE, SHAREPOINT],
+        })
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["decision"] == "allow"
+        assert data["scope_complete"] is True
+        assert data["sources"][0] == {"source_id": GOOGLE, "allowed_resource_ids": [DOC]}
+        assert data["sources"][1] == {"source_id": SHAREPOINT, "allowed_resource_ids": expected}
+        assert data["authorization_revision_hash"] == "a" * 64
+
+
+def test_v2_ann_scope_rejects_duplicate_and_unbound_sources(tmp_path, monkeypatch):
+    client, _ = _ready(tmp_path, monkeypatch)
+    def query(sources):
+        return client.post("/guard/v2/authorization-scope", headers={
+            "Authorization": "Bearer " + _token("alice"),
+        }, json={"application_id": APP, "request_id": "ann-invalid", "source_ids": sources})
+    assert query([GOOGLE, GOOGLE]).status_code == 422
+    assert query([GOOGLE, "not-enrolled"]).status_code == 403
+
+
+def test_v2_rejects_unsupported_scope_and_ambiguous_versions(tmp_path, monkeypatch):
+    client, _ = _ready(tmp_path, monkeypatch)
+    def query(resources):
+        return client.post("/guard/v2/filter-resources", headers={
+            "Authorization": "Bearer " + _token("alice"),
+        }, json={"application_id": APP, "request_id": "resource-invalid", "resources": resources})
+    good = {"source_id": GOOGLE, "resource_id": DOC,
+            "content_version": "etag1", "chunk_ids": ["g1"], "scope": "read"}
+    assert query([{**good, "scope": "write"}]).status_code == 422
+    assert query([{key: val for key, val in good.items() if key != "content_version"}]).status_code == 422
+    mixed = query([good, {**good, "content_version": "etag2"}])
+    assert mixed.status_code == 200
+    assert mixed.json()["decision"] == "block"
+    assert mixed.json()["reason"] == "DUPLICATE_RESOURCE"
