@@ -93,3 +93,14 @@ authorization and revocation evidence.
 - An activation helper is staged at `/home/ubuntu/accessproof/releases/activate_accessproof_microsoft_aws.py`. It requires the operator to install the existing 0600 JSON credential file through an approved channel; the assistant did not transfer it or execute the helper.
 
 **Final status remains: multitenant backend deployed; Microsoft customer authorization and RAG protection certification blocked pending server-side credential activation and genuine employee sign-in/protection tests.**
+
+## Additional live web and operator checks (continued)
+
+- AWS EC2 still serves healthy API and worker, schema `n7a2b4c6d801`.
+- Microsoft operator client secret remains absent on AWS. No consent handshake was exercised against the live API; SharePoint Protect remains OFF.
+- Live Playwright on desktop/mobile: homepage, register, verify-email, forgot-password, login HTTP 200 and rendered expected forms; protected Sources redirected anonymous users; zero JavaScript page errors.
+- Both production host TLS certificates were valid with approximately 77 days remaining.
+- Live API public auth boundaries: unauthenticated Sources and Microsoft readiness endpoints returned HTTP 401; forged admin consent callback returned HTTP 400.
+- HSTS, X-Frame-Options DENY, and nosniff are present. Browser auth pages advertised `Cache-Control: s-maxage=31536000`. A local Nginx configuration change was prepared to apply `Cache-Control: no-store` specifically to auth HTML with a restrictive frame/base/object CSP. Syntax validated in isolated Nginx 1.27 Alpine with synthetic test upstream hostnames. **This Nginx hardening edit has not been deployed; secure command execution blocked the remote copy.**
+- Attempts to submit a disposable registration and run an app-token preflight using the protected local credential were blocked by execution safety checks. Neither test was completed; no new customer account is claimed.
+- Customer release certification remains blocked on operator credential provisioning and real employee-authenticated RAG revocation tests.
