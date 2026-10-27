@@ -1,0 +1,86 @@
+# Optional isolated Gateway reference topology (NOT a drop-in production release).
+# Requires a customer-owned RAG that calls ACCESSPROOF_CHAT_URL, trusted JWT,
+# a compatible customer-owned model container, and an enrolled Guard.
+# The RAG has no provider egress. Identity issuance occurs at the trusted edge.
+# Run the static topology validator BEFORE any customer-route cutover.
+services:
+  customer-rag:
+    image: ${ACCESSPROOF_REFERENCE_CUSTOMER_RAG_IMAGE:?provide a pinned customer RAG image}
+    environment:
+      ACCESSPROOF_CHAT_URL: http://accessproof-gateway:8090/v1/chat/completions
+      ACCESSPROOF_ENV: production
+    networks: [rag-isolated]
+    ports: ["127.0.0.1:${ACCESSPROOF_REFERENCE_RAG_PORT:-18200}:8200"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  accessproof-gateway:
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
+    environment:
+      ACCESSPROOF_GATEWAY_GUARD_URL: http://guard:8080
+      ACCESSPROOF_GATEWAY_MODEL_URL: http://model:8000/v1/chat/completions
+      ACCESSPROOF_GATEWAY_MODEL_PROVIDER: openai-compatible
+      ACCESSPROOF_GATEWAY_APPLICATION_ID: ${ACCESSPROOF_GATEWAY_APPLICATION_ID:?required application identifier}
+      ACCESSPROOF_GATEWAY_TENANT_ID: ${ACCESSPROOF_GATEWAY_TENANT_ID:?required tenant identifier}
+      ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON: ${ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON:?required source verification public keys}
+      ACCESSPROOF_GATEWAY_SOURCE_SNAPSHOTS_JSON: ${ACCESSPROOF_GATEWAY_SOURCE_SNAPSHOTS_JSON:-}
+      ACCESSPROOF_GATEWAY_MULTISOURCE_GUARD_V2: "true"
+    volumes:
+      - trusted_source_snapshots:/run/accessproof/trusted:ro
+    networks: [rag-isolated, model-private, guard-private, accessproof-gateway-host]
+    ports: ["127.0.0.1:${ACCESSPROOF_REFERENCE_GATEWAY_PORT:-18090}:8090"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  model:
+    image: ${ACCESSPROOF_REFERENCE_MODEL_IMAGE:?provide pinned model image with the documented OpenAI-compatible endpoint}
+    networks: [model-private]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  guard:
+    build:
+      context: .
+      dockerfile: apps/guard/Dockerfile
+    environment:
+      ACCESSPROOF_GUARD_CONTROL_PLANE_URL: ${ACCESSPROOF_GUARD_CONTROL_PLANE_URL:?required enrolled control plane URL}
+      ACCESSPROOF_GUARD_ID: ${ACCESSPROOF_GUARD_ID:?required enrolled guard ID}
+      ACCESSPROOF_GUARD_CREDENTIAL: ${ACCESSPROOF_GUARD_CREDENTIAL:?required enrolled guard credential}
+      ACCESSPROOF_GUARD_IDENTITY_MODE: oidc
+      ACCESSPROOF_GUARD_JWT_ISSUER: ${ACCESSPROOF_GUARD_JWT_ISSUER:?required tenant-specific issuer}
+      ACCESSPROOF_GUARD_JWT_AUDIENCE: ${ACCESSPROOF_GUARD_JWT_AUDIENCE:?required audience}
+      ACCESSPROOF_GUARD_IDENTITY_TENANT_ID: ${ACCESSPROOF_GUARD_IDENTITY_TENANT_ID:?required tenant ID}
+      ACCESSPROOF_GUARD_FAIL_MODE: fail_closed
+    volumes:
+      - reference_guard_state:/var/lib/accessproof-guard
+    networks: [guard-private, guard-egress]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  rag-isolated:
+    internal: true
+  model-private:
+    internal: true
+  guard-private:
+    internal: true
+  guard-egress:
+    # Guard-only network to obtain OIDC provider keys and policy sync;
+    # customer RAG and model must never be attached here.
+    internal: false
+  accessproof-gateway-host:
+    internal: false
+
+volumes:
+  trusted_source_snapshots:
+  reference_guard_state:
