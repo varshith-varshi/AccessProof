@@ -1,0 +1,35 @@
+
+> test:e2e
+> playwright test
+
+
+Running 26 tests using 8 workers
+
+[1A[2K[1/26] [desktop] › e2e/web-v2.spec.ts:16:5 › public landing and authentication pages are usable
+[1A[2K[2/26] [desktop] › e2e/web-v2.spec.ts:101:5 › adapter catalog distinguishes enforcement from connectivity
+[1A[2K[3/26] [desktop] › e2e/web-v2.spec.ts:25:5 › protected routes redirect anonymous users
+[1A[2K[4/26] [desktop] › e2e/web-v2.spec.ts:92:5 › synchronized employees render provider-stable identities
+[1A[2K[5/26] [desktop] › e2e/web-v2.spec.ts:3:5 › browser console and network remain clean on public flow
+[1A[2K[6/26] [desktop] › e2e/web-v2.spec.ts:38:5 › Guard inventory and secure enrollment flow render
+[1A[2K[7/26] [desktop] › e2e/web-v2.spec.ts:73:5 › permission sources can be connected without a legacy project
+[1A[2K[8/26] [desktop] › e2e/web-v2.spec.ts:30:5 › authenticated dashboard renders current authorization activity
+[1A[2K[9/26] [desktop] › e2e/web-v2.spec.ts:118:5 › mobile navigation exposes product routes
+[1A[2K[10/26] [desktop] › e2e/web-v2.spec.ts:127:5 › one-click security preflight reports action required without manual audit IDs
+[1A[2K[11/26] [desktop] › e2e/web-v2.spec.ts:162:5 › application registration uses the selected adapter contract
+[1A[2K[12/26] [desktop] › e2e/web-v2.spec.ts:188:5 › Microsoft SharePoint setup shows unresolved permission certification
+[1A[2K[13/26] [desktop] › e2e/web-v2.spec.ts:224:5 › Microsoft administrator consent starts only from a configured source
+[1A[2K[14/26] [mobile] › e2e/web-v2.spec.ts:16:5 › public landing and authentication pages are usable
+[1A[2K[15/26] [mobile] › e2e/web-v2.spec.ts:3:5 › browser console and network remain clean on public flow
+[1A[2K[16/26] [mobile] › e2e/web-v2.spec.ts:25:5 › protected routes redirect anonymous users
+[1A[2K[17/26] [mobile] › e2e/web-v2.spec.ts:30:5 › authenticated dashboard renders current authorization activity
+[1A[2K[18/26] [mobile] › e2e/web-v2.spec.ts:101:5 › adapter catalog distinguishes enforcement from connectivity
+[1A[2K[19/26] [mobile] › e2e/web-v2.spec.ts:38:5 › Guard inventory and secure enrollment flow render
+[1A[2K[20/26] [mobile] › e2e/web-v2.spec.ts:73:5 › permission sources can be connected without a legacy project
+[1A[2K[21/26] [mobile] › e2e/web-v2.spec.ts:118:5 › mobile navigation exposes product routes
+[1A[2K[22/26] [mobile] › e2e/web-v2.spec.ts:127:5 › one-click security preflight reports action required without manual audit IDs
+[1A[2K[23/26] [mobile] › e2e/web-v2.spec.ts:92:5 › synchronized employees render provider-stable identities
+[1A[2K[24/26] [mobile] › e2e/web-v2.spec.ts:162:5 › application registration uses the selected adapter contract
+[1A[2K[25/26] [mobile] › e2e/web-v2.spec.ts:188:5 › Microsoft SharePoint setup shows unresolved permission certification
+[1A[2K[26/26] [mobile] › e2e/web-v2.spec.ts:224:5 › Microsoft administrator consent starts only from a configured source
+[1A[2K  1 skipped
+  25 passed (16.1s)

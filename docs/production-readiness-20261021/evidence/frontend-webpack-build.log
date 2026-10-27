@@ -1,0 +1,81 @@
+
+> build
+> next build --webpack
+
+▲ Next.js 16.4.1 (webpack)
+✓ Running next.config.ts took 23ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 4.1s
+  Running TypeScript ...
+  Finished TypeScript in 2.2s ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/21) ...
+  Generating static pages using 15 workers (5/21) 
+  Generating static pages using 15 workers (10/21) 
+  Generating static pages using 15 workers (15/21) 
+✓ Generating static pages using 15 workers (21/21) in 302ms
+  Finalizing page optimization ...
+  Collecting build traces ...
+⚠ 27 traced files were not included in the standalone output
+because their paths are outside of `outputFileTracingRoot`.
+First 100 skipped files:
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/compiled/jest-worker/processChild.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/compiled/jest-worker/threadChild.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/lib/start-server.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/next-server.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/next.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/require-hook.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/module.compiled.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/app-router-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/entrypoints.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/head-manager-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/hooks-client-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/image-config-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/router-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/app-page/vendored/contexts/server-inserted-html.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/module.compiled.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/app-router-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/entrypoints.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/head-manager-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/hooks-client-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/html-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/image-config-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/loadable-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/loadable.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/router-context.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/next/dist/server/route-modules/pages/vendored/contexts/server-inserted-html.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/styled-jsx/index.js
+  - ../../../../home/white-devil/Downloads/accessproof/f15/web-v2/node_modules/styled-jsx/style.js
+Set `outputFileTracingRoot` to a common parent directory
+to include these files.
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/[...path]
+├ ○ /applications
+├ ○ /audit
+├ ○ /blocked-requests
+├ ○ /dashboard
+├ ○ /diagnostics
+├ ○ /employees
+├ ○ /forgot-password
+├ ○ /guards
+├ ○ /integrations
+├ ○ /login
+├ ○ /permission-events
+├ ○ /protection
+├ ○ /register
+├ ○ /reports
+├ ○ /reset-password
+├ ○ /settings
+├ ○ /sources
+└ ○ /verify
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

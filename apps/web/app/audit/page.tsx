@@ -1,0 +1,4 @@
+"use client";
+import {useEffect,useState} from "react";import {api} from "@/lib/api";
+type Event={id:string,actor:string|null,action:string,target_type:string,target_id:string|null,created_at:string,metadata:Record<string,unknown>};
+export default function Audit(){const [rows,setRows]=useState<Event[]>([]);const [error,setError]=useState("");useEffect(()=>{api<Event[]>("/api/v1/audit").then(setRows).catch(e=>setError(e.message))},[]);return <><h1>Audit Log</h1><p>Append-only application events. Secrets and authorization headers are excluded.</p>{error&&<p className="error">{error}</p>}<table className="table"><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Actor</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{new Date(r.created_at).toLocaleString()}</td><td>{r.action}</td><td>{r.target_type} {r.target_id}</td><td>{r.actor??"system"}</td></tr>)}</tbody></table></>}

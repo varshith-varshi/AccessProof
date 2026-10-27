@@ -1,0 +1,39 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_________ test_empty_invalid_changes_page_does_not_mark_poll_completed _________
+
+    @pytest.mark.asyncio
+    async def test_empty_invalid_changes_page_does_not_mark_poll_completed():
+        source = await _adapter(lambda _: httpx.Response(
+            200, json={"changes": []}  # No continuation OR newStartPageToken.
+        ))
+        try:
+>           with pytest.raises(ValueError, match="DRIVE_CHANGES_PAGE_INCOMPLETE"):
+E           Failed: DID NOT RAISE ValueError
+
+tests/security/test_twin_drive_provider_chaos.py:21: Failed
+______ test_missing_permission_collection_does_not_revoke_every_employee _______
+
+    @pytest.mark.asyncio
+    async def test_missing_permission_collection_does_not_revoke_every_employee():
+        source = await _adapter(lambda _: httpx.Response(200, json={"kind": "invalid"}))
+        try:
+>           with pytest.raises(ValueError, match="DRIVE_PERMISSION_SNAPSHOT_INCOMPLETE"):
+E           Failed: DID NOT RAISE ValueError
+
+tests/security/test_twin_drive_provider_chaos.py:31: Failed
+____ test_missing_boundary_file_collection_does_not_mark_inventory_complete ____
+
+    @pytest.mark.asyncio
+    async def test_missing_boundary_file_collection_does_not_mark_inventory_complete():
+        source = await _adapter(lambda _: httpx.Response(200, json={"kind": "invalid"}))
+        try:
+>           with pytest.raises(ValueError, match="DRIVE_BOUNDARY_INVENTORY_INCOMPLETE"):
+E           Failed: DID NOT RAISE ValueError
+
+tests/security/test_twin_drive_provider_chaos.py:41: Failed
+=========================== short test summary info ============================
+FAILED tests/security/test_twin_drive_provider_chaos.py::test_empty_invalid_changes_page_does_not_mark_poll_completed
+FAILED tests/security/test_twin_drive_provider_chaos.py::test_missing_permission_collection_does_not_revoke_every_employee
+FAILED tests/security/test_twin_drive_provider_chaos.py::test_missing_boundary_file_collection_does_not_mark_inventory_complete
+3 failed in 0.24s

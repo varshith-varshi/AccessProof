@@ -1,0 +1,42 @@
+
+> @accessproof/rag-sdk@0.1.0 test
+> npm run build && node --test test/*.test.mjs
+
+
+> @accessproof/rag-sdk@0.1.0 build
+> tsc -p tsconfig.json
+
+TAP version 13
+# Subtest: reauthorizes a trusted late source before releasing a buffered answer
+ok 1 - reauthorizes a trusted late source before releasing a buffered answer
+  ---
+  duration_ms: 19.021801
+  type: 'test'
+  ...
+# Subtest: denies extra source when second Layer 1 rejects it
+ok 2 - denies extra source when second Layer 1 rejects it
+  ---
+  duration_ms: 1.008753
+  type: 'test'
+  ...
+# Subtest: filters before generation and verifies before release
+ok 3 - filters before generation and verifies before release
+  ---
+  duration_ms: 17.721371
+  type: 'test'
+  ...
+# Subtest: does not release a blocked Layer 2 response
+ok 4 - does not release a blocked Layer 2 response
+  ---
+  duration_ms: 0.932894
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 64.808515

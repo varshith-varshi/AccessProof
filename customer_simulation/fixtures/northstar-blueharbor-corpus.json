@@ -1,0 +1,3558 @@
+[
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0000",
+    "chunk_id": "file-0000:chunk:0",
+    "path": "Northstar Workspace/Public/Document 0000",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0000",
+    "chunk_id": "file-0000:chunk:1",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0001",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0001",
+    "chunk_id": "file-0001:chunk:2",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0002",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0001_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0001",
+    "chunk_id": "file-0001:chunk:3",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0003",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0001_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0002",
+    "chunk_id": "file-0002:chunk:4",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0004",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0002_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0002",
+    "chunk_id": "file-0002:chunk:0",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0005",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0003",
+    "chunk_id": "file-0003:chunk:1",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0006",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0003",
+    "chunk_id": "file-0003:chunk:2",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0007",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0004",
+    "chunk_id": "file-0004:chunk:3",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0008",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0004",
+    "chunk_id": "file-0004:chunk:4",
+    "path": "Blueharbor Workspace/Public/Document 0009",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0005",
+    "chunk_id": "file-0005:chunk:0",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0010",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0005",
+    "chunk_id": "file-0005:chunk:1",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0011",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0005_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0006",
+    "chunk_id": "file-0006:chunk:2",
+    "path": "Northstar Workspace/HR/Reviews/Document 0012",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0006_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0006",
+    "chunk_id": "file-0006:chunk:3",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0013",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0006_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0007",
+    "chunk_id": "file-0007:chunk:4",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0014",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0007",
+    "chunk_id": "file-0007:chunk:0",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0015",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0008",
+    "chunk_id": "file-0008:chunk:1",
+    "path": "Northstar Workspace/External Collaboration/Document 0016",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0008",
+    "chunk_id": "file-0008:chunk:2",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0017",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0009",
+    "chunk_id": "file-0009:chunk:3",
+    "path": "Northstar Workspace/Public/Document 0018",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0009",
+    "chunk_id": "file-0009:chunk:4",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0019",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0010",
+    "chunk_id": "file-0010:chunk:0",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0020",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0010_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0010",
+    "chunk_id": "file-0010:chunk:1",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0021",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0010_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0011",
+    "chunk_id": "file-0011:chunk:2",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0022",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0011_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0011",
+    "chunk_id": "file-0011:chunk:3",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0023",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0012",
+    "chunk_id": "file-0012:chunk:4",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0024",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0012",
+    "chunk_id": "file-0012:chunk:0",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0025",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0013",
+    "chunk_id": "file-0013:chunk:1",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0026",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0013",
+    "chunk_id": "file-0013:chunk:2",
+    "path": "Blueharbor Workspace/Public/Document 0027",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0014",
+    "chunk_id": "file-0014:chunk:3",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0028",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0014",
+    "chunk_id": "file-0014:chunk:4",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0029",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0014_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0015",
+    "chunk_id": "file-0015:chunk:0",
+    "path": "Northstar Workspace/HR/Reviews/Document 0030",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0015_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0015",
+    "chunk_id": "file-0015:chunk:1",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0031",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0015_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0016",
+    "chunk_id": "file-0016:chunk:2",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0032",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0016",
+    "chunk_id": "file-0016:chunk:3",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0033",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0017",
+    "chunk_id": "file-0017:chunk:4",
+    "path": "Northstar Workspace/External Collaboration/Document 0034",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0017",
+    "chunk_id": "file-0017:chunk:0",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0035",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0018",
+    "chunk_id": "file-0018:chunk:1",
+    "path": "Northstar Workspace/Public/Document 0036",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0018",
+    "chunk_id": "file-0018:chunk:2",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0037",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0019",
+    "chunk_id": "file-0019:chunk:3",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0038",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0019_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0019",
+    "chunk_id": "file-0019:chunk:4",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0039",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0019_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0020",
+    "chunk_id": "file-0020:chunk:0",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0040",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0020_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0020",
+    "chunk_id": "file-0020:chunk:1",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0041",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0021",
+    "chunk_id": "file-0021:chunk:2",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0042",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0021",
+    "chunk_id": "file-0021:chunk:3",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0043",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0022",
+    "chunk_id": "file-0022:chunk:4",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0044",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0022",
+    "chunk_id": "file-0022:chunk:0",
+    "path": "Blueharbor Workspace/Public/Document 0045",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0023",
+    "chunk_id": "file-0023:chunk:1",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0046",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0023",
+    "chunk_id": "file-0023:chunk:2",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0047",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0023_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0024",
+    "chunk_id": "file-0024:chunk:3",
+    "path": "Northstar Workspace/HR/Reviews/Document 0048",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0024_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0024",
+    "chunk_id": "file-0024:chunk:4",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0049",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0024_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0025",
+    "chunk_id": "file-0025:chunk:0",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0050",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0025",
+    "chunk_id": "file-0025:chunk:1",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0051",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0026",
+    "chunk_id": "file-0026:chunk:2",
+    "path": "Northstar Workspace/External Collaboration/Document 0052",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0026",
+    "chunk_id": "file-0026:chunk:3",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0053",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0027",
+    "chunk_id": "file-0027:chunk:4",
+    "path": "Northstar Workspace/Public/Document 0054",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0027",
+    "chunk_id": "file-0027:chunk:0",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0055",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0028",
+    "chunk_id": "file-0028:chunk:1",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0056",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0028_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0028",
+    "chunk_id": "file-0028:chunk:2",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0057",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0028_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0029",
+    "chunk_id": "file-0029:chunk:3",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0058",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0029_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0029",
+    "chunk_id": "file-0029:chunk:4",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0059",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0030",
+    "chunk_id": "file-0030:chunk:0",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0060",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0030",
+    "chunk_id": "file-0030:chunk:1",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0061",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0031",
+    "chunk_id": "file-0031:chunk:2",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0062",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0031",
+    "chunk_id": "file-0031:chunk:3",
+    "path": "Blueharbor Workspace/Public/Document 0063",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0032",
+    "chunk_id": "file-0032:chunk:4",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0064",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0032",
+    "chunk_id": "file-0032:chunk:0",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0065",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0032_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0033",
+    "chunk_id": "file-0033:chunk:1",
+    "path": "Northstar Workspace/HR/Reviews/Document 0066",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0033_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0033",
+    "chunk_id": "file-0033:chunk:2",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0067",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0033_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0034",
+    "chunk_id": "file-0034:chunk:3",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0068",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0034",
+    "chunk_id": "file-0034:chunk:4",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0069",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0035",
+    "chunk_id": "file-0035:chunk:0",
+    "path": "Northstar Workspace/External Collaboration/Document 0070",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0035",
+    "chunk_id": "file-0035:chunk:1",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0071",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0036",
+    "chunk_id": "file-0036:chunk:2",
+    "path": "Northstar Workspace/Public/Document 0072",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0036",
+    "chunk_id": "file-0036:chunk:3",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0073",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0037",
+    "chunk_id": "file-0037:chunk:4",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0074",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0037_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0037",
+    "chunk_id": "file-0037:chunk:0",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0075",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0037_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0038",
+    "chunk_id": "file-0038:chunk:1",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0076",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0038_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0038",
+    "chunk_id": "file-0038:chunk:2",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0077",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0039",
+    "chunk_id": "file-0039:chunk:3",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0078",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0039",
+    "chunk_id": "file-0039:chunk:4",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0079",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0040",
+    "chunk_id": "file-0040:chunk:0",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0080",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0040",
+    "chunk_id": "file-0040:chunk:1",
+    "path": "Blueharbor Workspace/Public/Document 0081",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0041",
+    "chunk_id": "file-0041:chunk:2",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0082",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0041",
+    "chunk_id": "file-0041:chunk:3",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0083",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0041_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0042",
+    "chunk_id": "file-0042:chunk:4",
+    "path": "Northstar Workspace/HR/Reviews/Document 0084",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0042_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0042",
+    "chunk_id": "file-0042:chunk:0",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0085",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0042_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0043",
+    "chunk_id": "file-0043:chunk:1",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0086",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0043",
+    "chunk_id": "file-0043:chunk:2",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0087",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0044",
+    "chunk_id": "file-0044:chunk:3",
+    "path": "Northstar Workspace/External Collaboration/Document 0088",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0044",
+    "chunk_id": "file-0044:chunk:4",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0089",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0045",
+    "chunk_id": "file-0045:chunk:0",
+    "path": "Northstar Workspace/Public/Document 0090",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0045",
+    "chunk_id": "file-0045:chunk:1",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0091",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0046",
+    "chunk_id": "file-0046:chunk:2",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0092",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0046_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0046",
+    "chunk_id": "file-0046:chunk:3",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0093",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0046_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0047",
+    "chunk_id": "file-0047:chunk:4",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0094",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0047_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0047",
+    "chunk_id": "file-0047:chunk:0",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0095",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0048",
+    "chunk_id": "file-0048:chunk:1",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0096",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0048",
+    "chunk_id": "file-0048:chunk:2",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0097",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0049",
+    "chunk_id": "file-0049:chunk:3",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0098",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0049",
+    "chunk_id": "file-0049:chunk:4",
+    "path": "Blueharbor Workspace/Public/Document 0099",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0050",
+    "chunk_id": "file-0050:chunk:0",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0100",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0050",
+    "chunk_id": "file-0050:chunk:1",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0101",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0050_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0051",
+    "chunk_id": "file-0051:chunk:2",
+    "path": "Northstar Workspace/HR/Reviews/Document 0102",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0051_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0051",
+    "chunk_id": "file-0051:chunk:3",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0103",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0051_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0052",
+    "chunk_id": "file-0052:chunk:4",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0104",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0052",
+    "chunk_id": "file-0052:chunk:0",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0105",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0053",
+    "chunk_id": "file-0053:chunk:1",
+    "path": "Northstar Workspace/External Collaboration/Document 0106",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0053",
+    "chunk_id": "file-0053:chunk:2",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0107",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0054",
+    "chunk_id": "file-0054:chunk:3",
+    "path": "Northstar Workspace/Public/Document 0108",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0054",
+    "chunk_id": "file-0054:chunk:4",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0109",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0055",
+    "chunk_id": "file-0055:chunk:0",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0110",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0055_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0055",
+    "chunk_id": "file-0055:chunk:1",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0111",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0055_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0056",
+    "chunk_id": "file-0056:chunk:2",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0112",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0056_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0056",
+    "chunk_id": "file-0056:chunk:3",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0113",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0057",
+    "chunk_id": "file-0057:chunk:4",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0114",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0057",
+    "chunk_id": "file-0057:chunk:0",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0115",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0058",
+    "chunk_id": "file-0058:chunk:1",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0116",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0058",
+    "chunk_id": "file-0058:chunk:2",
+    "path": "Blueharbor Workspace/Public/Document 0117",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0059",
+    "chunk_id": "file-0059:chunk:3",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0118",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0059",
+    "chunk_id": "file-0059:chunk:4",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0119",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0059_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0060",
+    "chunk_id": "file-0060:chunk:0",
+    "path": "Northstar Workspace/HR/Reviews/Document 0120",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0060_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0060",
+    "chunk_id": "file-0060:chunk:1",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0121",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0060_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0061",
+    "chunk_id": "file-0061:chunk:2",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0122",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0061",
+    "chunk_id": "file-0061:chunk:3",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0123",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0062",
+    "chunk_id": "file-0062:chunk:4",
+    "path": "Northstar Workspace/External Collaboration/Document 0124",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0062",
+    "chunk_id": "file-0062:chunk:0",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0125",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0063",
+    "chunk_id": "file-0063:chunk:1",
+    "path": "Northstar Workspace/Public/Document 0126",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0063",
+    "chunk_id": "file-0063:chunk:2",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0127",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0064",
+    "chunk_id": "file-0064:chunk:3",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0128",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0064_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0064",
+    "chunk_id": "file-0064:chunk:4",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0129",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0064_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0065",
+    "chunk_id": "file-0065:chunk:0",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0130",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0065_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0065",
+    "chunk_id": "file-0065:chunk:1",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0131",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0066",
+    "chunk_id": "file-0066:chunk:2",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0132",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0066",
+    "chunk_id": "file-0066:chunk:3",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0133",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0067",
+    "chunk_id": "file-0067:chunk:4",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0134",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0067",
+    "chunk_id": "file-0067:chunk:0",
+    "path": "Blueharbor Workspace/Public/Document 0135",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0068",
+    "chunk_id": "file-0068:chunk:1",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0136",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0068",
+    "chunk_id": "file-0068:chunk:2",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0137",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0068_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0069",
+    "chunk_id": "file-0069:chunk:3",
+    "path": "Northstar Workspace/HR/Reviews/Document 0138",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0069_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0069",
+    "chunk_id": "file-0069:chunk:4",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0139",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0069_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0070",
+    "chunk_id": "file-0070:chunk:0",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0140",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0070",
+    "chunk_id": "file-0070:chunk:1",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0141",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0071",
+    "chunk_id": "file-0071:chunk:2",
+    "path": "Northstar Workspace/External Collaboration/Document 0142",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0071",
+    "chunk_id": "file-0071:chunk:3",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0143",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0072",
+    "chunk_id": "file-0072:chunk:4",
+    "path": "Northstar Workspace/Public/Document 0144",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0072",
+    "chunk_id": "file-0072:chunk:0",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0145",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0073",
+    "chunk_id": "file-0073:chunk:1",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0146",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0073_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0073",
+    "chunk_id": "file-0073:chunk:2",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0147",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0073_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0074",
+    "chunk_id": "file-0074:chunk:3",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0148",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0074_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0074",
+    "chunk_id": "file-0074:chunk:4",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0149",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0075",
+    "chunk_id": "file-0075:chunk:0",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0150",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0075",
+    "chunk_id": "file-0075:chunk:1",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0151",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0076",
+    "chunk_id": "file-0076:chunk:2",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0152",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0076",
+    "chunk_id": "file-0076:chunk:3",
+    "path": "Blueharbor Workspace/Public/Document 0153",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0077",
+    "chunk_id": "file-0077:chunk:4",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0154",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0077",
+    "chunk_id": "file-0077:chunk:0",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0155",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0077_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0078",
+    "chunk_id": "file-0078:chunk:1",
+    "path": "Northstar Workspace/HR/Reviews/Document 0156",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0078_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0078",
+    "chunk_id": "file-0078:chunk:2",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0157",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0078_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0079",
+    "chunk_id": "file-0079:chunk:3",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0158",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0079",
+    "chunk_id": "file-0079:chunk:4",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0159",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0080",
+    "chunk_id": "file-0080:chunk:0",
+    "path": "Northstar Workspace/External Collaboration/Document 0160",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0080",
+    "chunk_id": "file-0080:chunk:1",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0161",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0081",
+    "chunk_id": "file-0081:chunk:2",
+    "path": "Northstar Workspace/Public/Document 0162",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0081",
+    "chunk_id": "file-0081:chunk:3",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0163",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0082",
+    "chunk_id": "file-0082:chunk:4",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0164",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0082_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0082",
+    "chunk_id": "file-0082:chunk:0",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0165",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0082_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0083",
+    "chunk_id": "file-0083:chunk:1",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0166",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0083_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0083",
+    "chunk_id": "file-0083:chunk:2",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0167",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0084",
+    "chunk_id": "file-0084:chunk:3",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0168",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0084",
+    "chunk_id": "file-0084:chunk:4",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0169",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0085",
+    "chunk_id": "file-0085:chunk:0",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0170",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0085",
+    "chunk_id": "file-0085:chunk:1",
+    "path": "Blueharbor Workspace/Public/Document 0171",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0086",
+    "chunk_id": "file-0086:chunk:2",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0172",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0086",
+    "chunk_id": "file-0086:chunk:3",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0173",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0086_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0087",
+    "chunk_id": "file-0087:chunk:4",
+    "path": "Northstar Workspace/HR/Reviews/Document 0174",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0087_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0087",
+    "chunk_id": "file-0087:chunk:0",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0175",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0087_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0088",
+    "chunk_id": "file-0088:chunk:1",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0176",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0088",
+    "chunk_id": "file-0088:chunk:2",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0177",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0089",
+    "chunk_id": "file-0089:chunk:3",
+    "path": "Northstar Workspace/External Collaboration/Document 0178",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0089",
+    "chunk_id": "file-0089:chunk:4",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0179",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0090",
+    "chunk_id": "file-0090:chunk:0",
+    "path": "Northstar Workspace/Public/Document 0180",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0090",
+    "chunk_id": "file-0090:chunk:1",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0181",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0091",
+    "chunk_id": "file-0091:chunk:2",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0182",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0091_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0091",
+    "chunk_id": "file-0091:chunk:3",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0183",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0091_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0092",
+    "chunk_id": "file-0092:chunk:4",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0184",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0092_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0092",
+    "chunk_id": "file-0092:chunk:0",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0185",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0093",
+    "chunk_id": "file-0093:chunk:1",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0186",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0093",
+    "chunk_id": "file-0093:chunk:2",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0187",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0094",
+    "chunk_id": "file-0094:chunk:3",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0188",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0094",
+    "chunk_id": "file-0094:chunk:4",
+    "path": "Blueharbor Workspace/Public/Document 0189",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0095",
+    "chunk_id": "file-0095:chunk:0",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0190",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0095",
+    "chunk_id": "file-0095:chunk:1",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0191",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0095_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0096",
+    "chunk_id": "file-0096:chunk:2",
+    "path": "Northstar Workspace/HR/Reviews/Document 0192",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0096_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0096",
+    "chunk_id": "file-0096:chunk:3",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0193",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0096_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0097",
+    "chunk_id": "file-0097:chunk:4",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0194",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0097",
+    "chunk_id": "file-0097:chunk:0",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0195",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0098",
+    "chunk_id": "file-0098:chunk:1",
+    "path": "Northstar Workspace/External Collaboration/Document 0196",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0098",
+    "chunk_id": "file-0098:chunk:2",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0197",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0099",
+    "chunk_id": "file-0099:chunk:3",
+    "path": "Northstar Workspace/Public/Document 0198",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0099",
+    "chunk_id": "file-0099:chunk:4",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0199",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0100",
+    "chunk_id": "file-0100:chunk:0",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0200",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0100_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0100",
+    "chunk_id": "file-0100:chunk:1",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0201",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0100_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0101",
+    "chunk_id": "file-0101:chunk:2",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0202",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0101_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0101",
+    "chunk_id": "file-0101:chunk:3",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0203",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0102",
+    "chunk_id": "file-0102:chunk:4",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0204",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0102",
+    "chunk_id": "file-0102:chunk:0",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0205",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0103",
+    "chunk_id": "file-0103:chunk:1",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0206",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0103",
+    "chunk_id": "file-0103:chunk:2",
+    "path": "Blueharbor Workspace/Public/Document 0207",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0104",
+    "chunk_id": "file-0104:chunk:3",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0208",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0104",
+    "chunk_id": "file-0104:chunk:4",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0209",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0104_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0105",
+    "chunk_id": "file-0105:chunk:0",
+    "path": "Northstar Workspace/HR/Reviews/Document 0210",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0105_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0105",
+    "chunk_id": "file-0105:chunk:1",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0211",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0105_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0106",
+    "chunk_id": "file-0106:chunk:2",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0212",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0106",
+    "chunk_id": "file-0106:chunk:3",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0213",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0107",
+    "chunk_id": "file-0107:chunk:4",
+    "path": "Northstar Workspace/External Collaboration/Document 0214",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0107",
+    "chunk_id": "file-0107:chunk:0",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0215",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0108",
+    "chunk_id": "file-0108:chunk:1",
+    "path": "Northstar Workspace/Public/Document 0216",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0108",
+    "chunk_id": "file-0108:chunk:2",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0217",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0109",
+    "chunk_id": "file-0109:chunk:3",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0218",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0109_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0109",
+    "chunk_id": "file-0109:chunk:4",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0219",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0109_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0110",
+    "chunk_id": "file-0110:chunk:0",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0220",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0110_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0110",
+    "chunk_id": "file-0110:chunk:1",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0221",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0111",
+    "chunk_id": "file-0111:chunk:2",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0222",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0111",
+    "chunk_id": "file-0111:chunk:3",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0223",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0112",
+    "chunk_id": "file-0112:chunk:4",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0224",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0112",
+    "chunk_id": "file-0112:chunk:0",
+    "path": "Blueharbor Workspace/Public/Document 0225",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0113",
+    "chunk_id": "file-0113:chunk:1",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0226",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0113",
+    "chunk_id": "file-0113:chunk:2",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0227",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0113_v3_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0114",
+    "chunk_id": "file-0114:chunk:3",
+    "path": "Northstar Workspace/HR/Reviews/Document 0228",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0114_v4_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0114",
+    "chunk_id": "file-0114:chunk:4",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0229",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0114_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0115",
+    "chunk_id": "file-0115:chunk:0",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0230",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0115",
+    "chunk_id": "file-0115:chunk:1",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0231",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0116",
+    "chunk_id": "file-0116:chunk:2",
+    "path": "Northstar Workspace/External Collaboration/Document 0232",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0116",
+    "chunk_id": "file-0116:chunk:3",
+    "path": "Blueharbor Workspace/Shared Drive/Team-Engineering/Document 0233",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0117",
+    "chunk_id": "file-0117:chunk:4",
+    "path": "Northstar Workspace/Public/Document 0234",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0117",
+    "chunk_id": "file-0117:chunk:0",
+    "path": "Blueharbor Workspace/Engineering/Architecture/Document 0235",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0118",
+    "chunk_id": "file-0118:chunk:1",
+    "path": "Northstar Workspace/Engineering/Restricted/Document 0236",
+    "classification": "restricted",
+    "canary": "CANARY_NORTHSTAR_FILE_0118_v5_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0118",
+    "chunk_id": "file-0118:chunk:2",
+    "path": "Blueharbor Workspace/HR/Reviews/Document 0237",
+    "classification": "hr",
+    "canary": "CANARY_BLUEHARBOR_FILE_0118_v6_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0119",
+    "chunk_id": "file-0119:chunk:3",
+    "path": "Northstar Workspace/Finance/Forecasts/Document 0238",
+    "classification": "finance",
+    "canary": "CANARY_NORTHSTAR_FILE_0119_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0119",
+    "chunk_id": "file-0119:chunk:4",
+    "path": "Blueharbor Workspace/Sales/Pipeline/Document 0239",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0120",
+    "chunk_id": "file-0120:chunk:0",
+    "path": "Northstar Workspace/Projects/Shared Projects/Document 0240",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0120",
+    "chunk_id": "file-0120:chunk:1",
+    "path": "Blueharbor Workspace/External Collaboration/Document 0241",
+    "classification": "external",
+    "canary": null,
+    "allowed_subjects": [
+      "erin.external",
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0121",
+    "chunk_id": "file-0121:chunk:2",
+    "path": "Northstar Workspace/Shared Drive/Team-Engineering/Document 0242",
+    "classification": "shared-drive",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 5
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0121",
+    "chunk_id": "file-0121:chunk:3",
+    "path": "Blueharbor Workspace/Public/Document 0243",
+    "classification": "public",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "carol.finance",
+      "dan.new",
+      "sara.manager"
+    ],
+    "revision": 6
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0122",
+    "chunk_id": "file-0122:chunk:4",
+    "path": "Northstar Workspace/Engineering/Architecture/Document 0244",
+    "classification": "engineering",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "sara.manager"
+    ],
+    "revision": 7
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0122",
+    "chunk_id": "file-0122:chunk:0",
+    "path": "Blueharbor Workspace/Engineering/Restricted/Document 0245",
+    "classification": "restricted",
+    "canary": "CANARY_BLUEHARBOR_FILE_0122_v0_SYNTHETIC",
+    "allowed_subjects": [
+      "alice.eng"
+    ],
+    "revision": 1
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0123",
+    "chunk_id": "file-0123:chunk:1",
+    "path": "Northstar Workspace/HR/Reviews/Document 0246",
+    "classification": "hr",
+    "canary": "CANARY_NORTHSTAR_FILE_0123_v1_SYNTHETIC",
+    "allowed_subjects": [
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 2
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0123",
+    "chunk_id": "file-0123:chunk:2",
+    "path": "Blueharbor Workspace/Finance/Forecasts/Document 0247",
+    "classification": "finance",
+    "canary": "CANARY_BLUEHARBOR_FILE_0123_v2_SYNTHETIC",
+    "allowed_subjects": [
+      "carol.finance",
+      "sara.manager"
+    ],
+    "revision": 3
+  },
+  {
+    "tenant": "northstar.example",
+    "source_id": "northstar-drive",
+    "resource_id": "file-0124",
+    "chunk_id": "file-0124:chunk:3",
+    "path": "Northstar Workspace/Sales/Pipeline/Document 0248",
+    "classification": "sales",
+    "canary": null,
+    "allowed_subjects": [
+      "sara.manager"
+    ],
+    "revision": 4
+  },
+  {
+    "tenant": "blueharbor.example",
+    "source_id": "blueharbor-drive",
+    "resource_id": "file-0124",
+    "chunk_id": "file-0124:chunk:4",
+    "path": "Blueharbor Workspace/Projects/Shared Projects/Document 0249",
+    "classification": "project",
+    "canary": null,
+    "allowed_subjects": [
+      "alice.eng",
+      "bob.hr",
+      "sara.manager"
+    ],
+    "revision": 5
+  }
+]

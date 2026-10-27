@@ -1,0 +1,45 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+___ test_fake_customer_reconciliation_discovers_grant_then_drive_revokes_it ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f02a6a222a0>
+
+    @pytest.mark.asyncio
+    async def test_fake_customer_reconciliation_discovers_grant_then_drive_revokes_it(monkeypatch):
+        drive = VirtualDrive()
+        drive.files["protected-doc"] = []
+        monkeypatch.setattr(acl_sync, "GoogleDriveAdapter", lambda **_: drive)
+        db, src, alice = setup()
+        credentials = {"access_token": "fake", "test_root_folder_id": "root"}
+        try:
+            await acl_sync.synchronize_acls(db, src, credentials)
+            db.commit()
+            await drain(db)
+    
+            # Permission first appears during periodic missed-change reconciliation.
+            drive.files["protected-doc"] = [
+                {"id": "drive-perm-alice", "type": "user",
+                 "emailAddress": "alice@example.test", "role": "reader"}
+            ]
+            queued = await acl_sync.reconcile_known_acls(db, src, credentials)
+            db.commit()
+            await drain(db)
+            assert queued["events"] >= 1
+            assert effective(db, src, alice) == "allow"
+    
+            # Later a Drive change notification must override the reconciled grant.
+            drive.files["protected-doc"] = []
+            await acl_sync.synchronize_acls(db, src, credentials)
+            db.commit()
+            await drain(db)
+            grant = db.scalar(select(GuardPermissionGrant).where(
+                GuardPermissionGrant.grant_key == "google-drive:protected-doc:drive-perm-alice"
+            ))
+>           assert grant.active is False
+E           assert True is False
+E            +  where True = <apps.api.accessproof_api.db.GuardPermissionGrant object at 0x7f02a5999700>.active
+
+tests/security/test_twin_acl_revision_replay.py:162: AssertionError
+=========================== short test summary info ============================
+FAILED tests/security/test_twin_acl_revision_replay.py::test_fake_customer_reconciliation_discovers_grant_then_drive_revokes_it
+1 failed, 1 passed in 0.55s

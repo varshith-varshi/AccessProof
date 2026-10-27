@@ -1,0 +1,21 @@
+scenario,google_drive,sharepoint,onedrive,comments
+Google Drive direct user,SYNTHETIC_TESTED,NOT_APPLICABLE,NOT_APPLICABLE,"mock direct-grant ingestion, no live Workspace"
+Google Drive group,SYNTHETIC_TESTED,NOT_APPLICABLE,NOT_APPLICABLE,"group membership mock, scope limits"
+Google Drive shared drive,PARTIAL_SYNTHETIC,NOT_APPLICABLE,NOT_APPLICABLE,live Shared Drive coverage not certified
+Google Drive anyone/domain,UNSUPPORTED_FAIL_CLOSED,NOT_APPLICABLE,NOT_APPLICABLE,broad link not treated as employee authorization
+Google Drive shortcut/out-of-bound,SYNTHETIC_TESTED,NOT_APPLICABLE,NOT_APPLICABLE,shortcuts outside approved scope rejected
+Google Drive removal/revocation,SYNTHETIC_TESTED,NOT_APPLICABLE,NOT_APPLICABLE,simulated provider→policy revocation only
+Graph drive-item direct sharing,NOT_APPLICABLE,SHADOW_ONLY,SHADOW_ONLY,Graph permission snapshot not full source effective ACL
+Site/library inherited permissions,NOT_APPLICABLE,NOT_IMPLEMENTED,NOT_APPLICABLE,must integrate SharePoint REST/role inheritance oracle
+SharePoint native owners/members/visitors,NOT_APPLICABLE,NOT_IMPLEMENTED,NOT_APPLICABLE,SharePoint site groups not complete
+Custom SharePoint group/role mask,NOT_APPLICABLE,NOT_IMPLEMENTED,NOT_APPLICABLE,read-only mask probe synthetic only
+SharePoint list item REST probe,NOT_APPLICABLE,DIAGNOSTIC_SYNTHETIC,NOT_APPLICABLE,does not publish Guard ALLOW
+Entra security/M365 transitive groups,NOT_APPLICABLE,PARTIAL_SYNTHETIC,PARTIAL_SYNTHETIC,"Graph directory membership only, not native SharePoint"
+OneDrive owner/native rights,NOT_APPLICABLE,NOT_APPLICABLE,NOT_IMPLEMENTED,owner model absent
+OneDrive external guest/B2B,NOT_APPLICABLE,NOT_APPLICABLE,NOT_IMPLEMENTED,requires per-user direct oracle
+Anyone/organization/specific-people links,UNSUPPORTED_FAIL_CLOSED,NOT_IMPLEMENTED,NOT_IMPLEMENTED,link possession cannot be inferred from Graph
+Site/folder/item break and restore inheritance,NOT_APPLICABLE,NOT_IMPLEMENTED,NOT_IMPLEMENTED,requires native scope/oracle and live tests
+Moved-in/out/remoteItem,SYNTHETIC_TESTED,PARTIAL_SYNTHETIC,PARTIAL_SYNTHETIC,"remoteItem disallowed, boundary tested in fake adapter"
+Wrong tenant/resource ID,SYNTHETIC_TESTED,SYNTHETIC_TESTED,SYNTHETIC_TESTED,"stable identifier guards tested, external not proven"
+Source-specific signed certification,NOT_APPLICABLE,VERIFIER_ONLY_NO_ISSUER,VERIFIER_ONLY_NO_ISSUER,requires independent real-provider issuer; no customer toggle
+Actual customer RAG end-to-end route proof,NOT_IMPLEMENTED,NOT_IMPLEMENTED,NOT_IMPLEMENTED,private signed challenge and byte observer missing

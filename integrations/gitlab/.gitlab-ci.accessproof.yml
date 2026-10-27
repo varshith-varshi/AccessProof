@@ -1,0 +1,19 @@
+# Thin GitLab CI gate using the same AccessProof CLI/API as every other CI system.
+# Store ACCESSPROOF_API_TOKEN as a masked/protected CI variable with runs:create + runs:read scopes.
+accessproof_permission_regression:
+  image: python:3.13-slim
+  stage: test
+  variables:
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  before_script:
+    # Replace this with your published AccessProof CLI package/version in customer repos.
+    - pip install "accessproof==${ACCESSPROOF_CLI_VERSION}"
+  script:
+    - >-
+      accessproof run
+      "$ACCESSPROOF_PROJECT_ID"
+      "$ACCESSPROOF_SUITE_ID"
+      --release "${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
+      --git-sha "$CI_COMMIT_SHA"
+      --wait
+      --block-on-inconclusive

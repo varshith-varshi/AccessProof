@@ -1,0 +1,298 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: accessproof
+      POSTGRES_PASSWORD: accessproof
+      POSTGRES_DB: accessproof
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accessproof"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - accessproof_pg:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    profiles: ["full", "guard", "current"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
+      ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      ACCESSPROOF_ENV: development
+      ACCESSPROOF_CURRENT_DATABASE_URL: ${ACCESSPROOF_CURRENT_DATABASE_URL:-postgresql+psycopg://accessproof:accessproof@db:5432/accessproof_current}
+      REDIS_URL: redis://redis:6379/0
+      WEB_ORIGIN: http://localhost:3000
+      SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:-local-development-session-key-change-me}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-local-development-secret-key-change-me}
+    command: ["sh", "-c", "python /app/scripts/ensure_current_database.py && alembic upgrade head && uvicorn apps.api.accessproof_api.app:app --host 0.0.0.0 --port 8000"]
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  worker:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL: ${ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL:-}
+      ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS: ${ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS:-900}
+      ACCESSPROOF_CURRENT_DATABASE_URL: ${ACCESSPROOF_CURRENT_DATABASE_URL:-postgresql+psycopg://accessproof:accessproof@db:5432/accessproof_current}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-local-development-secret-key-change-me}
+      ACCESSPROOF_RLS_BYPASS: "1"
+    depends_on:
+      api: {condition: service_healthy}
+  web:
+    profiles: ["legacy"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_URL: http://api:8000
+    environment:
+      API_URL: http://api:8000
+    ports: ["127.0.0.1:${WEB_PORT:-3000}:3000"]
+    depends_on:
+      api: {condition: service_healthy}
+  web-v2:
+    profiles: ["current"]
+    build:
+      context: ./web-v2
+      dockerfile: Dockerfile
+    environment:
+      ACCESSPROOF_API_URL: http://api:8000
+    ports: ["127.0.0.1:${WEB_V2_PORT:-3001}:3000"]
+    depends_on:
+      api: {condition: service_healthy}
+  demo-ai:
+    profiles: ["demo-ai"]
+    build:
+      context: .
+      dockerfile: apps/demo_ai/Dockerfile
+    environment:
+      DEMO_AI_MODEL_BASE_URL: ${DEMO_AI_MODEL_BASE_URL:-}
+      DEMO_AI_MODEL_API_KEY: ${DEMO_AI_MODEL_API_KEY:-}
+      DEMO_AI_MODEL_NAME: ${DEMO_AI_MODEL_NAME:-}
+      DEMO_AI_SERVICE_TOKEN: ${DEMO_AI_SERVICE_TOKEN:-}
+      DEMO_AI_STALE_ACCESS_SECONDS: ${DEMO_AI_STALE_ACCESS_SECONDS:-90}
+      DEMO_AI_OIDC_ISSUER: ${DEMO_AI_OIDC_ISSUER:-}
+      DEMO_AI_OIDC_AUDIENCE: ${DEMO_AI_OIDC_AUDIENCE:-}
+      DEMO_AI_REQUIRE_OIDC: ${DEMO_AI_REQUIRE_OIDC:-0}
+      DEMO_AI_OIDC_REQUIRED_SCOPES: ${DEMO_AI_OIDC_REQUIRED_SCOPES:-}
+      DEMO_AI_OIDC_TENANT_ID: ${DEMO_AI_OIDC_TENANT_ID:-}
+    ports: ["127.0.0.1:${DEMO_AI_PORT:-8100}:8100"]
+  drive-rag:
+    profiles: ["drive-rag"]
+    build:
+      context: .
+      dockerfile: drive-rag-demo/Dockerfile
+    container_name: accessproof-drive-rag
+    environment:
+      DRIVE_OWNER_TOKEN: ${DRIVE_OWNER_TOKEN:-}
+      DRIVE_ROOT_FOLDER_ID: ${DRIVE_ROOT_FOLDER_ID:-}
+      ACCESSPROOF_DEMO_GOOGLE_CLIENT_ID: ${ACCESSPROOF_DEMO_GOOGLE_CLIENT_ID:-}
+      ACCESSPROOF_DEMO_GOOGLE_CLIENT_SECRET: ${ACCESSPROOF_DEMO_GOOGLE_CLIENT_SECRET:-}
+      ACCESSPROOF_DEMO_GOOGLE_HOSTED_DOMAIN: ${ACCESSPROOF_DEMO_GOOGLE_HOSTED_DOMAIN:-}
+      ACCESSPROOF_DEMO_GOOGLE_REDIRECT_URI: ${ACCESSPROOF_DEMO_GOOGLE_REDIRECT_URI:-}
+      ACCESSPROOF_DEMO_SOURCE_PROVIDER: ${ACCESSPROOF_DEMO_SOURCE_PROVIDER:-google}
+      ACCESSPROOF_DEMO_ENTRA_TENANT_ID: ${ACCESSPROOF_DEMO_ENTRA_TENANT_ID:-}
+      ACCESSPROOF_DEMO_ENTRA_CLIENT_ID: ${ACCESSPROOF_DEMO_ENTRA_CLIENT_ID:-}
+      ACCESSPROOF_DEMO_ENTRA_CLIENT_SECRET: ${ACCESSPROOF_DEMO_ENTRA_CLIENT_SECRET:-}
+      ACCESSPROOF_DEMO_ENTRA_DOMAIN: ${ACCESSPROOF_DEMO_ENTRA_DOMAIN:-}
+      ACCESSPROOF_DEMO_ENTRA_REDIRECT_URI: ${ACCESSPROOF_DEMO_ENTRA_REDIRECT_URI:-}
+      ACCESSPROOF_DEMO_ENTRA_ALICE_EMAIL: ${ACCESSPROOF_DEMO_ENTRA_ALICE_EMAIL:-}
+      ACCESSPROOF_DEMO_ENTRA_BOB_EMAIL: ${ACCESSPROOF_DEMO_ENTRA_BOB_EMAIL:-}
+      ALICE_EMAIL: ${ALICE_EMAIL:-}
+      ALICE_RAG_TOKEN: ${ALICE_RAG_TOKEN:-}
+      BOB_EMAIL: ${BOB_EMAIL:-}
+      BOB_RAG_TOKEN: ${BOB_RAG_TOKEN:-}
+      ACL_CACHE_SECONDS: ${ACL_CACHE_SECONDS:-20}
+      ACCESSPROOF_DEMO_ALLOW_LEGACY: ${ACCESSPROOF_DEMO_ALLOW_LEGACY:-0}
+      ACCESSPROOF_ENV: development
+      ACCESSPROOF_DEMO_GUARD_URL: ${ACCESSPROOF_DEMO_GUARD_URL:-http://guard:8080}
+      ACCESSPROOF_DEMO_SOURCE_ID: ${ACCESSPROOF_DEMO_SOURCE_ID:-}
+      ACCESSPROOF_DEMO_APPLICATION_ID: ${ACCESSPROOF_DEMO_APPLICATION_ID:-}
+      ACCESSPROOF_DEMO_REQUIRE_ATTESTED_CONTENT: ${ACCESSPROOF_DEMO_REQUIRE_ATTESTED_CONTENT:-0}
+      ACCESSPROOF_DEMO_ATTESTATION_TENANT: ${ACCESSPROOF_DEMO_ATTESTATION_TENANT:-}
+      ACCESSPROOF_DEMO_ATTESTATION_KEY_ID: ${ACCESSPROOF_DEMO_ATTESTATION_KEY_ID:-}
+      ACCESSPROOF_DEMO_ATTESTATION_PUBLIC_KEY_B64: ${ACCESSPROOF_DEMO_ATTESTATION_PUBLIC_KEY_B64:-}
+      ACCESSPROOF_DEMO_CACHE_URL: ${ACCESSPROOF_DEMO_CACHE_URL:-}
+      ACCESSPROOF_DEMO_CACHE_BACKEND: ${ACCESSPROOF_DEMO_CACHE_BACKEND:-}
+      ACCESSPROOF_DEMO_CACHE_SQLALCHEMY_URL: ${ACCESSPROOF_DEMO_CACHE_SQLALCHEMY_URL:-}
+      ACCESSPROOF_DEMO_CACHE_MEMCACHED_HOST: ${ACCESSPROOF_DEMO_CACHE_MEMCACHED_HOST:-}
+      ACCESSPROOF_DEMO_CACHE_MEMCACHED_PORT: ${ACCESSPROOF_DEMO_CACHE_MEMCACHED_PORT:-11211}
+      ACCESSPROOF_DEMO_CACHE_KEY_ID: ${ACCESSPROOF_DEMO_CACHE_KEY_ID:-}
+      ACCESSPROOF_DEMO_CACHE_PRIVATE_KEY_B64: ${ACCESSPROOF_DEMO_CACHE_PRIVATE_KEY_B64:-}
+      ACCESSPROOF_DEMO_TRUSTED_SNAPSHOT_PATH: ${ACCESSPROOF_DEMO_TRUSTED_SNAPSHOT_PATH:-}
+    volumes:
+      - trusted_drive_snapshots:/run/accessproof/trusted:ro
+    ports: ["127.0.0.1:${DRIVE_RAG_PORT:-8200}:8200"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  drive-rag-ingester:
+    # Opt-in only. Requires a CUSTOMER-OWNED signing key file, authorized Drive
+    # token, and explicitly approved root. Never shares the private key with RAG.
+    profiles: ["drive-rag-ingest"]
+    build:
+      context: .
+      dockerfile: drive-rag-demo/Dockerfile.ingester
+    environment:
+      ACCESSPROOF_GOOGLE_DRIVE_ACCESS_TOKEN: ${ACCESSPROOF_GOOGLE_DRIVE_ACCESS_TOKEN:-}
+      ACCESSPROOF_GOOGLE_DRIVE_CREDENTIALS_FILE: ${ACCESSPROOF_GOOGLE_DRIVE_CREDENTIALS_FILE:-}
+    command:
+      - python
+      - -m
+      - connectors.google_drive.snapshot_agent
+      - --root-folder-id
+      - ${DRIVE_ROOT_FOLDER_ID:-}
+      - --tenant-id
+      - ${ACCESSPROOF_DEMO_ATTESTATION_TENANT:-}
+      - --application-id
+      - ${ACCESSPROOF_DEMO_APPLICATION_ID:-}
+      - --source-id
+      - ${ACCESSPROOF_DEMO_SOURCE_ID:-}
+      - --key-id
+      - ${ACCESSPROOF_DEMO_ATTESTATION_KEY_ID:-}
+      - --private-key
+      - /run/secrets/drive-ingestion-signing.key
+      - --output
+      - /run/accessproof/trusted/drive.snapshot.json
+      - --interval-seconds
+      - "60"
+    volumes:
+      - trusted_drive_snapshots:/run/accessproof/trusted
+      - ${ACCESSPROOF_DEMO_SOURCE_SIGNING_KEY_PATH:-./.secrets/missing-drive-ingestion-signing.key}:/run/secrets/drive-ingestion-signing.key:ro
+      - ${ACCESSPROOF_DEMO_GOOGLE_CREDENTIALS_DIR:-./.secrets}:/run/secrets/google-oauth
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: unless-stopped
+  sharepoint-rag-ingester:
+    # Customer-side Microsoft Graph app credentials and signing key never
+    # enter the RAG, LLM, web or Gateway containers.
+    profiles: ["sharepoint-rag-ingest"]
+    build:
+      context: .
+      dockerfile: drive-rag-demo/Dockerfile.ingester
+    environment:
+      ACCESSPROOF_MICROSOFT_CLIENT_ID: ${ACCESSPROOF_MICROSOFT_CLIENT_ID:-}
+      ACCESSPROOF_MICROSOFT_CLIENT_SECRET: ${ACCESSPROOF_MICROSOFT_CLIENT_SECRET:-}
+    command:
+      - python
+      - -m
+      - connectors.microsoft365.snapshot_agent
+      - --tenant-id
+      - ${ACCESSPROOF_MICROSOFT_TENANT_ID:-}
+      - --site-id
+      - ${ACCESSPROOF_SHAREPOINT_SITE_ID:-}
+      - --list-id
+      - ${ACCESSPROOF_SHAREPOINT_LIST_ID:-}
+      - --drive-id
+      - ${ACCESSPROOF_SHAREPOINT_DRIVE_ID:-}
+      - --root-folder-id
+      - ${ACCESSPROOF_SHAREPOINT_ROOT_ITEM_ID:-}
+      - --application-id
+      - ${ACCESSPROOF_DEMO_APPLICATION_ID:-}
+      - --source-id
+      - ${ACCESSPROOF_DEMO_SOURCE_ID:-}
+      - --key-id
+      - ${ACCESSPROOF_DEMO_ATTESTATION_KEY_ID:-}
+      - --private-key
+      - /run/secrets/sharepoint-ingestion-signing.key
+      - --output
+      - /run/accessproof/trusted/sharepoint.snapshot.json
+      - --interval-seconds
+      - "60"
+    volumes:
+      - trusted_drive_snapshots:/run/accessproof/trusted
+      - ${ACCESSPROOF_DEMO_SOURCE_SIGNING_KEY_PATH:-./.secrets/missing-drive-ingestion-signing.key}:/run/secrets/sharepoint-ingestion-signing.key:ro
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: unless-stopped
+  runner:
+    profiles: ["runner"]
+    build:
+      context: .
+      dockerfile: apps/runner/Dockerfile
+    environment:
+      ACCESSPROOF_API_URL: ${ACCESSPROOF_API_URL:-http://api:8000}
+      ACCESSPROOF_RUNNER_ID: ${ACCESSPROOF_RUNNER_ID:-}
+      ACCESSPROOF_RUNNER_SECRET: ${ACCESSPROOF_RUNNER_SECRET:-}
+      ACCESSPROOF_RUNNER_STATE_DIR: /app/.accessproof-runner
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - runner_state:/app/.accessproof-runner
+  guard:
+    profiles: ["guard"]
+    build:
+      context: .
+      dockerfile: apps/guard/Dockerfile
+    environment:
+      ACCESSPROOF_GUARD_CONTROL_PLANE_URL: ${ACCESSPROOF_GUARD_CONTROL_PLANE_URL:-http://api:8000}
+      ACCESSPROOF_GUARD_ID: ${ACCESSPROOF_GUARD_ID:-}
+      ACCESSPROOF_GUARD_CREDENTIAL: ${ACCESSPROOF_GUARD_CREDENTIAL:-}
+      ACCESSPROOF_GUARD_JWT_ISSUER: ${ACCESSPROOF_GUARD_JWT_ISSUER:-}
+      ACCESSPROOF_GUARD_JWT_AUDIENCE: ${ACCESSPROOF_GUARD_JWT_AUDIENCE:-}
+      ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY: ${ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY:-}
+      ACCESSPROOF_GUARD_IDENTITY_MODE: ${ACCESSPROOF_GUARD_IDENTITY_MODE:-oidc}
+      ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM: ${ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM:-sub}
+      ACCESSPROOF_GUARD_IDENTITY_TENANT_ID: ${ACCESSPROOF_GUARD_IDENTITY_TENANT_ID:-}
+      ACCESSPROOF_GUARD_IDENTITY_CACHE_SECONDS: ${ACCESSPROOF_GUARD_IDENTITY_CACHE_SECONDS:-300}
+      ACCESSPROOF_GUARD_MODE: ${ACCESSPROOF_GUARD_MODE:-protect}
+      ACCESSPROOF_GUARD_FAIL_MODE: ${ACCESSPROOF_GUARD_FAIL_MODE:-fail_closed}
+    volumes:
+      - guard_state:/var/lib/accessproof-guard
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:${GUARD_PORT:-8080}:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+  gateway:
+    profiles: ["gateway"]
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
+    environment:
+      ACCESSPROOF_GATEWAY_GUARD_URL: ${ACCESSPROOF_GATEWAY_GUARD_URL:-http://guard:8080}
+      ACCESSPROOF_GATEWAY_MODEL_URL: ${ACCESSPROOF_GATEWAY_MODEL_URL:-}
+      ACCESSPROOF_GATEWAY_MODEL_PROVIDER: ${ACCESSPROOF_GATEWAY_MODEL_PROVIDER:-openai-compatible}
+      ACCESSPROOF_GATEWAY_APPLICATION_ID: ${ACCESSPROOF_GATEWAY_APPLICATION_ID:-}
+      ACCESSPROOF_GATEWAY_TENANT_ID: ${ACCESSPROOF_GATEWAY_TENANT_ID:-}
+      ACCESSPROOF_GATEWAY_MODEL_NAME: ${ACCESSPROOF_GATEWAY_MODEL_NAME:-}
+      ACCESSPROOF_GATEWAY_MODEL_BEARER_TOKEN: ${ACCESSPROOF_GATEWAY_MODEL_BEARER_TOKEN:-}
+      ACCESSPROOF_GATEWAY_MAX_REQUEST_BYTES: ${ACCESSPROOF_GATEWAY_MAX_REQUEST_BYTES:-12000000}
+      ACCESSPROOF_GATEWAY_SYSTEM_INSTRUCTION: ${ACCESSPROOF_GATEWAY_SYSTEM_INSTRUCTION:-}
+      ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON: ${ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON:-}
+      ACCESSPROOF_GATEWAY_CACHE_PUBLIC_KEYS_JSON: ${ACCESSPROOF_GATEWAY_CACHE_PUBLIC_KEYS_JSON:-}
+      ACCESSPROOF_GATEWAY_SOURCE_SNAPSHOTS_JSON: ${ACCESSPROOF_GATEWAY_SOURCE_SNAPSHOTS_JSON:-}
+      ACCESSPROOF_GATEWAY_MAX_RESPONSE_BYTES: ${ACCESSPROOF_GATEWAY_MAX_RESPONSE_BYTES:-1000000}
+    volumes:
+      - trusted_drive_snapshots:/run/accessproof/trusted:ro
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8090}:8090"]
+volumes:
+  trusted_drive_snapshots:
+  accessproof_pg:
+  runner_state:
+  guard_state:

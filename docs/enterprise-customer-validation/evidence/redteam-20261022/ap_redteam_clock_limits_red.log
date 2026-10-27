@@ -1,0 +1,91 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+____________ test_future_dated_policy_sync_does_not_hide_stale_acl _____________
+
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-75/test_future_dated_policy_sync_0')
+
+    def test_future_dated_policy_sync_does_not_hide_stale_acl(tmp_path):
+        policy = PolicyCache(str(tmp_path / "future-policy.db"))
+        policy.install(1, [{
+            "subject_id": "alice", "source_id": "source", "resource_id": "private",
+            "scope": "read", "decision": "allow",
+        }])
+        policy.set_application_bindings([{
+            "application_id": "rag", "source_id": "source", "mode": "protect",
+            "source_acl_healthy": True,
+        }])
+        policy.mark_sync_success()
+        # Clock jumped backward or persisted timestamp was from a future clock:
+        # the previous implementation clamped negative ages to zero forever.
+        future = (datetime.now(timezone.utc) + timedelta(days=180)).isoformat()
+        with policy.db:
+            policy.db.execute(
+                "UPDATE metadata SET value=? WHERE key='last_policy_sync'", (future,),
+            )
+>       assert policy.sync_age_seconds() is None
+E       assert 0.0 is None
+E        +  where 0.0 = sync_age_seconds()
+E        +    where sync_age_seconds = <apps.guard.accessproof_guard.cache.PolicyCache object at 0x71e1de3a33e0>.sync_age_seconds
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:33: AssertionError
+___________ test_unbounded_filter_batch_must_be_rejected_before_work ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x71e1de3dbda0>
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-75/test_unbounded_filter_batch_mu0')
+
+    def test_unbounded_filter_batch_must_be_rejected_before_work(monkeypatch, tmp_path):
+        policy = PolicyCache(str(tmp_path / "batch.db"))
+        policy.mark_sync_success()
+        policy.set_application_bindings([{
+            "application_id": "rag", "source_id": "source", "mode": "protect",
+            "source_acl_healthy": True,
+        }])
+        monkeypatch.setattr(guard_app, "cache", policy)
+        # The request is intentionally missing identity to ensure oversized
+        # batches are rejected by schema validation BEFORE any identity/ACL work.
+        with TestClient(guard_app.app) as client:
+            result = client.post("/guard/v1/filter-resources", json={
+                "application_id": "rag", "request_id": "oversized",
+                "resources": [
+                    {"source_id": "source", "resource_id": f"file-{i}"}
+                    for i in range(5001)
+                ],
+            })
+>       assert result.status_code == 422
+E       assert 401 == 422
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:55: AssertionError
+______________ test_unbounded_layer2_provenance_must_be_rejected _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x71e1de3dbf20>
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-75/test_unbounded_layer2_provenan0')
+
+    def test_unbounded_layer2_provenance_must_be_rejected(monkeypatch, tmp_path):
+        policy = PolicyCache(str(tmp_path / "layer2-batch.db"))
+        monkeypatch.setattr(guard_app, "cache", policy)
+        with TestClient(guard_app.app) as client:
+            result = client.post("/guard/v1/check-output", json={
+                "decision_id": "synthetic", "application_id": "rag",
+                "request_id": "oversized",
+                "provenance": [
+                    {"source_resource_ids": [f"file-{i}"]}
+                    for i in range(5001)
+                ],
+            })
+>       assert result.status_code == 422
+E       assert 401 == 422
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:70: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_future_dated_policy_sync_does_not_hide_stale_acl
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_unbounded_filter_batch_must_be_rejected_before_work
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_unbounded_layer2_provenance_must_be_rejected
+3 failed, 1 warning in 0.37s

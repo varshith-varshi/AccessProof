@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew AccessProof TLS certificate
+After=docker.service network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/accessproof
+ExecStart=/bin/sh -ec 'docker compose -f docker-compose.ec2.yml stop nginx; status=0; docker run --rm -p 80:80 -v accessproof_accessproof_letsencrypt:/etc/letsencrypt certbot/certbot:latest renew --standalone || status=$?; docker compose -f docker-compose.ec2.yml up -d nginx; exit $$status'

@@ -1,0 +1,39 @@
+phase,status,evidence_or_gap,file_or_log
+00,PASS_LOCAL,"test process isolation, preserved user files",tests/conftest.py; git baseline
+01,PASS_UI,one-click UI without manual IDs; no activation claimed,web-v2/e2e/web-v2.spec.ts
+02,PARTIAL,preflight/idempotency/tenant isolation works; no challenge completion,tests/integration/test_automatic_protection_preflight.py
+03,PARTIAL,"Guard/source health checks, no customer route proof",apps/api/accessproof_api/app.py
+04,PARTIAL,Guard policy ACK tested via isolated fixture,tests/integration/test_guard_protection_hardening.py
+05,BLOCKED_NOT_IMPLEMENTED,no machine challenge queue/nonce signature,apps/guard/accessproof_guard/sync.py
+06,BLOCKED_NOT_IMPLEMENTED,real customer route coverage hook absent,packages/rag_sdk/protection.py
+07,PASS_SYNTHETIC_ONLY,authorized Guard/RAG route local test,tests/integration/test_customer_lifecycle_over_http.py
+08,PASS_SYNTHETIC_ONLY,denied document before model in local Guard,tests/security/test_adversarial_guard_boundaries.py
+09,PASS_SYNTHETIC_ONLY,unknown/late provenance denies,tests/unit/test_layer2_late_sources.py
+10,PARTIAL,"SDK buffering tests, no actual HTTP output bytes observer",tests/unit/test_rag_sdk.py
+11,PARTIAL,"synthetic OIDC/JWKS/mapping tests, no external IdP",tests/unit/test_guard_oidc.py
+12,PARTIAL,existing worker durability local; no challenge lease/worker,apps/worker/accessproof_worker/main.py
+13,PASS_SYNTHETIC_ONLY,"provider ACL delta/revoke mocks, no real provider",tests/security/test_twin_acl_revision_replay.py
+14,PASS_UI,desktop/mobile E2E; 25 pass 1 skipped,web-v2/e2e/web-v2.spec.ts
+15,PARTIAL,"API tenant isolation unit test, broader abuse/load incomplete",tests/integration/test_automatic_protection_preflight.py
+16,NOT_RUN,no semver Guard installer release built,packaging/guard/
+17,NOT_RUN,no 10k/100k two-worker stress recorded,tests/load/
+18,NOT_RUN,no long soak/outage/fault injection this session,no evidence
+19,PARTIAL,synthetic HTTP lifecycle; click remains Action required,tests/integration/test_customer_lifecycle_over_http.py
+20,PASS_SQLITE_ONLY,new migrations isolated SQLite U-D-U; not PostgreSQL,/tmp/accessproof_v2_new_migration.log
+21,PARTIAL,"manual evidence cannot bypass, actual anti-fraud agent absent",tests/integration/test_automatic_protection_preflight.py
+22,PARTIAL,docs produced with open blockers; customer support not tested,docs/auto-protection-v2-readiness-20261022/
+23,PASS_LOCAL,"450 Python, 7 TypeScript, Next build, 25/1 E2E",09_TEST_RESULTS.md
+24,PARTIAL,"red/green tests real, mocks not provider certification",13_CONFIRMED_FOUR_BUGS_RED_GREEN.md
+25,NO_GO,hard release gate remains unmet,12_FINAL_RELEASE_VERDICT.md
+26,PASS_LOCAL,4 adversarial bugs RED→GREEN,tests/security/test_unified_v2_four_regressions.py
+27,BLOCKED_NOT_IMPLEMENTED,native site/library/folder/item oracle absent,connectors/microsoft365/sharepoint_effective.py
+28,PARTIAL,Entra transitive groups synthetic; SharePoint native/guests not complete,tests/security/test_microsoft_group_multi_member_revocation.py
+29,BLOCKED_NOT_IMPLEMENTED,OneDrive owner/link possession semantics unsupported,16_SHAREPOINT_ONEDRIVE_PERMISSIONS_IMPLEMENTATION.md
+30,PARTIAL,Graph inventory/delta/local reconciliation tests pass,tests/security/test_microsoft_graph_delta_boundary.py
+31,PARTIAL,admin-consent scope & mock token; actual Microsoft not run,tests/integration/test_microsoft_admin_consent.py
+32,PARTIAL,"stable mapped OIDC tests synthetic, not external IdP",tests/integration/test_guard_identity_mappings.py
+33,PARTIAL,"source-specific signed verifier/preflight, no issuance/Guard active cert",tests/security/test_source_effective_certification.py
+34,PASS_SYNTHETIC_ONLY,Google ACL/source scope regression,tests/unit/test_google_drive_v1_security.py
+35,BLOCKED_NOT_IMPLEMENTED,customer challenge and release-byte observer absent,03_API_AND_DB_MIGRATION.md
+36,NOT_RUN,production HA/load/failure injection not executed,10_PRODUCTION_GAPS_AND_EXTERNAL_VALIDATION.md
+37,NO_GO_REAL_PROVIDER,no authorized Microsoft tenant or real customer pilot,18_MICROSOFT_REAL_TENANT_VALIDATION_RUNBOOK.md

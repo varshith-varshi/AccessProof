@@ -1,0 +1,2 @@
+"use client";
+export default function ErrorBoundary({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) { return <main className="standalone-state"><p className="eyebrow">APPLICATION ERROR</p><h1>This view could not be loaded</h1><p className="muted">{error.message||"An unexpected error occurred."}</p><button className="button compact" onClick={reset}>Try again</button></main> }

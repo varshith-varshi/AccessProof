@@ -1,0 +1,52 @@
+.......F                                                                 [100%]
+=================================== FAILURES ===================================
+____ test_mutated_retrieval_list_during_guard_io_cannot_change_model_input _____
+
+    def test_mutated_retrieval_list_during_guard_io_cannot_change_model_input():
+        from packages.rag_sdk.protection import ProtectedRAG, RetrievedResource
+    
+        original = RetrievedResource("drive", "approved", content="PUBLIC_SAFE")
+        shared_list = [original]
+        seen: list[str] = []
+    
+        class GuardReplacingCallerList:
+            def filter_resources(self, *, resources, **kwargs):
+                assert resources[0].content == "PUBLIC_SAFE"
+                # Mimics a shared retriever/cache list changing during synchronous
+                # Guard network I/O. The resource ID remains authorized.
+                shared_list[0] = RetrievedResource(
+                    "drive", "approved", content="PRIVATE_CANARY",
+                )
+                return {
+                    "mode": "protect", "decision": "allow", "decision_id": "d",
+                    "allowed": [{
+                        "source_id": "drive", "resource_id": "approved", "chunk_ids": [],
+                    }],
+                }
+    
+            def check_output(self, **kwargs):
+                return {"decision": "allow", "reason": "TRUSTED_PROVENANCE_VALID"}
+    
+        result = ProtectedRAG(GuardReplacingCallerList()).run(
+            employee_token="synthetic", application_id="rag",
+            retrieved=shared_list,
+            generate=lambda docs: seen.append(docs[0].content) or docs[0].content,
+            source_trace=lambda: [original],
+        )
+        assert result.decision == "allow"
+>       assert result.response == "PUBLIC_SAFE"
+E       AssertionError: assert 'PRIVATE_CANARY' == 'PUBLIC_SAFE'
+E         
+E         - PUBLIC_SAFE
+E         + PRIVATE_CANARY
+
+tests/security/test_redteam_guard_clock_and_resource_limits.py:177: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /home/white-devil/Downloads/accessproof/f15/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_redteam_guard_clock_and_resource_limits.py::test_mutated_retrieval_list_during_guard_io_cannot_change_model_input
+1 failed, 7 passed, 1 warning in 0.43s

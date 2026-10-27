@@ -1,0 +1,99 @@
+{
+  "created_at_utc": "2026-10-23T17:55:13.997186+00:00",
+  "environment": "local_disposable_sqlite_plus_mock_provider_http",
+  "production_contacted": false,
+  "customer_data_used": false,
+  "scenario_catalogue_individually_executed": false,
+  "three_customer_journey_source": "google-drive-synthetic-only",
+  "framework_adapter_forms": [
+    "generic-python",
+    "langchain-python",
+    "llamaindex-python"
+  ],
+  "stages": [
+    {
+      "name": "three_customer_http_journeys",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 5,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/three_customer_http_journeys.log"
+    },
+    {
+      "name": "provider_contract_and_chaos",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 20,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/provider_contract_and_chaos.log"
+    },
+    {
+      "name": "identity_revoke_isolation",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 55,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/identity_revoke_isolation.log"
+    },
+    {
+      "name": "sdk_source_integrity_and_release",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 40,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/sdk_source_integrity_and_release.log"
+    },
+    {
+      "name": "source_attestation_sse_and_route_observer",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 36,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/source_attestation_sse_and_route_observer.log"
+    },
+    {
+      "name": "activation_certification",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 4,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/activation_certification.log"
+    },
+    {
+      "name": "ten_thousand_policy_records_and_load",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "expected_failures": 0,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/ten_thousand_policy_records_and_load.log"
+    },
+    {
+      "name": "complete_python_regression",
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 665,
+      "failed": 0,
+      "expected_failures": 1,
+      "skipped": 0,
+      "log": "customer_simulation/evidence/executed-20261022/complete_python_regression.log"
+    }
+  ],
+  "external_provider_checks": "BLOCKED",
+  "customer_protect_certification": "BLOCKED",
+  "known_provenance_integrity_gap": "UNRESOLVED_STRICT_XFAIL",
+  "global_verdict": "LOCAL_SYNTHETIC_ONLY_NOT_CUSTOMER_PROTECT"
+}

@@ -1,0 +1,69 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_layer2_rejects_context_from_previous_source_after_rebinding _______
+
+tmp_path = PosixPath('/dev/shm/pytest-of-white-devil/pytest-51/test_layer2_rejects_context_fr0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74bf52477e60>
+
+    def test_layer2_rejects_context_from_previous_source_after_rebinding(tmp_path, monkeypatch):
+        policy = PolicyCache(str(tmp_path / "source-rebind.db"))
+        key = "synthetic-bind-key-with-more-than-32-characters"
+        policy.install(1, [
+            {"subject_id": "alice", "source_id": "drive-tenant-a",
+             "resource_id": "same-local-id", "decision": "allow"},
+            {"subject_id": "alice", "source_id": "drive-tenant-b",
+             "resource_id": "same-local-id", "decision": "allow"},
+        ])
+        policy.set_application_bindings([{
+            "application_id": "rag", "source_id": "drive-tenant-a",
+            "mode": "protect", "source_acl_healthy": True,
+        }])
+        policy.mark_sync_success()
+        for attr, value in {
+            "cache": policy, "identity_mode": "static", "issuer": "https://local",
+            "audience": "rag", "verification_key": key, "expected_tenant": None,
+            "subject_claim": "sub", "max_policy_age_seconds": 300,
+        }.items():
+            monkeypatch.setattr(guard_app, attr, value)
+        token = jwt.encode({
+            "sub": "alice", "iss": "https://local", "aud": "rag",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        }, key, algorithm="HS256")
+        headers = {"Authorization": f"Bearer {token}"}
+        with TestClient(guard_app.app) as client:
+            first = client.post("/guard/v1/filter-resources", headers=headers, json={
+                "application_id": "rag", "request_id": "source-switch",
+                "resources": [{"source_id": "drive-tenant-a", "resource_id": "same-local-id"}],
+            })
+            assert first.status_code == 200
+            assert first.json()["decision"] == "allow"
+            # A trusted sync updates the app binding, without revoking either source.
+            # Old model output from drive-tenant-a must not be reinterpreted as B.
+            policy.set_application_bindings([{
+                "application_id": "rag", "source_id": "drive-tenant-b",
+                "mode": "protect", "source_acl_healthy": True,
+            }])
+            policy.mark_sync_success()
+            output = client.post("/guard/v1/check-output", headers=headers, json={
+                "application_id": "rag", "request_id": "source-switch",
+                "decision_id": first.json()["decision_id"],
+                "used_resource_ids": ["same-local-id"],
+                "provenance": [{"source_resource_ids": ["same-local-id"]}],
+            })
+            assert output.status_code == 200
+>           assert output.json()["decision"] == "block", output.json()
+E           AssertionError: {'decision': 'allow', 'reason': 'TRUSTED_PROVENANCE_VALID', 'policy_version': 1}
+E           assert 'allow' == 'block'
+E             
+E             - block
+E             + allow
+
+tests/security/test_cross_source_context_binding.py:57: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:45
+  /tmp/accessproof-redteam-20261020/repo/.venv/lib/python3.12/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/security/test_cross_source_context_binding.py::test_layer2_rejects_context_from_previous_source_after_rebinding

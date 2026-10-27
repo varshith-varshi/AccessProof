@@ -1,0 +1,3 @@
+# Implemented product contract
+
+AccessProof V1 connects a Google Drive permission source, normalizes direct user and synchronised Google Workspace group grants, publishes tenant/source-bound policy to a customer Guard, and applies that policy before RAG generation and again before buffered output release. Drive `domain` and `anyone` links, shortcuts, and uninstrumented RAG routes are deliberately unsupported or fail closed. Browser Google OAuth consent is assisted-pilot configuration, not public self-service OAuth. Real provider effective permissions, Shared Drive edge cases, and unattended OAuth refresh need a disposable Google Workspace sandbox validation.

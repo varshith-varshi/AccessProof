@@ -1,0 +1,23 @@
+services:
+  accessproof-gateway:
+    image: ${ACCESSPROOF_GATEWAY_IMAGE:-accessproof-gateway:0.1.0}
+    restart: unless-stopped
+    # The installer creates this file from .env.example.  Keeping it optional
+    # lets `docker compose config` validate a freshly unpacked package without
+    # injecting placeholder values into a running container.
+    env_file:
+      - path: .env
+        required: false
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 100
+    mem_limit: 512m
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:${ACCESSPROOF_GATEWAY_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3

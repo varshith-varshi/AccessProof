@@ -1,0 +1,12 @@
+# Customer Gateway integration — supported V2 path (2026-10-27)
+
+1. Provision an AccessProof organization and an enrolled, healthy Guard on a customer-controlled network. Register each source connector with tenant binding and least-privilege credentials. Credentials stay in the trusted connector/runner; never place an employee password or administrator secret in RAG prompts.
+2. Register an AI application from web-v2 → AI applications and select one or more authorized sources. Only approved sources are bound; unauthorized source IDs are rejected. Confirm a database upgrade to Alembic head `n7a2b4c6d801` before using multi-source registration.
+3. Provision a trusted source-ingestion process that verifies provider origin and signs each content chunk, including tenant, application, source, resource ID, chunk ID, content version and content digest. Pin the ingestion service public keys on the Gateway.
+4. Configure the customer's compatible model endpoint to reach the Gateway. Set the normal `ACCESSPROOF_GATEWAY_*` variables, including Guard URL, model URL, tenant ID, application ID and public key JSON. For a multi-source app with a request that may contain just one selected source, set `ACCESSPROOF_GATEWAY_MULTISOURCE_GUARD_V2=true`; protect *every* supported response path.
+5. Call the source-snapshot endpoint `POST /v1/snapshots/chat/completions` with `application_id`, `employee_question`, `source_ids` and a legitimate bearer token for the employee. Multi-source requests route to Guard V2; allowed chunks alone enter the model, then buffered output is checked by Guard V2. Unsupported, malformed or untraceable requests fail closed.
+6. Repeat signed allow, deny, cross-user, source revoke, in-flight revoke, cache replay, rate-limit and alternate-output tests on the **actual customer route**. Record Guard audit event IDs and route-manifest digests.
+7. Explicitly approve cutover only after all customer-specific checks pass. The current multi-source activation preflight intentionally remains blocked pending real mixed-route certification evidence. Never treat a locally green result as authorization to cut over live traffic.
+
+### Important constraints
+This is an explicit **supported contract**, not guaranteed zero-code integration. If a customer RAG cannot deliver authenticated users and independently signed retrieval provenance or has unobservable cache/tool/stream routes, it is not compatible without modifications. Do not reconstruct document authority from prompt text or accept user-supplied permission flags.
