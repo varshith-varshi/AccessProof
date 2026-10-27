@@ -314,3 +314,10 @@ def test_unrelated_service_inheriting_unknown_container_volumes_is_not_certifiab
     }
     with pytest.raises(NetworkBoundaryError, match="host runtime/control"):
         _check(config)
+
+
+def test_rag_published_host_port_blocks_reference_certification():
+    config = _compose()
+    config["services"]["customer-rag"]["ports"] = ["127.0.0.1:18200:8200"]
+    with pytest.raises(NetworkBoundaryError, match="published ports"):
+        _check(config)

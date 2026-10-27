@@ -105,6 +105,12 @@ def verify_reference_compose_isolation(
     elif (not model_name or not isinstance(model, dict) or
           parsed.scheme not in {"http", "https"}):
         raise NetworkBoundaryError("Reference certification requires an in-stack model service")
+    # Publishing a RAG HTTP port outside the isolated bridge exposes any
+    # unprotected cache/legacy/tool endpoint without ever calling Gateway.
+    # Gateway must be the sole employee-facing response ingress in this
+    # strict reference topology, including localhost deployments.
+    if rag.get("ports"):
+        raise NetworkBoundaryError("RAG published ports can bypass Gateway protection")
     rag_networks = _network_names(rag)
     gateway_networks = _network_names(gateway)
     # In the non-native branch above the model must be an in-stack service.
