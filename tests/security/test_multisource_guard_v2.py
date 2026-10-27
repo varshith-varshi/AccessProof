@@ -88,6 +88,26 @@ def _filter(client, subject, request_id="r1"):
     })
 
 
+def test_binding_removed_after_mode_check_returns_denial(tmp_path, monkeypatch):
+    client, store = _ready(tmp_path, monkeypatch)
+    original = store.application_binding
+    calls = 0
+
+    def disappearing_binding(application_id):
+        nonlocal calls
+        calls += 1
+        return original(application_id) if calls == 1 else None
+
+    monkeypatch.setattr(store, "application_binding", disappearing_binding)
+    try:
+        response = _filter(client, "alice")
+        assert response.status_code == 403
+        assert response.json()["detail"] == "APPLICATION_NOT_BOUND"
+    finally:
+        client.close()
+        store.db.close()
+
+
 def _release(client, subject, decision_id, request_id="r1", sources=(GOOGLE, SHAREPOINT)):
     deps = [
         {"source_id": src, "resource_id": DOC,

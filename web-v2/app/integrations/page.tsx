@@ -6,7 +6,7 @@ import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 
 const steps = [
-  { number: "01", title: "Connect Google Workspace", description: "Authorize an approved Google Drive root. Employee identities, groups and file permissions synchronize server-side.", href: "/sources", link: "Connect source", icon: Files },
+  { number: "01", title: "Connect permission source", description: "Authorize Google Workspace Drive or Microsoft 365 SharePoint / OneDrive through the provider. Microsoft sources remain Shadow-only until effective permission checks are independently validated.", href: "/sources", link: "Connect source", icon: Files },
   { number: "02", title: "Enroll your Guard", description: "Deploy the customer-hosted enforcement engine and verify machine enrollment, heartbeat and policy synchronization.", href: "/guards", link: "Manage Guards", icon: LockKeyhole },
   { number: "03", title: "Deploy AccessProof Gateway", description: "Install the reviewed Docker Gateway beside your RAG service. Supply independently attested retrieval resources and route model traffic through Gateway.", href: "/integrations/setup", link: "Open Gateway setup", icon: Server },
   { number: "04", title: "Verify the real RAG route", description: "Register the application, perform allow/deny/provenance/revocation challenges, approve the customer-side cutover and enable Protect only after all gates pass.", href: "/applications", link: "Register application", icon: ClipboardCheck },
@@ -17,7 +17,7 @@ export default function GatewayIntegrations() {
     <PageHeader
       eyebrow="CUSTOMER INTEGRATION"
       title="AccessProof Gateway"
-      description="A single, security-verified integration path for supported Google Workspace and Google Drive RAG deployments."
+      description="Connect a supported enterprise permission source, enroll your Guard, and verify the customer RAG route before enabling Protect."
       action={<Link className="button compact" href="/integrations/setup">Configure Gateway <ArrowRight size={16} /></Link>}
     />
     <section className="card section" aria-labelledby="gateway-protection-heading">
@@ -26,7 +26,7 @@ export default function GatewayIntegrations() {
       </div>
       <p className="muted">
         AccessProof Gateway receives a verified employee identity and signed retrieval manifest,
-        checks Google Drive authorization with the local Guard before the LLM sees a document,
+        checks source-bound authorization with the customer-side Guard before the LLM sees a document,
         and verifies the complete buffered response before releasing it.
         The supported HTTP contract requires no customer-side library installation.
       </p>
@@ -35,6 +35,7 @@ export default function GatewayIntegrations() {
         <Link className="button compact secondary" href="/protection">View protection status</Link>
       </div>
     </section>
+    <p className="alert warning-alert small">Microsoft 365 / SharePoint connections currently require operator-configured Entra admin consent and independent effective-access verification. Connection alone does not enable Protect; Microsoft sources remain in Shadow until certified.</p>
     <section className="card section" aria-labelledby="gateway-steps-heading">
       <div className="section-head">
         <div><p className="label">DEPLOYMENT WORKFLOW</p><h2 id="gateway-steps-heading">Go from permissions to verified protection</h2></div>

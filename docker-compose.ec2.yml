@@ -27,6 +27,7 @@ services:
     networks: [accessproof]
 
   api:
+    image: ${ACCESSPROOF_API_IMAGE:-accessproof-api:latest}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -39,6 +40,9 @@ services:
     environment:
       ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
       ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      # Single operator-owned Entra multitenant app; consent is tenant-scoped.
+      ACCESSPROOF_MICROSOFT_CLIENT_ID: ${ACCESSPROOF_MICROSOFT_CLIENT_ID:-}
+      ACCESSPROOF_MICROSOFT_CLIENT_SECRET: ${ACCESSPROOF_MICROSOFT_CLIENT_SECRET:-}
       ACCESSPROOF_ENV: production
       DATABASE_URL: postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof
       REDIS_URL: redis://redis:6379/0
@@ -91,6 +95,7 @@ services:
     networks: [accessproof]
 
   worker:
+    image: ${ACCESSPROOF_WORKER_IMAGE:-accessproof-worker:latest}
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
@@ -103,6 +108,9 @@ services:
     environment:
       ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_ID:-}
       ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET: ${ACCESSPROOF_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      # Single operator-owned Entra multitenant app; consent is tenant-scoped.
+      ACCESSPROOF_MICROSOFT_CLIENT_ID: ${ACCESSPROOF_MICROSOFT_CLIENT_ID:-}
+      ACCESSPROOF_MICROSOFT_CLIENT_SECRET: ${ACCESSPROOF_MICROSOFT_CLIENT_SECRET:-}
       ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL: ${ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL:-}
       ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS: ${ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS:-900}
       ACCESSPROOF_ENV: production

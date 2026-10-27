@@ -582,7 +582,10 @@ def multisource_filter_resources(
     bound = cache.application_sources(payload.application_id)
     if not sources.issubset(bound) or not bound:
         raise HTTPException(403, "APPLICATION_SOURCE_MISMATCH")
-    if cache.application_binding(payload.application_id)[1] != "protect":
+    binding = cache.application_binding(payload.application_id)
+    if binding is None:
+        raise HTTPException(403, "APPLICATION_NOT_BOUND")
+    if binding[1] != "protect":
         raise HTTPException(403, "PROTECT_MODE_REQUIRED")
     subject, token_issuer, tenant_id = _identity(authorization)
     mapped = {src: _mapped_subject(authorization, src) for src in sources}

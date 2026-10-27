@@ -100,6 +100,10 @@ test("Guard inventory and secure enrollment flow render", async ({ context, page
 
 test("Google Workspace sources use operator-owned OAuth without customer secrets", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  // Every authenticated provider-readiness probe must be mocked. Otherwise
+  // an unrelated backend 401 correctly causes the UI to return to login.
+  await page.route("**/api/v1/current/sources/microsoft-admin-consent/status", route =>
+    route.fulfill({ json: { configured: false } }));
   let creations = 0;
   let consents = 0;
   await page.route("**/api/v1/current/sources/google-oauth/status", route =>
@@ -263,6 +267,77 @@ test("application registration sends the Gateway-only contract", async ({ contex
   await page.getByRole("checkbox", { name: "Source Drive" }).check();
   await page.locator("form").getByRole("button", { name: "Register application" }).click();
   await expect.poll(() => created).toBe(1);
+});
+
+test("SharePoint onboarding prevents unconfigured Microsoft drafts and never asks for tokens", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  let creates = 0;
+  await page.route("**/api/v1/current/sources", route => {
+    if (route.request().method() === "POST") creates++;
+    return route.fulfill({ json: [] });
+  });
+  await page.route("**/api/v1/current/sources/google-oauth/status", route =>
+    route.fulfill({ json: { configured: true } }));
+  await page.route("**/api/v1/current/sources/microsoft-admin-consent/status", route =>
+    route.fulfill({ status: 404, json: { detail: "Not Found" } }));
+  await page.goto("/sources");
+  await page.getByRole("button", { name: "Connect source" }).first().click();
+  await page.getByLabel("Provider", { exact: true }).selectOption("sharepoint");
+  await expect(page.getByText(/Microsoft administrator consent is not configured or the server API is outdated/i)).toBeVisible();
+  await expect(page.getByLabel("Microsoft Graph access token")).toHaveCount(0);
+  await page.getByLabel("Connection name").fill("Finance demo");
+  await page.getByLabel("Entra tenant ID").fill("11111111-2222-3333-4444-555555555555");
+  await page.getByLabel("SharePoint site ID").fill("site.sharepoint.com,site-id,web-id");
+  await page.getByLabel("Document library ID").fill("library-id");
+  await page.getByLabel("Drive ID").fill("drive-id");
+  await page.getByLabel("Approved folder boundary").fill("synthetic-item-id");
+  await page.getByRole("button", { name: "Connect Microsoft 365 + SharePoint" }).click();
+  await expect(page.getByText(/Microsoft administrator consent is not configured by the AccessProof operator/i)).toBeVisible();
+  expect(creates).toBe(0);
+});
+
+test("configured Microsoft SharePoint source begins provider-hosted consent without employee secrets", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  await page.route("**/api/v1/current/sources/google-oauth/status", route =>
+    route.fulfill({ json: { configured: false } }));
+  await page.route("**/api/v1/current/sources/microsoft-admin-consent/status", route =>
+    route.fulfill({ json: { configured: true } }));
+  let creates = 0;
+  await page.route("**/api/v1/current/sources", route => {
+    if (route.request().method() !== "POST") return route.fulfill({ json: [] });
+    const body = route.request().postDataJSON();
+    expect(body).toMatchObject({
+      provider: "sharepoint", name: "Finance canaries", boundary: "canary-root",
+      credentials: {
+        tenant_id: "11111111-2222-3333-4444-555555555555",
+        site_id: "neuralmatrix093.sharepoint.com,site,web",
+        list_id: "library-id", drive_id: "drive-id", test_root_item_id: "canary-root",
+      },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/access_token|client_secret|password|refresh_token/i);
+    creates++;
+    return route.fulfill({ status: 201, json: { id: "source-123", ...body, status: "not_configured" } });
+  });
+  let consents = 0;
+  await page.route("**/api/v1/current/sources/source-123/microsoft-admin-consent/begin", route => {
+    expect(route.request().method()).toBe("POST");
+    consents++;
+    return route.fulfill({ json: { authorization_url: "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0/adminconsent?state=fake&client_id=synthetic" } });
+  });
+  await page.route("https://login.microsoftonline.com/**", route =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<h1>Simulated Microsoft consent</h1>" }));
+  await page.goto("/sources");
+  await page.getByRole("button", { name: "Connect source" }).first().click();
+  await page.getByLabel("Provider", { exact: true }).selectOption("sharepoint");
+  await page.getByLabel("Connection name").fill("Finance canaries");
+  await page.getByLabel("Entra tenant ID").fill("11111111-2222-3333-4444-555555555555");
+  await page.getByLabel("SharePoint site ID").fill("neuralmatrix093.sharepoint.com,site,web");
+  await page.getByLabel("Document library ID").fill("library-id");
+  await page.getByLabel("Drive ID").fill("drive-id");
+  await page.getByLabel("Approved folder boundary").fill("canary-root");
+  await page.getByRole("button", { name: "Connect Microsoft 365 + SharePoint" }).click();
+  await expect.poll(() => creates).toBe(1);
+  await expect.poll(() => consents).toBe(1);
 });
 
 test.skip("Microsoft SharePoint setup shows unresolved permission certification", async ({ context, page }) => {
@@ -443,6 +518,8 @@ test("Google OAuth operator readiness blocks unusable customer drafts", async ({
 
 test("Google OAuth return acknowledges durable server-side sync without browser POST", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  await page.route("**/api/v1/current/sources/microsoft-admin-consent/status", route =>
+    route.fulfill({ json: { configured: false } }));
   const sourceId = "11111111-1111-4111-8111-111111111111";
   let browserSyncCalls = 0;
   await page.route("**/api/v1/current/sources", route => route.fulfill({
@@ -459,9 +536,9 @@ test("Google OAuth return acknowledges durable server-side sync without browser 
     return route.fulfill({ status: 503, json: {} });
   });
   await page.goto(`/sources?google=consent-complete&source_id=${sourceId}`);
-  await expect(page.getByText(/synchronization are queued securely on the server/i)).toBeVisible();
-  await expect(page.getByText("Workspace directory: Queued")).toBeVisible();
-  await expect(page.getByText("Drive ACLs: Queued")).toBeVisible();
+  await expect(page.getByText(/queued fresh directory and permission synchronization/i)).toBeVisible();
+  await expect(page.getByText("Employees/groups: queued")).toBeVisible();
+  await expect(page.getByText("Permissions: queued")).toBeVisible();
   await page.reload();
   expect(browserSyncCalls).toBe(0);
 });
@@ -498,4 +575,25 @@ test("customer onboarding previews local cache architecture inventory without AP
     buffer: Buffer.from(JSON.stringify({ schema: "accessproof.architecture_inventory/v1", certification_status: "CERTIFIED" })),
   });
   await expect(page.getByRole("alert").getByText(/Invalid AccessProof architecture inventory JSON/)).toBeVisible();
+});
+
+test("Microsoft multitenant consent requires selected-site grant before Protect", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  await page.route("**/api/v1/current/sources/google-oauth/status", route =>
+    route.fulfill({ json: { configured: false } }));
+  await page.route("**/api/v1/current/sources/microsoft-admin-consent/status", route =>
+    route.fulfill({ json: { configured: true } }));
+  await page.route("**/api/v1/current/sources", route =>
+    route.fulfill({ json: [{
+      id: "microsoft-preview", name: "Finance SharePoint",
+      provider: "sharepoint", status: "not_configured", boundary: "approved-root",
+      last_error: "MICROSOFT_SITE_ACCESS_GRANT_REQUIRED",
+      directory_sync: { status: "not_configured", fresh: false },
+      acl_sync: { status: "not_configured", fresh: false },
+    }] }));
+  await page.goto("/sources?microsoft=site-grant-required");
+  await expect(page.getByRole("status").filter({ hasText: /SharePoint access still needs an explicit Sites.Selected grant/i })).toBeVisible();
+  await expect(page.getByText(/Microsoft administrator consent was accepted, but AccessProof cannot yet read the selected SharePoint site/i)).toBeVisible();
+  await expect(page.getByText(/Shadow only: independent Microsoft effective-access certification is required for Protect/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Validate" })).toBeVisible();
 });

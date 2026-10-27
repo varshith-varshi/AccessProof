@@ -280,3 +280,76 @@ def test_microsoft_source_validation_keeps_provider_error_private(monkeypatch):
             assert row is not None
             assert row.last_error == "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
         assert "synthetic-graph-token" not in result.text
+
+
+def test_multitenant_consent_can_wait_for_selected_site_grant_without_leaking_secrets(monkeypatch):
+    """Tenant consent != Sites.Selected. A denied site must never be Protect-eligible."""
+    from packages.connector_sdk.base import AuthorizationError, CapabilityReport
+    from apps.api.accessproof_api.db import ProviderSyncCursor as ProviderSyncCursorModel
+    from sqlalchemy import select
+
+    class SiteNotGrantedGraph(FakeGraph):
+        async def validate_connection(self):
+            raise AuthorizationError("provider returned 403")
+
+    class SiteNowGrantedGraph(FakeGraph):
+        async def discover_capabilities(self):
+            return CapabilityReport({}, {})
+
+    monkeypatch.setenv("ACCESSPROOF_MICROSOFT_CLIENT_ID", "single-operator-client")
+    monkeypatch.setenv("ACCESSPROOF_MICROSOFT_CLIENT_SECRET", "single-operator-secret")
+    monkeypatch.setattr(api_module, "Microsoft365Adapter", SiteNotGrantedGraph)
+    monkeypatch.setattr(api_module, "graph_app_token", lambda **kwargs: (
+        "short-lived-synthetic-microsoft-token",
+        datetime.now(timezone.utc) + timedelta(hours=1),
+    ))
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(api_module.app) as client:
+        headers = signup(client)
+        source_id = create_source(client, headers)
+        state = begin(client, headers, source_id)
+        callback = client.get(
+            "/api/v1/current/sources/microsoft-admin-consent/callback",
+            params={"state": state, "admin_consent": "True", "tenant": TENANT},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 303
+        assert "microsoft=site-grant-required" in callback.headers["location"]
+        with SessionLocal() as db:
+            source = db.get(SourceConnection, source_id)
+            assert source.status == "not_configured"
+            assert source.last_error == "MICROSOFT_SITE_ACCESS_GRANT_REQUIRED"
+            assert source.last_validated_at is None
+            stored = __import__("json").loads(api_module._secret_box.decrypt(source.encrypted_credentials))
+            assert stored["tenant_id"] == TENANT
+            assert stored["client_id"] == "single-operator-client"
+            assert stored["oauth_credential_mode"] == "server_managed"
+            assert "client_secret" not in stored
+            cursors = db.scalars(select(ProviderSyncCursorModel).where(
+                ProviderSyncCursorModel.source_id == source_id,
+            )).all()
+            assert len(cursors) == 2
+            assert {row.status for row in cursors} == {"not_configured"}
+        public = client.get("/api/v1/current/sources", headers=headers)
+        assert "MICROSOFT_SITE_ACCESS_GRANT_REQUIRED" in public.text
+        assert "short-lived-synthetic-microsoft-token" not in public.text
+        assert "single-operator-secret" not in public.text
+
+        monkeypatch.setattr(api_module, "create_source_adapter", lambda provider, credentials: (
+            SiteNowGrantedGraph(
+                test_root_item_id=credentials["test_root_item_id"],
+                tenant_hint=credentials["tenant_id"],
+            )
+        ))
+        validated = client.post(f"/api/v1/sources/{source_id}/validate", headers=headers)
+        assert validated.status_code == 200, validated.text
+        with SessionLocal() as db:
+            source = db.get(SourceConnection, source_id)
+            assert source.status == "connected"
+            assert source.last_error is None
+            cursors = db.scalars(select(ProviderSyncCursorModel).where(
+                ProviderSyncCursorModel.source_id == source_id,
+            )).all()
+            assert {row.status for row in cursors} == {"queued"}
+        assert "single-operator-secret" not in validated.text

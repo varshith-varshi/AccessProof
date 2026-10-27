@@ -77,8 +77,8 @@ def _evict_expired() -> None:
     for key, item in list(_pending.items()):
         if item.expires_at <= now:
             _pending.pop(key, None)
-    for key, item in list(_sessions.items()):
-        if item.expires_at <= now:
+    for key, session in list(_sessions.items()):
+        if session.expires_at <= now:
             _sessions.pop(key, None)
 
 

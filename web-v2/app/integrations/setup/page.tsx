@@ -220,7 +220,7 @@ export default function IntegrationSetup() {
       {step === "prepare" ? <div>
         <p>First complete the product controls, then create the customer-owned <code>accessproof-install-spec.json</code> with tenant ID, application ID, RAG service, Guard URL, model URL, and your public ingestion-verification keys. Keep the file private (mode 0600). Use the reviewed Gateway Docker contract and approved application routing variable.</p>
         <div className="row wrap">
-          <Link href="/sources" className="button compact secondary">1. Connect Google Drive</Link>
+          <Link href="/sources" className="button compact secondary">1. Connect source (Drive or SharePoint)</Link>
           <Link href="/guards" className="button compact secondary">2. Enroll Guard</Link>
           <Link href="/applications" className="button compact secondary">3. Register RAG</Link>
         </div>

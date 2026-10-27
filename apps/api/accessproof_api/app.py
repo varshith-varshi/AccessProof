@@ -186,7 +186,7 @@ from packages.auth.microsoft_consent import (
     graph_app_token, tenant_uuid,
 )
 from connectors.microsoft365.adapter import Microsoft365Adapter
-from packages.connector_sdk.base import ProviderUnavailableError
+from packages.connector_sdk.base import ProviderUnavailableError, AuthorizationError
 from connectors.google_drive.adapter import GoogleDriveAdapter
 from packages.auth.google_consent import (
     GoogleConsentError, authorization_url as google_consent_url, exchange_code as exchange_google_code,
@@ -1358,7 +1358,9 @@ def guard_policies(
         bindings_by_app.setdefault(str(app_row_id), []).append(str(source_id))
     bound_applications = []
     for row in bound_rows:
-        source_ids = sorted(set(bindings_by_app.get(row.id, []) + [row.source_id]))
+        source_ids = sorted(set(bindings_by_app.get(row.id, []) + (
+            [row.source_id] if row.source_id is not None else []
+        )))
         health = {source_id: source_acl_healthy(source_id) for source_id in source_ids}
         bound_applications.append({
             "application_id": row.application_id, "source_id": row.source_id,
@@ -5923,8 +5925,18 @@ async def complete_microsoft_source_admin_consent(
             sharepoint_list_id=prior.get("list_id") if source.provider.lower() in {"microsoft365", "sharepoint"} else None,
             onedrive_owner_object_id=prior.get("owner_object_id") if source.provider.lower() in {"microsoft365", "onedrive"} else None,
         )
+        # Microsoft application consent creates a tenant-local service
+        # principal. Sites.Selected still requires an independent, explicitly
+        # scoped site grant from the customer's administrator. Persist the
+        # tenant-bound short-lived token but never mark the source connected.
+        # This allows the customer to complete the site grant and click
+        # Validate without another round of Microsoft admin consent.
+        site_grant_pending = False
         try:
             identity = await adapter.validate_connection()
+        except AuthorizationError:
+            site_grant_pending = True
+            identity = None
         finally:
             await adapter._client.aclose()
     except Exception as exc:
@@ -5955,13 +5967,13 @@ async def complete_microsoft_source_admin_consent(
     prior.pop("oauth_client_secret", None)
     prior.pop("oauth_client_id", None)
     source.encrypted_credentials = _secret_box.encrypt(json.dumps(prior, sort_keys=True))
-    source.status = "connected"
-    source.last_validated_at = now
-    source.last_error = None
-    source.provider_identity_json = json.dumps({
+    source.status = "not_configured" if site_grant_pending else "connected"
+    source.last_validated_at = now if not site_grant_pending else None
+    source.last_error = "MICROSOFT_SITE_ACCESS_GRANT_REQUIRED" if site_grant_pending else None
+    source.provider_identity_json = ("{}" if identity is None else json.dumps({
         "provider": identity.provider, "tenant": expected_tenant,
         "boundary": identity.boundary, "metadata": identity.metadata,
-    }, sort_keys=True)
+    }, sort_keys=True))
     # Consent establishes a new provider credential boundary. Existing ACL and
     # directory observations cannot certify it; durable worker jobs rebuild
     # both snapshots even if the browser closes immediately after redirect.
@@ -5977,7 +5989,7 @@ async def complete_microsoft_source_admin_consent(
                 provider="microsoft365", sync_kind=kind,
             )
             db.add(cursor)
-        cursor.status = "queued"
+        cursor.status = "not_configured" if site_grant_pending else "queued"
         cursor.cursor = None
         cursor.last_provider_revision = None
         cursor.last_success_at = None
@@ -5985,6 +5997,11 @@ async def complete_microsoft_source_admin_consent(
         cursor.last_error_at = None
         cursor.last_error_code = None
     db.commit()
+    if site_grant_pending:
+        return RedirectResponse(
+            f"{settings.public_app_url.rstrip('/')}/sources?microsoft=site-grant-required&source_id={source.id}",
+            status_code=303,
+        )
     return RedirectResponse(success, status_code=303)
 
 
@@ -6211,7 +6228,33 @@ async def _validate_source_record(
                 if v.value in {"MISSING_SCOPE", "PLAN_RESTRICTED"}
             ]
         )
+        # The first successful validation after a selected-site assignment
+        # must reset potentially stale observations and start both sync jobs.
+        previously_awaiting_site_grant = (
+            row.provider.lower() in {"microsoft365", "sharepoint", "onedrive"}
+            and row.last_error == "MICROSOFT_SITE_ACCESS_GRANT_REQUIRED"
+        )
         row.status = "connected"
+        if previously_awaiting_site_grant:
+            for kind in ("directory", "acl"):
+                cursor = db.scalar(select(ProviderSyncCursorModel).where(
+                    ProviderSyncCursorModel.organization_id == row.organization_id,
+                    ProviderSyncCursorModel.source_id == row.id,
+                    ProviderSyncCursorModel.sync_kind == kind,
+                ).with_for_update())
+                if cursor is None:
+                    cursor = ProviderSyncCursorModel(
+                        organization_id=row.organization_id, source_id=row.id,
+                        provider="microsoft365", sync_kind=kind,
+                    )
+                    db.add(cursor)
+                cursor.status = "queued"
+                cursor.cursor = None
+                cursor.last_provider_revision = None
+                cursor.last_success_at = None
+                cursor.last_started_at = None
+                cursor.last_error_at = None
+                cursor.last_error_code = None
         row.capabilities_json = json.dumps(cap_values, sort_keys=True)
         row.provider_identity_json = json.dumps(
             {
@@ -6252,6 +6295,8 @@ async def _validate_source_record(
                 "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
                 if isinstance(exc, ProviderUnavailableError)
                 and str(exc) == "MICROSOFT_SHAREPOINT_SERVICE_NOT_READY"
+                else "MICROSOFT_SITE_ACCESS_GRANT_REQUIRED"
+                if isinstance(exc, AuthorizationError)
                 else "MICROSOFT_SOURCE_VALIDATION_INCOMPLETE"
             )
         else:

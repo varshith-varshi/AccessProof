@@ -49,9 +49,10 @@ class MultiSourceGuard:
                     source not in bindings for source in mapped_subjects
                 ):
                     return {"decision": "block", "reason": "APPLICATION_SOURCE_MISMATCH"}
-                if cache.application_binding(application_id) is None:
+                binding = cache.application_binding(application_id)
+                if binding is None:
                     return {"decision": "block", "reason": "APPLICATION_NOT_BOUND"}
-                mode = cache.application_binding(application_id)[1]
+                mode = binding[1]
                 if mode != "protect":
                     return {"decision": "block", "reason": "PROTECT_MODE_REQUIRED"}
                 if any(not bindings[src] for src in mapped_subjects):
