@@ -54,3 +54,32 @@
 - After rollout independently verify API + website health, worker stability,
   pairing-created durable runs, Guard presence, tenant isolation, and Protect
   still blocked while Microsoft evidence remains uncertified.
+
+## Actual production release verification (2026-11-02)
+
+- Deployed with AWS Systems Manager to existing eu-north-1 EC2 instance.
+- Production API accessproof/api:verification-r11-20261101: healthy.
+- Worker accessproof/worker:verification-r11-20261101: running; automatically
+  generated one durable workflow for an existing installation without re-pairing.
+- Website accessproof/web-v2:verification-r11-20261101: healthy.
+- Database Alembic p8c1e2f3a4b5 (head) applied successfully.
+- Customer Ubuntu Guard accessproof-guard-r11:20261102 connected with
+  sequence-aware presence. Sequence samples 52 through 56 increased
+  monotonically; server-received heartbeat ages remained below one second.
+  The control plane continues to enforce a three-second offline threshold.
+- One durable WAITING_FOR_AUTHORIZATION run with 23 checks:
+  14 SATISFIED, 3 WAITING_FOR_ADMIN, 5 WAITING_FOR_CHALLENGE,
+  1 WAITING_FOR_CUTOVER.
+- Public API ready and website login returned HTTP 200;
+  public metrics and docs returned HTTP 404.
+- Protect certification still NO_GO, certificate_verified=false,
+  safe_to_enable_protect=false; nine genuine permission, identity,
+  route/provenance/security requirements are outstanding.
+- Verified pre-migration compressed DB backup, original .env and Compose
+  stored under /home/ubuntu/accessproof-releases/verification-r11-20261101/rollback.
+  r10 rollback-compatible API image was built and retained.
+- Local Guard rollback Compose:
+  ~/Downloads/accessproof-guard-0.1.4/compose.yml.before-r11.
+- Capacity maintenance is urgent: production root filesystem approximately
+  96% used with about 909 MB available. Expand capacity or perform audited
+  safe cleanup before additional large image builds.
