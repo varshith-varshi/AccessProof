@@ -17,6 +17,27 @@ type Pairing = {
   deployment_sha256?: string | null; route_sha256?: string | null;
   verification?: PairingVerification;
 };
+type VerificationStep = { code: string; state: string; reason: string | null; attempt: number; next_retry_at: string | null; checked_at: string | null };
+type VerificationRun = {
+  run_id: string | null; state: string; checks_passed: number; checks_total: number;
+  updated_at?: string; steps: VerificationStep[];
+  guard?: { connectivity: "CONNECTED" | "OFFLINE"; security_readiness: string; heartbeat_age_seconds: number | null };
+  protect_activated: false; production_certification: false;
+};
+type VerificationEvent = { id: string; code: string; state: string; detail: string | null; created_at: string };
+const humanNames: Record<string, string> = {
+  MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED: "SharePoint effective access",
+  V1_PROVIDER_SCOPE: "Approved SharePoint Protect scope",
+  PRODUCTION_OIDC_READY: "Microsoft employee identity",
+  LAYER1_INTEGRATION_CONFIRMED: "Pre-generation document authorization",
+  LAYER2_INTEGRATION_CONFIRMED: "Response release authorization",
+  PROVENANCE_READY: "Signed document provenance",
+  BUFFERED_RESPONSE_GATE_READY: "Buffered output protection",
+  CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED: "Real Gateway security challenge",
+  CUSTOMER_RAG_CUTOVER_NOT_VERIFIED: "Approved employee route cutover",
+  GUARD_HEARTBEAT_RECENT: "Authenticated Guard connectivity",
+};
+const friendlyCheck = (code: string) => humanNames[code] ?? code.toLowerCase().replaceAll("_", " ");
 type Challenge = { challenge_id: string; state: string; expires_at: string; production_certification: boolean };
 type Data = { sources: Source[]; guards: Guard[]; apps: AIApplication[]; protection: ProtectionOverview | null; errors: string[] };
 const EMPTY: Data = { sources: [], guards: [], apps: [], protection: null, errors: [] };
@@ -35,6 +56,10 @@ export default function Onboarding() {
   const [data, setData] = useState<Data>(EMPTY);
   const [selectedId, setSelectedId] = useState("");
   const [pairing, setPairing] = useState<Pairing | null>(null);
+  const [verification, setVerification] = useState<VerificationRun | null>(null);
+  const [verificationEvents, setVerificationEvents] = useState<VerificationEvent[]>([]);
+  const [livePresence, setLivePresence] = useState<{ connectivity: string; security_readiness: string } | null>(null);
+
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [challengeStatus, setChallengeStatus] = useState<Challenge | null>(null);
   const [activation, setActivation] = useState<{ state: string; message: string } | null>(null);
@@ -77,7 +102,9 @@ export default function Onboarding() {
   const checks = readiness?.failed_checks ?? [];
   const fresh = !!source && source.status === "connected" && source.acl_sync?.fresh === true && source.directory_sync?.fresh === true;
   const guardConnected = !!guard && guard.health === "online" && (guard.active_policy_version ?? 0) > 0 && !!guard.enrolled_at && !guard.revoked_at;
-  const reported = pairing?.state === "installation_reported_unverified" && !!bound && guardConnected;
+  // Installation stays recorded even during an offline Guard or after Redis
+  // pairing TTL expiry: the durable backend verification run is authoritative.
+  const reported = !!bound && (pairing?.state === "installation_reported_unverified" || !!verification?.run_id);
   const protectedVerified = readiness?.effective_state === "PROTECTED_VERIFIED";
   const count = Number(fresh) + Number(reported) + Number(protectedVerified);
   const blockedChallenge = checks.some(c => sourceBlocks.has(c.code));
@@ -95,6 +122,40 @@ export default function Onboarding() {
     const timer = setInterval(() => void read(), 15_000);
     return () => { active = false; clearInterval(timer); };
   }, [id]);
+  const refreshVerification = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [run, events] = await Promise.all([
+        api<VerificationRun>(`/api/v1/current/ai-applications/${id}/verification-run`),
+        api<{ events: VerificationEvent[] }>(`/api/v1/current/ai-applications/${id}/verification-events`),
+      ]);
+      setVerification(run);
+      setVerificationEvents(events.events.slice(0, 8));
+    } catch {
+      setVerification(null);
+      setVerificationEvents([]);
+    }
+  }, [id]);
+  useEffect(() => {
+    if (!id) return;
+    queueMicrotask(() => void refreshVerification());
+    // Server push is primary; this conservative poll supports proxies that
+    // block SSE and makes an existing installation visible after migration.
+    const fallback = setInterval(() => void refreshVerification(), 30_000);
+    const events = new EventSource(`/api/v1/current/ai-applications/${id}/verification-stream`, { withCredentials: true });
+    let lastRefresh = 0;
+    events.addEventListener("verification", () => {
+      const now = Date.now();
+      if (now - lastRefresh > 1200) { lastRefresh = now; void refreshVerification(); }
+    });
+    events.addEventListener("presence", (event) => {
+      try {
+        const value = JSON.parse((event as MessageEvent).data) as { connectivity: string; security_readiness: string };
+        setLivePresence(value);
+      } catch { /* The next authenticated server event will recover the badge. */ }
+    });
+    return () => { events.close(); clearInterval(fallback); setLivePresence(null); };
+  }, [id, refreshVerification]);
   async function perform(action: () => Promise<void>) {
     setBusy(true); setError("");
     try { await action(); }
@@ -169,6 +230,37 @@ export default function Onboarding() {
             <small>Last checked {new Date(pairing.verification.checked_at).toLocaleTimeString()} · Read-only assessment; Protect was not activated.</small>
           </> : <p>The control plane is evaluating your prerequisites. Refreshes happen automatically; installation alone is not certification.</p>}
         </div>}
+        {reported && <section className="onboard-workflow" aria-label="Automatic security verification progress">
+          <header className="onboard-workflow-heading">
+            <b>Automatic security verification</b>
+            <span className="onboard-workflow-state">{verification?.state.replaceAll("_", " ").toLowerCase() ?? "Starting securely"}</span>
+          </header>
+          <div className="onboard-workflow-metrics">
+            <div><small>Guard connectivity</small><strong className={(livePresence?.connectivity ?? verification?.guard?.connectivity) === "CONNECTED" ? "positive" : "caution"}>
+              {livePresence?.connectivity ?? verification?.guard?.connectivity ?? "Checking…"}</strong></div>
+            <div><small>Guard security readiness</small><strong>{livePresence?.security_readiness ?? verification?.guard?.security_readiness ?? "Unknown"}</strong></div>
+            <div><small>Checks satisfied</small><strong>{verification ? `${verification.checks_passed}/${verification.checks_total}` : "Starting…"}</strong></div>
+          </div>
+          {!verification?.run_id && <p>Verification starts automatically when the paired installer reports a valid Gateway. No manual action is needed to begin.</p>}
+          {verification?.steps && verification.steps.length > 0 && <ul className="onboard-step-list">
+            {verification.steps.map(step => <li key={step.code} className={step.state === "SATISFIED" ? "passed" : "awaiting"}>
+              <div><b>{friendlyCheck(step.code)}</b><span>{step.state.replaceAll("_", " ").toLowerCase()}</span></div>
+              {step.reason && <small>{step.reason}</small>}
+              {step.next_retry_at && <small>Automatic retry after {new Date(step.next_retry_at).toLocaleTimeString()}</small>}
+            </li>)}
+          </ul>}
+          {verification?.steps.some(s => s.state === "WAITING_FOR_ADMIN") && <div className="onboard-admin-action">
+            <b>Microsoft administrator authorization required</b>
+            <p>AccessProof cannot certify employee-effective SharePoint rights until the approved test-site permission and real employee sign-in have been verified. Your Gateway remains connected; Protect stays off.</p>
+            <Link href="/sources">Review Microsoft source authorization →</Link>
+          </div>}
+          {verification?.steps.some(s => s.state === "WAITING_FOR_CUTOVER") && <p>Customer-approved employee route cutover is required after successful independent challenges. No routing is changed automatically.</p>}
+          {verificationEvents.length > 0 && <details className="onboard-verification-history"><summary>Verification history</summary>
+            <ul>{verificationEvents.map(event => <li key={event.id}>{new Date(event.created_at).toLocaleTimeString()} · {friendlyCheck(event.code)} · {event.state.replaceAll("_", " ").toLowerCase()}</li>)}</ul>
+          </details>}
+          <button className="button secondary" type="button" onClick={() => void refreshVerification()} disabled={busy}>Refresh verification status</button>
+          <small>States come from backend checks. Connectivity alone never means Protected Verified.</small>
+        </section>}
         {checks.length > 0 && <details open className="onboard-checks"><summary>{checks.length} security prerequisites need attention</summary><ul>{checks.slice(0, 16).map((c, i) => <li key={c.code + i}><b>{c.code.replaceAll("_", " ")}</b> — {c.reason ?? "Verification required"}</li>)}</ul></details>}
         {reported && !protectedVerified && <div className="onboard-actions">
           <div className="onboard-command"><b>Check locally before requesting a challenge</b><p>No pairing key needed. This read-only diagnostic does not activate Protect.</p><code>{installCommand} --doctor</code></div>

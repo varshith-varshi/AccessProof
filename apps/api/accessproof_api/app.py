@@ -6,6 +6,7 @@ from packages.capability_registry import snapshot as capability_registry_snapsho
 from packages.rag_core import adapter_registry
 from apps.api.accessproof_api.rag_challenge_verifier import verify_reference_evidence, request_ids
 from apps.api.accessproof_api import gateway_pairing
+from apps.api.accessproof_api import verification_engine
 from apps.api.accessproof_api.source_certification import effective_source_certified, _source_scope
 from apps.api.accessproof_api.protection_state import (
     PROTECTION_STATES,
@@ -33,7 +34,7 @@ from threading import Lock
 from uuid import uuid4
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import delete, func, or_, select
@@ -107,6 +108,7 @@ from apps.api.accessproof_api.db import (
     GuardProtectionDecision,
     AuthorizationRevision,
     AIApplication,
+    VerificationEvent, VerificationRun, VerificationApproval, GuardPresenceLease, SessionLocal,
     AIApplicationSourceBinding,
     ProtectionActivationRun,
     RAGRouteChallenge,
@@ -1201,6 +1203,30 @@ def guard_heartbeat(
         )
         if installed is None:
             raise HTTPException(409, "Guard policy version was not distributed and installed")
+    # A previously enrolled sequence-aware Guard cannot use an old heartbeat
+    # to keep its connection green. Authenticate first; then hold the lease
+    # row lock until the SQL transaction commits. Clock is server authoritative.
+    lease = db.scalar(select(GuardPresenceLease).where(
+        GuardPresenceLease.guard_id == guard.id,
+        GuardPresenceLease.organization_id == guard.organization_id,
+    ).with_for_update())
+    if payload.presence_sequence is not None:
+        if lease is not None and payload.presence_sequence <= lease.sequence:
+            raise HTTPException(409, "GUARD_HEARTBEAT_REPLAY")
+        if lease is None:
+            lease = GuardPresenceLease(guard_id=guard.id,
+                                      organization_id=guard.organization_id,
+                                      session_nonce="monotonic-v1", sequence=0,
+                                      received_at=datetime.now(timezone.utc),
+                                      expires_at=datetime.now(timezone.utc))
+            db.add(lease)
+        lease.sequence = payload.presence_sequence
+        lease.received_at = datetime.now(timezone.utc)
+        lease.expires_at = lease.received_at + timedelta(seconds=settings.guard_offline_seconds)
+    elif lease is not None:
+        # Once a Guard upgrades, legacy unsigned-sequence payloads cannot
+        # keep it alive. Older unupgraded Guards remain in compatibility mode.
+        raise HTTPException(409, "GUARD_PRESENCE_SEQUENCE_REQUIRED")
     guard.last_heartbeat_at = datetime.now(timezone.utc)
     guard.last_policy_sync_at = guard.last_heartbeat_at
     guard.version = payload.version
@@ -3207,8 +3233,14 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     # OIDC is configured on the *customer-side Guard*, not the SaaS API.
     # Only accept its authenticated healthy heartbeat as a configuration
     # signal. Actual token verification is tested separately in the pilot.
-    oidc_ok = settings.env != "production" or bool(guard and guard.health == "healthy" and heartbeat_ok)
-    checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok, "reason": None if oidc_ok else "Production OIDC/JWKS identity verification is incomplete."})
+    # A Guard heartbeat is not evidence that Alice/Bob legitimately signed in
+    # through production Entra issuer/JWKS. Microsoft remains blocked until a
+    # separate provider-live identity verifier exists; never infer it from health.
+    oidc_ok = (settings.env != "production" or (
+        not microsoft_preview and bool(guard and guard.health == "healthy" and heartbeat_ok)
+    ))
+    checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok,
+                   "reason": None if oidc_ok else "Real employee Entra issuer/JWKS identity verification remains incomplete; a healthy Guard alone is not sufficient."})
     evidence = _verified_guard_evidence(db, row)
     machine_route_verified = _valid_route_certificate(db, row)
     # Reference-route machine evidence independently proves attestation
@@ -3919,11 +3951,233 @@ def claim_customer_gateway_pairing(
         result["verification"] = _automatic_gateway_pairing_verification(
             db, validated_application[0],
         )
+        # The authorized one-use pairing claim is the automatic trigger.
+        # If the API crashes between Redis acceptance and DB commit, the
+        # worker safely reconstructs this same run from pairing status.
+        row = validated_application[0]
+        # Pairing is machine-authenticated without a browser actor. The new
+        # forced-RLS verification tables need the tenant from the validated
+        # server-side application binding, never a caller supplied org ID.
+        set_tenant_context(db, row.organization_id)
+        run = verification_engine.start_or_resume(
+            db, row, deployment=installation["deployment_sha256"],
+            route=installation["route_sha256"],
+        )
+        db.commit()
+        result["verification_run_id"] = run.id
         return result
     except gateway_pairing.PairingError as exc:
         raise HTTPException(409, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/verification-run")
+def current_verification_run(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Read durable server-side verification state, without initiating Protect."""
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    run = verification_engine.newest_run(db, row)
+    if run is None:
+        return {"state": "NOT_STARTED", "run_id": None, "steps": [],
+                "checks_passed": 0, "checks_total": 0,
+                "protect_activated": False, "production_certification": False}
+    result = verification_engine.describe(db, run)
+    guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
+    heartbeat_age = _age_seconds(guard.last_heartbeat_at, datetime.now(timezone.utc)) if guard else None
+    online = guard is not None and guard.revoked_at is None and (
+        heartbeat_age is not None and heartbeat_age <= settings.guard_offline_seconds
+    )
+    result["guard"] = {
+        "connectivity": "CONNECTED" if online else "OFFLINE",
+        "security_readiness": "DEGRADED" if online and guard is not None and guard.health != "healthy" else (
+            "READY" if online else "UNKNOWN"),
+        "heartbeat_age_seconds": heartbeat_age,
+        "offline_threshold_seconds": settings.guard_offline_seconds,
+    }
+    return result
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/verification-approvals", status_code=201)
+def approve_current_verification_scope(
+    application_id: str,
+    payload: dict[str, Any],
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Record an explicitly acknowledged customer scope, NOT provider admin consent."""
+    if set(payload) != {"approval_type", "scope_fingerprint", "acknowledge"} or payload["acknowledge"] is not True:
+        raise HTTPException(422, "EXPLICIT_APPROVAL_AND_EXACT_FINGERPRINT_REQUIRED")
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    run = verification_engine.newest_run(db, row)
+    if run is None:
+        raise HTTPException(409, "VERIFICATION_RUN_NOT_STARTED")
+    try:
+        approval = verification_engine.record_scoped_approval(
+            db, run, actor_id=actor.user.id,
+            approval_type=str(payload["approval_type"]),
+            acknowledged_fingerprint=str(payload["scope_fingerprint"]),
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(409, str(exc)) from exc
+    return {
+        "id": approval.id, "approval_type": approval.approval_type,
+        "expires_at": approval.expires_at.isoformat(),
+        "state": "OWNER_APPROVED_PENDING_INDEPENDENT_VERIFICATION",
+        "protect_activated": False, "production_certification": False,
+    }
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/verification-approvals")
+def list_current_verification_approvals(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    run = verification_engine.newest_run(db, row)
+    if not run:
+        return {"approvals": []}
+    records = db.scalars(select(VerificationApproval).where(
+        VerificationApproval.organization_id == row.organization_id,
+        VerificationApproval.run_id == run.id,
+    ).order_by(VerificationApproval.approved_at.desc())).all()
+    return {"approvals": [{
+        "type": a.approval_type,
+        "state": "RECORDED" if a.consumed_at is None and (a.expires_at.replace(tzinfo=timezone.utc) if a.expires_at.tzinfo is None else a.expires_at) > datetime.now(timezone.utc) else "EXPIRED_OR_CONSUMED",
+        "expires_at": a.expires_at.isoformat(),
+    } for a in records]}
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/verification-events")
+def current_verification_events(
+    application_id: str,
+    limit: int = 40,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Tenant-scoped append-only event summaries; never expose secrets or source content."""
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    run = verification_engine.newest_run(db, row)
+    if not run:
+        return {"events": []}
+    events = db.scalars(select(VerificationEvent).where(
+        VerificationEvent.organization_id == row.organization_id,
+        VerificationEvent.run_id == run.id,
+    ).order_by(VerificationEvent.created_at.desc(), VerificationEvent.id.desc()).limit(min(max(limit, 1), 100))).all()
+    return {"events": [
+        {"id": item.id, "code": item.code, "state": item.state,
+         "detail": item.detail, "created_at": item.created_at.isoformat()}
+        for item in events
+    ]}
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/verification-stream")
+async def stream_verification_events(
+    application_id: str,
+    request: Request,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> StreamingResponse:
+    """Authenticated SSE with bounded replay, tenant binding and reconnect."""
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    org_id, app_row_id = row.organization_id, row.id
+    # Authentication has already happened. Do not hold its transaction across
+    # streaming; separate read-only scoped transactions are short lived.
+    db.rollback()
+
+    async def generate() -> AsyncIterator[str]:
+        after = request.headers.get("last-event-id", "")
+        # Unknown user-controlled cursors cannot select another tenant or
+        # inject SSE control characters; invalid cursor simply starts fresh.
+        if len(after) > 80 or any(c not in "0123456789abcdef-" for c in after):
+            after = ""
+        last_emit = time.monotonic()
+        last_presence = ""
+        for _ in range(150):  # ~5 min max; browsers reconnect automatically.
+            if await request.is_disconnected():
+                break
+            with SessionLocal() as stream_db:
+                set_tenant_context(stream_db, org_id)
+                run = stream_db.scalar(select(VerificationRun).where(
+                    VerificationRun.organization_id == org_id,
+                    VerificationRun.application_row_id == app_row_id,
+                    VerificationRun.superseded_at.is_(None),
+                ).order_by(VerificationRun.created_at.desc()).limit(1))
+                # Connectivity is a separate, read-only live channel; it does
+                # not promote the application or certify the source/route.
+                application = stream_db.get(AIApplication, app_row_id)
+                guard = stream_db.get(GuardRegistration, application.guard_id) if application and application.guard_id else None
+                age = _age_seconds(guard.last_heartbeat_at, datetime.now(timezone.utc)) if guard else None
+                connected = bool(guard and guard.revoked_at is None and age is not None
+                                 and age <= settings.guard_offline_seconds)
+                presence = "CONNECTED" if connected else "OFFLINE"
+                security = ("READY" if connected and guard is not None and guard.health == "healthy"
+                            else "DEGRADED" if connected else "UNKNOWN")
+                marker = presence + ":" + security
+                if marker != last_presence:
+                    yield "event: presence\ndata: " + json.dumps(
+                        {"connectivity": presence, "security_readiness": security},
+                        separators=(",", ":")) + "\n\n"
+                    last_presence = marker
+                    last_emit = time.monotonic()
+                # Bounded event read. Run changes send a fresh snapshot.
+                if run:
+                    recent = stream_db.scalars(select(VerificationEvent).where(
+                        VerificationEvent.organization_id == org_id,
+                        VerificationEvent.run_id == run.id,
+                    ).order_by(VerificationEvent.created_at.desc(), VerificationEvent.id.desc()).limit(40)).all()
+                    ordered = list(reversed(recent))
+                    if after in {event.id for event in ordered}:
+                        ordered = ordered[[event.id for event in ordered].index(after) + 1:]
+                    elif after:
+                        # A cursor from a superseded run is not an access grant.
+                        ordered = ordered[-1:]
+                    for event in ordered:
+                        payload = json.dumps({
+                            "run_id": run.id, "code": event.code,
+                            "state": event.state,
+                        }, separators=(",", ":"))
+                        yield f"id: {event.id}\nevent: verification\ndata: {payload}\n\n"
+                        after = event.id
+                        last_emit = time.monotonic()
+            if time.monotonic() - last_emit >= 12:
+                yield ": keepalive\n\n"
+                last_emit = time.monotonic()
+            await asyncio.sleep(2)
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache, no-store",
+                                      "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/v1/current/ai-applications/{application_id}/protection/challenge", status_code=201)

@@ -155,6 +155,7 @@ class GuardSyncClient:
                 "guard_id": self.credentials.guard_id,
                 "version": self.credentials.version,
                 "active_policy_version": self.cache.version(),
+                "presence_sequence": self.cache.next_presence_sequence(),
                 "cache_status": "healthy" if not conditions else "degraded",
                 "degraded_conditions": conditions,
                 "active_applications": self.cache.application_modes(),

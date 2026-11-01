@@ -1250,3 +1250,104 @@ event.listen(SessionLocal, "after_begin", _apply_rls_context)
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+
+
+class VerificationRun(Base):
+    """Durable installation-scoped verification. Never itself authorizes Protect."""
+    __tablename__ = "verification_runs"
+    __table_args__ = (UniqueConstraint("organization_id", "application_row_id", "fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    guard_id: Mapped[str] = mapped_column(String(36))
+    source_id: Mapped[str] = mapped_column(String(36))
+    deployment_sha256: Mapped[str] = mapped_column(String(64))
+    route_sha256: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(48), default="QUEUED")
+    generation: Mapped[int] = mapped_column(default=1)
+    next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VerificationStep(Base):
+    __tablename__ = "verification_steps"
+    __table_args__ = (UniqueConstraint("run_id", "code"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("verification_runs.id", ondelete="CASCADE"), index=True)
+    code: Mapped[str] = mapped_column(String(100))
+    state: Mapped[str] = mapped_column(String(40), default="PENDING")
+    reason: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    attempt: Mapped[int] = mapped_column(default=0)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VerificationEvidence(Base):
+    """Only a digest/reference to independently validated evidence; no tokens or document bodies."""
+    __tablename__ = "verification_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("verification_runs.id", ondelete="CASCADE"), index=True)
+    step_code: Mapped[str] = mapped_column(String(100))
+    verifier: Mapped[str] = mapped_column(String(100))
+    evidence_digest: Mapped[str] = mapped_column(String(64))
+    evidence_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class VerificationEvent(Base):
+    __tablename__ = "verification_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("verification_runs.id", ondelete="CASCADE"), index=True)
+    code: Mapped[str] = mapped_column(String(100))
+    state: Mapped[str] = mapped_column(String(48))
+    detail: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class VerificationOutbox(Base):
+    """DB-committed work survives Redis outages and process crashes."""
+    __tablename__ = "verification_outbox"
+    __table_args__ = (UniqueConstraint("run_id", "generation"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("verification_runs.id", ondelete="CASCADE"), index=True)
+    generation: Mapped[int] = mapped_column(default=1)
+    state: Mapped[str] = mapped_column(String(32), default="PENDING")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    attempts: Mapped[int] = mapped_column(default=0)
+
+
+class VerificationApproval(Base):
+    """Approval is a scoped, auditable authorization, never inferred from a check."""
+    __tablename__ = "verification_approvals"
+    __table_args__ = (UniqueConstraint("run_id", "approval_type", "generation"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("verification_runs.id", ondelete="CASCADE"), index=True)
+    approval_type: Mapped[str] = mapped_column(String(60))
+    generation: Mapped[int] = mapped_column(default=1)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    scope_digest: Mapped[str] = mapped_column(String(64))
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class GuardPresenceLease(Base):
+    """Replay prevention for enrolled machine heartbeats, distinct from policy health."""
+    __tablename__ = "guard_presence_leases"
+    guard_id: Mapped[str] = mapped_column(ForeignKey("guard_registrations.id", ondelete="CASCADE"), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    session_nonce: Mapped[str] = mapped_column(String(64))
+    sequence: Mapped[int] = mapped_column(default=0)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

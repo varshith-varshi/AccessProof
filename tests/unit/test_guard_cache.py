@@ -253,3 +253,15 @@ def test_guard_rejects_invalid_identity_mapping_before_policy_install(tmp_path):
     assert cache.decide("alice", "drive", "secret", "read")[0] == "unknown"
     assert not cache.application_bindings_received()
     assert all(request.method == "GET" for request in observed)
+
+
+def test_presence_sequence_survives_guard_process_restart(tmp_path):
+    from apps.guard.accessproof_guard.cache import PolicyCache
+    path = str(tmp_path / "persistent-presence.db")
+    first = PolicyCache(path)
+    assert first.next_presence_sequence() == 1
+    assert first.next_presence_sequence() == 2
+    first.db.close()
+    second = PolicyCache(path)
+    assert second.next_presence_sequence() == 3
+    second.db.close()

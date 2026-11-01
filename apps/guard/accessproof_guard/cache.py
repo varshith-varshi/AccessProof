@@ -27,6 +27,7 @@ class PolicyCache:
         self._transaction_depth = 0
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        self.db.execute("INSERT OR IGNORE INTO metadata(key,value) VALUES ('presence_sequence','0')")
         self.db.execute("CREATE TABLE IF NOT EXISTS decisions (subject_id TEXT NOT NULL, source_id TEXT NOT NULL, resource_id TEXT NOT NULL, scope TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(subject_id, source_id, resource_id, scope))")
         self.db.execute("CREATE TABLE IF NOT EXISTS bound_applications (application_id TEXT PRIMARY KEY, source_id TEXT NOT NULL, mode TEXT NOT NULL, source_acl_healthy INTEGER NOT NULL DEFAULT 0)")
         self.db.execute("CREATE TABLE IF NOT EXISTS bound_application_sources (application_id TEXT NOT NULL, source_id TEXT NOT NULL, source_acl_healthy INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(application_id, source_id))")
@@ -70,6 +71,18 @@ class PolicyCache:
             if name not in audit_columns:
                 self.db.execute(f"ALTER TABLE audit_buffer ADD COLUMN {name} {declaration}")
         self.db.commit()
+
+    def next_presence_sequence(self) -> int:
+        """Persist monotonic machine presence before network transmission."""
+        with self._lock:
+            with self.db:
+                value = int(self.db.execute(
+                    "SELECT value FROM metadata WHERE key='presence_sequence'"
+                ).fetchone()[0]) + 1
+                self.db.execute(
+                    "UPDATE metadata SET value=? WHERE key='presence_sequence'", (str(value),)
+                )
+                return value
 
     @contextmanager
     def _write_transaction(self) -> Iterator[None]:

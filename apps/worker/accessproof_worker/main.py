@@ -39,6 +39,7 @@ from packages.crypto.secrets import build_secret_backend
 from packages.domain.models import SourceResource
 from apps.api.accessproof_api.retention import apply_retention
 from apps.api.accessproof_api.alerts import queue_alert
+from apps.api.accessproof_api.verification_engine import run_worker_cycle
 from apps.api.accessproof_api.observability import (
     cleanup_attempts,
     webhook_attempts,
@@ -952,6 +953,14 @@ async def main() -> None:
             if await maintain_google_watches():
                 did_work = True
             last_google_watch = now
+        # Durable PostgreSQL outbox is authoritative; on failure jobs remain
+        # eligible for worker restart recovery. Do not couple provider sync to
+        # availability of this new optional verification engine.
+        try:
+            if await asyncio.to_thread(run_worker_cycle):
+                did_work = True
+        except Exception as exc:
+            logger.warning("verification_worker_cycle_failed error=%s", type(exc).__name__)
         email_id = claim_one_email()
         if email_id:
             did_work = True

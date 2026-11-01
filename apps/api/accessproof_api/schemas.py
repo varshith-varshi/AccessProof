@@ -223,6 +223,9 @@ class GuardHeartbeat(BaseModel):
     guard_id: str
     version: str = Field(min_length=1, max_length=50)
     active_policy_version: int = Field(default=0, ge=0)
+    # Monotonic, durable per-enrollment sequence prevents replay from renewing
+    # machine presence. Legacy clients can report health but have no lease.
+    presence_sequence: int | None = Field(default=None, ge=1)
     cache_status: str = Field(default="healthy", max_length=30)
     degraded_conditions: list[str] = Field(default_factory=list, max_length=20)
     active_applications: dict[str, Literal["shadow", "protect"]] = Field(default_factory=dict, max_length=100)

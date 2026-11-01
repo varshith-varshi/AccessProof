@@ -124,3 +124,27 @@ def test_machine_guard_policy_notification_is_authenticated_and_version_bound():
         assert response.json()["event_type"] == "POLICY_UPDATE_AVAILABLE"
         assert response.json()["policy_version"] == 3
         assert client.get(f"/api/v1/guards/{guard_id}/policy-notifications", headers={"Authorization": f"Bearer {account['session_token']}"}, params={"wait_seconds": 0}).status_code == 401
+
+
+def test_guard_presence_sequence_replay_and_legacy_downgrade_blocked():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        account = _signup(client, "presence-replay-r11@example.com")
+        guard_id = client.post("/api/v1/guards", headers=_headers(account),
+                               json={"name": "presence-r11"}).json()["id"]
+        token = client.post(f"/api/v1/guards/{guard_id}/enrollments", headers=_headers(account),
+                            json={}).json()["enrollment_token"]
+        secret = client.post("/api/v1/guards/exchange",
+                             json={"enrollment_token": token, "version": "1"}).json()["guard_credential"]
+        headers = {"Authorization": f"Bearer {secret}"}
+        payload = {"guard_id": guard_id, "version": "1", "presence_sequence": 1}
+        assert client.post("/api/v1/guards/heartbeat", headers=headers, json=payload).status_code == 200
+        replay = client.post("/api/v1/guards/heartbeat", headers=headers, json=payload)
+        assert replay.status_code == 409 and replay.json()["detail"] == "GUARD_HEARTBEAT_REPLAY"
+        assert client.post("/api/v1/guards/heartbeat", headers=headers,
+                           json={"guard_id": guard_id, "version": "1"}).status_code == 409
+        assert client.post("/api/v1/guards/heartbeat", headers=headers,
+                           json={**payload, "presence_sequence": 2}).status_code == 200
+        assert client.post("/api/v1/guards/heartbeat", headers={"Authorization": "Bearer untrusted"},
+                           json={**payload, "presence_sequence": 3}).status_code == 401

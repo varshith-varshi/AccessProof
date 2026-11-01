@@ -80,6 +80,6 @@ test("unpaired installer download is versioned to avoid a stale cached ZIP", asy
     r.fulfill({ json: { state: "awaiting_customer_install" } }));
   await page.goto("/onboarding");
   await expect(page.getByRole("link", { name: "Download Gateway installer" })).toHaveAttribute(
-    "href", /auto-verify-r8-20261101/
+    "href", /guard-readiness-r10-20261101/
   );
 });
