@@ -72,6 +72,36 @@ def test_signed_certification_requires_exact_profile_source_and_fresh_evidence(m
         checks = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
         assert checks["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"] is True
         assert checks["CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"] is False
+        # Production SharePoint requires both independent signed certification
+        # and a separate operator release gate, never just an admin toggle.
+        from apps.api.accessproof_api.config import Settings
+        source.provider = "sharepoint"
+        profile, digest = _source_scope(source, credentials)
+        cert.provider_profile, cert.scope_digest = profile, digest
+        cert.signature = _certificate_signature(cert, key)
+        assert effective_source_certified(db, source, credentials)
+        monkeypatch.setattr(api_module, "settings", Settings(
+            env="production", microsoft_certified_protect=False,
+        ))
+        denied = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
+        assert denied["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"] is True
+        assert denied["V1_PROVIDER_SCOPE"] is False
+        monkeypatch.setattr(api_module, "settings", Settings(
+            env="production", microsoft_certified_protect=True,
+        ))
+        released = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
+        assert released["V1_PROVIDER_SCOPE"] is True
+        assert released["CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"] is False
+        cert.signature = "0" * 64
+        tampered = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
+        assert tampered["V1_PROVIDER_SCOPE"] is False
+        assert tampered["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"] is False
+        # Restore the original synthetic proof for the remaining tamper tests.
+        source.provider = "microsoft365"
+        profile, digest = _source_scope(source, credentials)
+        cert.provider_profile, cert.scope_digest = profile, digest
+        cert.signature = _certificate_signature(cert, key)
+        monkeypatch.setattr(api_module, "settings", Settings())
         assert not effective_source_certified(db, other, credentials)
         assert not effective_source_certified(db, source, {**credentials, "drive_id": "another-drive"})
         assert not effective_source_certified(db, source, {**credentials, "list_id": "other-library"})

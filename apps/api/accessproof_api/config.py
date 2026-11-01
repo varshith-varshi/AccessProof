@@ -64,6 +64,35 @@ class Settings:
     # Development keeps legacy connectors for compatibility coverage. The
     # production V1 contract is enforced server-side below.
     v1_provider: str = os.getenv("ACCESSPROOF_V1_PROVIDER", GOOGLE_WORKSPACE_DRIVE_V1).strip().lower()
+    # Explicit opt-in to create Microsoft sources for Shadow observations only.
+    microsoft_shadow_onboarding: bool = os.getenv(
+        "ACCESSPROOF_MICROSOFT_SHADOW_ONBOARDING_ENABLED", "0"
+    ).strip().lower() in {"1", "true", "yes"}
+    microsoft_certified_protect: bool = os.getenv(
+        "ACCESSPROOF_MICROSOFT_CERTIFIED_PROTECT_ENABLED", "0"
+    ).strip().lower() in {"1", "true", "yes"}
+
+
+def certified_sharepoint_scope_allowed(
+    provider: str,
+    *,
+    provider_profile: str | None,
+    certificate_verified: bool,
+    feature_enabled: bool,
+) -> bool:
+    """Allow *exact* individually certified SharePoint ACL profiles only.
+
+    Older Microsoft-connected sources use the canonical ``microsoft365``
+    provider, which also covers OneDrive. The independently verified profile
+    must therefore match SharePoint list-item effective access exactly. Never
+    allow a Microsoft365/OneDrive source merely from the feature flag.
+    """
+    return (
+        provider in {"sharepoint", "microsoft365"}
+        and provider_profile == "sharepoint_list_item_effective"
+        and certificate_verified is True
+        and feature_enabled is True
+    )
 
 
 settings = Settings()
@@ -77,6 +106,25 @@ def v1_source_provider_allowed(provider: str, value: Settings = settings) -> boo
         value.v1_provider == GOOGLE_WORKSPACE_DRIVE_V1
         and provider == "google-drive"  # canonical persisted value required by workers/adapters
     )
+
+
+def source_onboarding_provider_allowed(provider: str, value: Settings = settings) -> bool:
+    """Creation eligibility only; NEVER imply Protect eligibility for Microsoft."""
+    if v1_source_provider_allowed(provider, value):
+        return True
+    return bool(
+        value.env == "production"
+        and value.v1_provider == GOOGLE_WORKSPACE_DRIVE_V1
+        and value.microsoft_shadow_onboarding
+        and provider in {"sharepoint", "onedrive"}
+    )
+
+
+def enforce_source_onboarding_provider(provider: str, value: Settings = settings) -> None:
+    if not source_onboarding_provider_allowed(provider, value):
+        raise V1ProviderScopeError(
+            "V1_PROVIDER_NOT_SUPPORTED: Google Drive Protect V1; Microsoft Shadow onboarding requires operator opt-in"
+        )
 
 
 def enforce_v1_source_provider(provider: str, value: Settings = settings) -> None:
@@ -95,12 +143,25 @@ def enforce_v1_browser_credential_policy(
     use this function. Development remains permissive for deterministic
     connector fixtures and isolated compatibility tests.
     """
-    if value.env != "production" or provider.strip().lower() != "google-drive":
+    if value.env != "production":
         return
-    if credentials:
+    if provider == "google-drive" and credentials:
         raise V1ProviderScopeError(
             "V1_BROWSER_CREDENTIALS_NOT_ALLOWED: connect Google Workspace using the server-configured OAuth flow"
         )
+    # Microsoft browser inputs are *identifiers only*. Tokens, credentials,
+    # OAuth endpoints and other unrecognized fields must come from trusted
+    # server-side administrator consent, never be accepted from a request body.
+    if provider in {"sharepoint", "onedrive"}:
+        allowed = {"tenant_id", "drive_id", "test_root_item_id"}
+        if provider == "sharepoint":
+            allowed |= {"site_id", "list_id"}
+        else:
+            allowed.add("owner_object_id")
+        if any(key not in allowed or not isinstance(value, str) for key, value in credentials.items()):
+            raise V1ProviderScopeError(
+                "MICROSOFT_BROWSER_CREDENTIALS_NOT_ALLOWED: provide only approved source identifiers; consent is server-side"
+            )
 
 
 def validate_production_settings(value: Settings = settings) -> None:

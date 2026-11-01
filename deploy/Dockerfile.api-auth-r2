@@ -1,0 +1,9 @@
+# Minimal API security patch built from the verified running production image.
+# Base: accessproof/api:sharepoint-certified-scope-20261101-r1
+# Only app.py changes: bounded per-worker authentication rate limiting.
+# All production Gateway pairing routes and SharePoint certification
+# behavior are copied from the running r1 release and preserved.
+FROM accessproof/api:sharepoint-certified-scope-20261101-r1
+USER root
+COPY --chown=10001:10001 apps/api/accessproof_api/app.py /app/apps/api/accessproof_api/app.py
+USER 10001:10001

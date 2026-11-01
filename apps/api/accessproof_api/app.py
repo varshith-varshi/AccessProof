@@ -1,10 +1,12 @@
 from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
+from collections import OrderedDict
 from packages.connector_sdk.base import SourceAdapter
 from packages.capability_registry import snapshot as capability_registry_snapshot
 from packages.rag_core import adapter_registry
 from apps.api.accessproof_api.rag_challenge_verifier import verify_reference_evidence, request_ids
-from apps.api.accessproof_api.source_certification import effective_source_certified
+from apps.api.accessproof_api import gateway_pairing
+from apps.api.accessproof_api.source_certification import effective_source_certified, _source_scope
 from apps.api.accessproof_api.protection_state import (
     PROTECTION_STATES,
     STATE_MESSAGES,
@@ -49,10 +51,11 @@ from apps.api.accessproof_api.auth import (
 from apps.api.accessproof_api.config import (
     V1ProviderScopeError,
     enforce_v1_browser_credential_policy,
-    enforce_v1_source_provider,
+    enforce_source_onboarding_provider,
     settings,
     validate_production_settings,
     v1_source_provider_allowed,
+    certified_sharepoint_scope_allowed,
 )
 from apps.api.accessproof_api.db import (
     AITarget,
@@ -292,29 +295,41 @@ _secret_box = build_secret_backend(
     aws_region=settings.aws_region,
 )
 _report_signer = Ed25519Signer.from_secret(settings.report_signing_key)
-_auth_attempts: dict[str, list[float]] = {}
+_AUTH_MAX_BUCKETS = 4096
+_auth_attempts: OrderedDict[str, list[float]] = OrderedDict()
 _auth_attempts_lock = Lock()
 
 
 def _limit_auth_request(request: Request, action: str, limit: int, window_seconds: int, discriminator: str = "") -> None:
-    """Bound low-cost authentication abuse without persisting email addresses."""
-    # Local test/dev accounts are intentionally ephemeral. Production retains
-    # the full limiter; disabling it here prevents one reused fixture account
-    # from contaminating unrelated deterministic tests.
+    """Bound auth request bursts and memory, without storing raw account IDs."""
     if settings.env != "production":
         return
     client = request.client.host if request.client else "unknown"
-    # Keep the network-wide bound while separating independent accounts. The
-    # discriminator is a one-way normalized value and is never logged/stored.
     digest = hashlib.sha256(discriminator.strip().lower().encode()).hexdigest()[:16] if discriminator else ""
     key = f"{action}:{client}:{digest}"
+    network_key = f"{action}:{client}:ALL"
+    # Allow high-volume legitimate NATs, while closing the unlimited unique-
+    # account brute-force path that a per-email limiter alone leaves open.
+    network_limit = max(500, limit * 100)
     now = time.monotonic()
     with _auth_attempts_lock:
-        recent = [item for item in _auth_attempts.get(key, []) if item > now - window_seconds]
-        if len(recent) >= limit:
-            raise HTTPException(429, "Too many requests. Please try again shortly.")
-        recent.append(now)
-        _auth_attempts[key] = recent
+        for bucket, threshold in ((network_key, network_limit), (key, limit)):
+            recent = [t for t in _auth_attempts.get(bucket, []) if t > now - window_seconds]
+            if len(recent) >= threshold:
+                raise HTTPException(429, "Too many requests. Please try again shortly.")
+        for bucket in dict.fromkeys((network_key, key)):
+            recent = [t for t in _auth_attempts.get(bucket, []) if t > now - window_seconds]
+            recent.append(now)
+            _auth_attempts[bucket] = recent
+            _auth_attempts.move_to_end(bucket)
+        if len(_auth_attempts) > _AUTH_MAX_BUCKETS:
+            # Expire dormant identities; cap the remainder to avoid attacker-
+            # controlled memory growth even across many distinct client IPs.
+            for bucket, recent in list(_auth_attempts.items()):
+                if not recent or recent[-1] <= now - 3600:
+                    _auth_attempts.pop(bucket, None)
+            while len(_auth_attempts) > _AUTH_MAX_BUCKETS:
+                _auth_attempts.popitem(last=False)
 
 
 def _issue_email_verification(db: OrmSession, user: User, organization_id: str) -> str:
@@ -3110,12 +3125,9 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
             "reason": None if permission_ids_ready else "Resolve each active Workspace principal to Google's verified Drive permission ID before Protect.",
         })
         source_connected = source_connected and permission_ids_ready
+    # The default Google-only scope stays enforced. Microsoft SharePoint is
+    # eligible ONLY with an exact verified effective-permissions certificate.
     source_in_v1_scope = bool(source and v1_source_provider_allowed(source.provider, settings))
-    checks.append({
-        "code": "V1_PROVIDER_SCOPE",
-        "ok": source_in_v1_scope,
-        "reason": None if source_in_v1_scope else "This source is outside the deployed Google Workspace + Google Drive V1 Protect scope.",
-    })
     checks.append({"code": "PERMISSION_SOURCE_CONFIGURED", "ok": source_credentials_ok, "reason": None if source_credentials_ok else "Connect a permission source with valid, approved credentials."})
     checks.append({"code": "PERMISSION_SOURCE_TRUSTED", "ok": source_connected, "reason": None if source_connected else "Connect and validate a permission source."})
     microsoft_preview = bool(source and source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"})
@@ -3135,6 +3147,22 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
             "ok": certified,
             "reason": None if certified else "This exact Microsoft tenant, source, library/drive and permission profile still require independent live-provider certification. Graph sharing records do not prove effective rights.",
         })
+        profile = (
+            _source_scope(source, certificate_credentials)
+            if source and isinstance(certificate_credentials, dict)
+            else None
+        )
+        source_in_v1_scope = source_in_v1_scope or certified_sharepoint_scope_allowed(
+            source.provider,
+            provider_profile=profile[0] if profile else None,
+            certificate_verified=certified,
+            feature_enabled=settings.microsoft_certified_protect,
+        )
+    checks.append({
+        "code": "V1_PROVIDER_SCOPE",
+        "ok": source_in_v1_scope,
+        "reason": None if source_in_v1_scope else "This source is not yet eligible for Protect. SharePoint requires independent signed effective-permissions certification and explicit production release enablement.",
+    })
     acl_cursor = db.scalar(select(ProviderSyncCursorModel).where(
         ProviderSyncCursorModel.organization_id == organization_id,
         ProviderSyncCursorModel.source_id == source.id,
@@ -3756,6 +3784,84 @@ def current_ai_application_automated_preflight(
         # unique tenant/application key is authoritative; retry only the read.
         db.rollback()
     return _activation_status(db, row)
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/gateway-pairing", status_code=201)
+def issue_customer_gateway_pairing(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Generate a 15-minute private, application-scoped customer pairing file."""
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if (row is None or row.adapter_type != "accessproof-gateway"
+            or row.source_id is None or not row.guard_id):
+        raise HTTPException(409, "APPLICATION_SOURCE_AND_GUARD_BINDING_REQUIRED")
+    guard = db.get(GuardRegistration, row.guard_id)
+    if (guard is None or guard.organization_id != row.organization_id
+            or guard.revoked_at is not None or guard.enrolled_at is None):
+        raise HTTPException(409, "ENROLLED_GUARD_REQUIRED")
+    try:
+        pairing = gateway_pairing.issue(
+            org_id=row.organization_id, app_row_id=row.id,
+            application_id=row.application_id, api_url=settings.api_public_url,
+        )
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
+    _audit(db, actor, row.organization_id, "GATEWAY_PAIRING_ISSUED", "ai_application", row.id, {})
+    db.commit()
+    return pairing
+
+
+@app.get("/api/v1/current/ai-applications/{application_id}/gateway-pairing")
+def get_customer_gateway_pairing(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    try:
+        return gateway_pairing.status(org_id=row.organization_id, app_row_id=row.id)
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
+
+
+@app.post("/api/v1/gateway-pairings/claim", status_code=202)
+def claim_customer_gateway_pairing(
+    installation: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """One-time customer-side installation report, not Protect evidence."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "PAIRING_TOKEN_REQUIRED")
+    def eligible(org_id: str, row_id: str, application_id: str) -> bool:
+        row = db.get(AIApplication, row_id)
+        if (row is None or row.organization_id != org_id
+                or row.application_id != application_id
+                or row.adapter_type != "accessproof-gateway"
+                or row.source_id is None or not row.guard_id):
+            return False
+        guard = db.get(GuardRegistration, row.guard_id)
+        return bool(guard and guard.organization_id == org_id
+                    and guard.enrolled_at is not None and guard.revoked_at is None)
+    try:
+        return gateway_pairing.receive(
+            token=authorization.removeprefix("Bearer "), installation=installation,
+            application_is_valid=eligible,
+        )
+    except gateway_pairing.PairingError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
 
 
 @app.post("/api/v1/current/ai-applications/{application_id}/protection/challenge", status_code=201)
@@ -5518,7 +5624,7 @@ def create_source(
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
     try:
-        enforce_v1_source_provider(payload.provider, settings)
+        enforce_source_onboarding_provider(payload.provider, settings)
         enforce_v1_browser_credential_policy(payload.provider, payload.credentials, settings)
     except V1ProviderScopeError as exc:
         message = str(exc)
@@ -5576,7 +5682,7 @@ def create_current_source(
     create or select a project.
     """
     try:
-        enforce_v1_source_provider(payload.provider, settings)
+        enforce_source_onboarding_provider(payload.provider, settings)
         enforce_v1_browser_credential_policy(payload.provider, payload.credentials, settings)
     except V1ProviderScopeError as exc:
         message = str(exc)
