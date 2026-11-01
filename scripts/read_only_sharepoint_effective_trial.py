@@ -8,7 +8,9 @@ import httpx
 
 from connectors.microsoft365.sharepoint_effective import SharePointEffectiveAccessProbe, SharePointPermissionError
 from connectors.microsoft365.sharepoint_authorization import diagnose_sharepoint_rest_token
+from connectors.microsoft365.graph_employee_identity import GraphEmployeeIdentityResolver, MicrosoftIdentityResolutionError
 from packages.auth.microsoft_certificate import sharepoint_rest_app_token, SharePointCertificateAuthError
+from packages.auth.microsoft_consent import graph_app_token
 
 HOME = Path.home()
 REG = json.loads((HOME / ".config/accessproof/entra-app-registration.json").read_text())
@@ -84,14 +86,39 @@ async def run() -> int:
             print("EFFECTIVE_ACCESS_CANNOT_BE_CERTIFIED: No SharePoint audience access token")
             return 2
         probe = SharePointEffectiveAccessProbe(site_url=SITE_URL, sharepoint_access_token=token, client=client)
-        for name, login in (
-            ("alice", "i:0#.f|membership|alice@neuralmatrix093.onmicrosoft.com"),
-            ("bob", "i:0#.f|membership|bob@neuralmatrix093.onmicrosoft.com"),
-        ):
+        # Revalidate immutable Entra object IDs live before using SharePoint
+        # login names. Never take a mutable email from the challenge caller.
+        store = HOME / ".config/accessproof/sharepoint-rest-validation/synthetic-verified-employees.json"
+        if store.is_symlink() or not store.is_file():
+            print("NO_VERIFIED_EMPLOYEE_IDENTITY_BINDING")
+            return 2
+        saved_users = json.loads(store.read_text())
+        with httpx.Client(timeout=15, follow_redirects=False, trust_env=False) as graph_client:
+            graph_token, _ = graph_app_token(
+                tenant_id=TENANT, client_id=REG["client_id"],
+                client_secret=SECRET["client_secret"], client=graph_client,
+            )
+        resolver = GraphEmployeeIdentityResolver(
+            tenant_id=TENANT, graph_access_token=graph_token, client=client,
+        )
+        if set(saved_users) != {"alice", "bob"}:
+            print("LAB_EMPLOYEE_IDENTITY_SET_CHANGED")
+            return 2
+        for name in ("alice", "bob"):
+            identity = saved_users[name]
+            try:
+                employee = await resolver.verify_employee(object_id=identity["object_id"])
+                if (identity["tenant_id"] != employee.tenant_id
+                        or identity["user_principal_name"] != employee.user_principal_name
+                        or identity["sharepoint_login_name"] != employee.sharepoint_login_name):
+                    raise MicrosoftIdentityResolutionError("GRAPH_EMPLOYEE_BINDING_CHANGED")
+            except (KeyError, TypeError, MicrosoftIdentityResolutionError):
+                print("EMPLOYEE_IDENTITY_VERIFICATION_FAILED", name)
+                return 2
             for item_id in (2, 3, 4):
                 try:
                     allow = await probe.can_view_item(
-                        list_id=LIST_ID, item_id=item_id, verified_login_name=login,
+                        list_id=LIST_ID, item_id=item_id, verified_login_name=employee.sharepoint_login_name,
                     )
                     print("EFFECTIVE_ACCESS_UNCERTIFIED", name, item_id, allow)
                 except SharePointPermissionError as exc:

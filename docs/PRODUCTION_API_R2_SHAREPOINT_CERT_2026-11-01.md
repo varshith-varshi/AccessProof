@@ -123,3 +123,14 @@ must all pass before a signed source certificate is issued.
 Never fabricate SharePoint results, turn off Security Defaults, issue
 a certificate from self-reported evidence, or enable Protect before
 real live authorization and revocation checks.
+
+## Verified test tenant employee identities (additional live evidence)
+
+Microsoft Graph app-only lookups returned HTTP 200 and verified active
+member user identities for synthetic Alice and Bob. Their immutable Entra
+object IDs and SharePoint claim login mappings were written to
+`~/.config/accessproof/sharepoint-rest-validation/synthetic-verified-employees.json`
+(mode 0600). The effective-ACL probe now rechecks these object IDs directly
+against Microsoft Graph at runtime; it does not trust guessed login names.
+This verifies *directory identity lookup*, not employee interactive OIDC,
+item effective ACLs, or revocation.
