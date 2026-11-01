@@ -7,7 +7,16 @@ import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 import "./onboarding.css";
 
-type Pairing = { state: string; expires_at?: string | null; deployment_sha256?: string | null; route_sha256?: string | null };
+type PairingVerification = {
+  state: "action_required" | "checks_passed_requires_independent_review" | "verification_unavailable";
+  checked_at: string; checks_passed: number; checks_total: number;
+  failed_check_codes: string[]; production_certification: false; protect_activated: false;
+};
+type Pairing = {
+  state: string; expires_at?: string | null;
+  deployment_sha256?: string | null; route_sha256?: string | null;
+  verification?: PairingVerification;
+};
 type Challenge = { challenge_id: string; state: string; expires_at: string; production_certification: boolean };
 type Data = { sources: Source[]; guards: Guard[]; apps: AIApplication[]; protection: ProtectionOverview | null; errors: string[] };
 const EMPTY: Data = { sources: [], guards: [], apps: [], protection: null, errors: [] };
@@ -135,7 +144,7 @@ export default function Onboarding() {
         {app && <div className="onboard-fact"><b>{app.name}</b><small>{guard ? `Guard connected · policy ${guard.active_policy_version ?? "none"} · verify readiness` : "Enroll and bind a Guard first"}</small></div>}
         {!app && <Link href="/applications">Register an application →</Link>}
         {app && bound && !reported && <div className="onboard-actions">
-          <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=20261101-source" download="accessproof-gateway-connector.zip">Download Gateway installer</a>
+          <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=auto-verify-r8-20261101" download="accessproof-gateway-connector.zip">Download Gateway installer</a>
           <button className="button" disabled={busy} onClick={() => void issuePairing()}>{busy ? "Preparing…" : "Download pairing key"}</button>
           <div className="onboard-command"><b>Run from your Docker RAG project directory</b><code>{installCommand}</code><small>Existing Gateways are detected. Refresh expired keys only when new pairing is actually needed.</small></div>
         </div>}
@@ -145,6 +154,14 @@ export default function Onboarding() {
       <section className="onboard-card"><header><span>03</span><Pill ok={protectedVerified} caution={checks.length > 0} label={protectedVerified ? "Protected verified" : "Checks pending"}/></header>
         <h3>Verify & protect</h3><p>Verify source permissions, provenance, real Gateway decisions, and customer-approved cutover.</p>
         <div className="onboard-fact"><b>{protectedVerified ? "Protected verified" : "Not protected yet"}</b><small>{readiness?.state_message ?? "Security evidence has not been certified."}</small></div>
+        {reported && <div className="onboard-command" role="status" aria-label="Automatic security verification">
+          <b>Automatic verification after Gateway installation</b>
+          {pairing?.verification ? <>
+            <p>{pairing.verification.checks_passed}/{pairing.verification.checks_total} control-plane security checks passed.
+              {pairing.verification.failed_check_codes.length > 0 ? " Unverified requirements are listed below." : " Independent Guard evidence and cutover approval are still required."}</p>
+            <small>Last checked {new Date(pairing.verification.checked_at).toLocaleTimeString()} · Read-only assessment; Protect was not activated.</small>
+          </> : <p>The control plane is evaluating your prerequisites. Refreshes happen automatically; installation alone is not certification.</p>}
+        </div>}
         {checks.length > 0 && <details open className="onboard-checks"><summary>{checks.length} security prerequisites need attention</summary><ul>{checks.slice(0, 16).map((c, i) => <li key={c.code + i}><b>{c.code.replaceAll("_", " ")}</b> — {c.reason ?? "Verification required"}</li>)}</ul></details>}
         {reported && !protectedVerified && <div className="onboard-actions">
           <div className="onboard-command"><b>Check locally before requesting a challenge</b><p>No pairing key needed. This read-only diagnostic does not activate Protect.</p><code>{installCommand} --doctor</code></div>

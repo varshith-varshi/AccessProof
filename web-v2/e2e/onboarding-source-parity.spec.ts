@@ -30,7 +30,16 @@ test("onboarding restores complete steps and displays fail-closed readiness", as
         reason: "Live employee SharePoint effective access is missing." }] }],
   } }));
   await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", r =>
-    r.fulfill({ json: { state: "installation_reported_unverified", deployment_sha256: "a".repeat(64), route_sha256: "b".repeat(64) } }));
+    r.fulfill({ json: {
+      state: "installation_reported_unverified", deployment_sha256: "a".repeat(64),
+      route_sha256: "b".repeat(64),
+      verification: {
+        state: "action_required", checked_at: "2026-11-01T12:00:00Z",
+        checks_passed: 12, checks_total: 21,
+        failed_check_codes: ["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"],
+        production_certification: false, protect_activated: false,
+      },
+    } }));
   await page.goto("/onboarding?application=synthetic-sharepoint-rag");
   const sidebar = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(sidebar.getByRole("link", { name: "Get Started" })).toHaveAttribute("href", "/onboarding");
@@ -42,6 +51,7 @@ test("onboarding restores complete steps and displays fail-closed readiness", as
   await expect(page.getByText("Live employee SharePoint effective access is missing.")).toBeVisible();
   await expect(page.getByText("python3 ~/Downloads/accessproof-gateway-connector.zip --doctor")).toBeVisible();
   await expect(page.getByText("Not protected yet")).toBeVisible();
+  await expect(page.getByRole("status", { name: "Automatic security verification" })).toContainText("12/21 control-plane security checks passed");
   await expect(page.getByRole("button", { name: "Download security challenge" })).toBeDisabled();
   await expect(page.getByText("2 / 3")).toBeVisible();
 });
@@ -57,4 +67,19 @@ test("onboarding does not claim protection for empty sources or failed provider 
   await expect(page.getByText("No SharePoint connection")).toBeVisible();
   await expect(page.getByText("0 / 3")).toBeVisible();
   await expect(page.getByText("Not protected yet")).toBeVisible();
+});
+
+
+test("unpaired installer download is versioned to avoid a stale cached ZIP", async ({ page, context }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "synthetic-not-a-real-session", url: "http://127.0.0.1:3011" }]);
+  await page.route("**/api/v1/current/sources", r => r.fulfill({ json: [source] }));
+  await page.route("**/api/v1/guards", r => r.fulfill({ json: [guard] }));
+  await page.route("**/api/v1/current/ai-applications", r => r.fulfill({ json: [app] }));
+  await page.route("**/api/v1/current/protection/overview", r => r.fulfill({ json: { applications: [] } }));
+  await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", r =>
+    r.fulfill({ json: { state: "awaiting_customer_install" } }));
+  await page.goto("/onboarding");
+  await expect(page.getByRole("link", { name: "Download Gateway installer" })).toHaveAttribute(
+    "href", /auto-verify-r8-20261101/
+  );
 });

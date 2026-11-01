@@ -3786,6 +3786,52 @@ def current_ai_application_automated_preflight(
     return _activation_status(db, row)
 
 
+def _automatic_gateway_pairing_verification(
+    db: OrmSession, row: AIApplication,
+) -> dict[str, Any]:
+    """Immediately assess readiness after a tenant-bound Gateway pairing.
+
+    This is a read-only checklist snapshot: no user traffic, Guard challenges,
+    source certification, cutover, or Protect state may be altered.
+    """
+    try:
+        checks = _automatic_activation_checklist(db, row)
+        if not checks or any(
+            not isinstance(check, dict)
+            or not isinstance(check.get("code"), str)
+            or type(check.get("ok")) is not bool
+            for check in checks
+        ):
+            raise ValueError("Invalid verification result")
+        failures = [check["code"] for check in checks if not check["ok"]]
+        # A green preflight is NEVER sufficient to approve Protect. Real
+        # machine-audited challenges and customer cutover are separate.
+        return {
+            "state": "checks_passed_requires_independent_review" if not failures else "action_required",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "checks_passed": len(checks) - len(failures),
+            "checks_total": len(checks),
+            "failed_check_codes": failures,
+            "production_certification": False,
+            "protect_activated": False,
+            "next_action": (
+                "Complete independent Guard challenge and customer-approved cutover."
+                if not failures else "Resolve the listed prerequisite checks; the dashboard refreshes automatically."
+            ),
+        }
+    except Exception:
+        return {
+            "state": "verification_unavailable",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "checks_passed": 0,
+            "checks_total": 0,
+            "failed_check_codes": ["AUTOMATIC_READINESS_CHECK_UNAVAILABLE"],
+            "production_certification": False,
+            "protect_activated": False,
+            "next_action": "Retry the dashboard security preflight; Protect remains blocked.",
+        }
+
+
 @app.post("/api/v1/current/ai-applications/{application_id}/gateway-pairing", status_code=201)
 def issue_customer_gateway_pairing(
     application_id: str,
@@ -3829,9 +3875,12 @@ def get_customer_gateway_pairing(
     if row is None:
         raise HTTPException(404, "AI application not found")
     try:
-        return gateway_pairing.status(org_id=row.organization_id, app_row_id=row.id)
+        status = gateway_pairing.status(org_id=row.organization_id, app_row_id=row.id)
     except Exception as exc:
         raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
+    if status.get("state") == "installation_reported_unverified":
+        status["verification"] = _automatic_gateway_pairing_verification(db, row)
+    return status
 
 
 @app.post("/api/v1/gateway-pairings/claim", status_code=202)
@@ -3843,6 +3892,8 @@ def claim_customer_gateway_pairing(
     """One-time customer-side installation report, not Protect evidence."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "PAIRING_TOKEN_REQUIRED")
+    validated_application: list[AIApplication] = []
+
     def eligible(org_id: str, row_id: str, application_id: str) -> bool:
         row = db.get(AIApplication, row_id)
         if (row is None or row.organization_id != org_id
@@ -3851,13 +3902,24 @@ def claim_customer_gateway_pairing(
                 or row.source_id is None or not row.guard_id):
             return False
         guard = db.get(GuardRegistration, row.guard_id)
-        return bool(guard and guard.organization_id == org_id
-                    and guard.enrolled_at is not None and guard.revoked_at is None)
+        valid = bool(guard and guard.organization_id == org_id
+                     and guard.enrolled_at is not None and guard.revoked_at is None)
+        if valid:
+            validated_application.append(row)
+        return valid
     try:
-        return gateway_pairing.receive(
+        result = gateway_pairing.receive(
             token=authorization.removeprefix("Bearer "), installation=installation,
             application_is_valid=eligible,
         )
+        # This runs only after successful one-use token validation and
+        # application/source/Guard binding checks. Never act on caller IDs.
+        if len(validated_application) != 1:
+            raise RuntimeError("Authenticated pairing lacks a unique application")
+        result["verification"] = _automatic_gateway_pairing_verification(
+            db, validated_application[0],
+        )
+        return result
     except gateway_pairing.PairingError as exc:
         raise HTTPException(409, str(exc)) from exc
     except Exception as exc:
