@@ -11,6 +11,7 @@ from connectors.microsoft365.sharepoint_authorization import diagnose_sharepoint
 from connectors.microsoft365.graph_employee_identity import GraphEmployeeIdentityResolver, MicrosoftIdentityResolutionError
 from packages.auth.microsoft_certificate import sharepoint_rest_app_token, SharePointCertificateAuthError
 from packages.auth.microsoft_consent import graph_app_token
+from scripts.sharepoint_trial_verdict import validate_synthetic_access
 
 HOME = Path.home()
 REG = json.loads((HOME / ".config/accessproof/entra-app-registration.json").read_text())
@@ -104,6 +105,9 @@ async def run() -> int:
         if set(saved_users) != {"alice", "bob"}:
             print("LAB_EMPLOYEE_IDENTITY_SET_CHANGED")
             return 2
+        permission_failures = 0
+        successfully_observed = 0
+        observations: dict[tuple[str, int], bool] = {}
         for name in ("alice", "bob"):
             identity = saved_users[name]
             try:
@@ -120,10 +124,24 @@ async def run() -> int:
                     allow = await probe.can_view_item(
                         list_id=LIST_ID, item_id=item_id, verified_login_name=employee.sharepoint_login_name,
                     )
+                    successfully_observed += 1
+                    observations[(name, item_id)] = allow
                     print("EFFECTIVE_ACCESS_UNCERTIFIED", name, item_id, allow)
                 except SharePointPermissionError as exc:
+                    permission_failures += 1
                     print("EFFECTIVE_ACCESS_INCOMPLETE", name, item_id, str(exc))
-        print("NOT_CERTIFIED: login names and employee identity still need independent Entra binding")
+        print("EFFECTIVE_PERMISSION_RESULTS", successfully_observed, "OF_6",
+              "ERRORS", permission_failures)
+        print("NOT_CERTIFIED: permission results alone do not establish"
+              " employee OIDC, revocation, or Layer 1/2 release proof")
+        if permission_failures or successfully_observed != 6:
+            return 2
+        deviations = validate_synthetic_access(observations)
+        for deviation in deviations:
+            print("SYNTHETIC_PERMISSION_POLICY_FAILURE", deviation)
+        if deviations:
+            return 2
+        print("SYNTHETIC_PERMISSION_MATRIX_PASSED_READ_ONLY")
     return 0
 
 if __name__ == "__main__":

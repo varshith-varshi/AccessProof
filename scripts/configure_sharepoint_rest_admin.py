@@ -112,10 +112,50 @@ def main() -> int:
         "az", "ad", "app", "permission", "admin-consent", "--id", app_id,
         "--only-show-errors", "--output", "none",
     ], check=True)
-    print("Application: SharePoint Sites.Selected consent and public cert registered.")
+    # Entra's admin-consent CLI can return success without creating an app
+    # role assignment for a newly added resource. Verify the service principal
+    # assignment independently; never infer consent from a zero exit code.
+    sp = read_json(["az", "ad", "sp", "show", "--id", app_id, "-o", "json"])
+    if not isinstance(sp, dict):
+        raise RuntimeError("TARGET_SERVICE_PRINCIPAL_UNAVAILABLE")
+    principal_id = str(UUID(sp["id"]))
+    resource_id = str(UUID(service_principal["id"]))
+    url = f"https://graph.microsoft.com/v1.0/servicePrincipals/{principal_id}/appRoleAssignments"
+    current_assignments = read_json(["az", "rest", "--method", "GET", "--url", url, "-o", "json"])
+    if not isinstance(current_assignments, dict):
+        raise RuntimeError("SHAREPOINT_ROLE_ASSIGNMENT_READ_FAILED")
+    assigned = any(
+        row.get("appRoleId") == role_id and row.get("resourceId") == resource_id
+        for row in current_assignments.get("value", [])
+    )
+    if not assigned:
+        assignment = json.dumps({
+            "principalId": principal_id, "resourceId": resource_id,
+            "appRoleId": role_id,
+        })
+        subprocess.run([
+            "az", "rest", "--method", "POST", "--url", url,
+            "--headers", "Content-Type=application/json", "--body", assignment,
+            "--output", "none",
+        ], check=True)
+        current_assignments = read_json(["az", "rest", "--method", "GET", "--url", url, "-o", "json"])
+        assigned = isinstance(current_assignments, dict) and any(
+            row.get("appRoleId") == role_id and row.get("resourceId") == resource_id
+            for row in current_assignments.get("value", [])
+        )
+    if not assigned:
+        raise RuntimeError("SHAREPOINT_SITES_SELECTED_APP_ROLE_NOT_GRANTED")
+    print("Application: SharePoint Sites.Selected role independently verified; public cert registered.")
     print("Checking site grant with administrator identity...")
     site_url = "https://graph.microsoft.com/v1.0/sites/" + TEST_SITE_ID + "/permissions"
-    permissions = read_json(["az", "rest", "--method", "get", "--url", site_url, "--output", "json"])
+    try:
+        permissions = read_json(["az", "rest", "--method", "get", "--url", site_url, "--output", "json"])
+    except RuntimeError:
+        print("SITE_PERMISSION_MANAGEMENT_BLOCKED: This administrator token needs Microsoft Graph ")
+        print("delegated Sites.FullControl.All with MFA and SharePoint Administrator/Global ")
+        print("Administrator role, plus membership of the target synthetic site.")
+        print("Do not grant Sites.FullControl.All to the customer AccessProof application.")
+        return 2
     if not isinstance(permissions, dict):
         raise RuntimeError("MICROSOFT_TEST_SITE_PERMISSION_REVIEW_UNAVAILABLE")
     assignments = [
