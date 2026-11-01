@@ -1,0 +1,9 @@
+# Read-only SharePoint validation tools, added to the verified production API.
+# No changes to HTTP routes, source certification, database, OIDC or Protect.
+# No tenant credentials or signing/private keys included in this image.
+FROM accessproof/api:auth-limiter-r2-20261101
+USER root
+COPY --chown=10001:10001 scripts/sharepoint_validation_readiness.py scripts/sharepoint_trial_verdict.py scripts/read_only_sharepoint_effective_trial.py scripts/inspect_approved_test_site_app_role.py scripts/verify_synthetic_microsoft_users.py /app/scripts/
+COPY --chown=10001:10001 connectors/microsoft365/graph_employee_identity.py connectors/microsoft365/sharepoint_authorization.py /app/connectors/microsoft365/
+COPY --chown=10001:10001 packages/auth/microsoft_certificate.py /app/packages/auth/
+USER 10001:10001

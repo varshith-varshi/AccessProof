@@ -2,7 +2,12 @@
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
+
+# Support both direct CLI execution and `python -m scripts...`.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import httpx
 
