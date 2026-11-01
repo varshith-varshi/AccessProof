@@ -10,13 +10,14 @@ import pytest
 from apps.gateway.accessproof_gateway.cutover_agent import (
     EmployeeRouteProbe, probe_customer_employee_route, verify_published_customer_route,
 )
-from apps.gateway.accessproof_gateway.customer_agent import CustomerAgentError
+from apps.gateway.accessproof_gateway.customer_agent import CustomerAgentError, verify_deployment_contract
+from apps.gateway.accessproof_gateway.network_boundary import NetworkBoundaryError
 from tests.unit.test_gateway_customer_agent import _scenario
 
 
 def _probe():
     return EmployeeRouteProbe.parse({
-        "url": "http://127.0.0.1:18081/v1/chat/completions",
+        "url": "http://127.0.0.1:18108/v1/chat/completions",
         "allowed_token": "verified-synthetic-allow",
         "denied_token": "verified-synthetic-deny",
         "allowed_resources": [{"resource_id": "allowed", "content": "AUTHORIZED_PUBLIC_REFERENCE",
@@ -29,13 +30,39 @@ def _probe():
 
 def _prepared(tmp_path: Path):
     spec, installation, compose, _, _ = _scenario(tmp_path)
-    compose["services"]["customer-rag"]["ports"] = [
-        {"published": "18081", "target": 8000, "host_ip": "127.0.0.1", "protocol": "tcp"}
+    compose["services"]["accessproof-gateway"]["ports"] = [
+        {"published": "18108", "target": 8090, "host_ip": "127.0.0.1", "protocol": "tcp"}
     ]
     return spec, installation, compose
 
 
-def test_employee_cutover_probes_authentic_rag_endpoint_and_computes_real_http_hashes(tmp_path):
+def _mock_prechecked_topology_for_http_unit(monkeypatch):
+    # Route response/body tests below exercise the HTTP three-control logic in
+    # isolation. A published RAG port is *never* allowed in real certification:
+    # verify_deployment_contract rejects it as an unprotected bypass route.
+    monkeypatch.setattr(
+        "apps.gateway.accessproof_gateway.cutover_agent.verify_deployment_contract",
+        lambda **kwargs: {"static_egress_isolated": True},
+    )
+    monkeypatch.setattr(
+        "apps.gateway.accessproof_gateway.cutover_agent.verify_published_customer_route",
+        lambda **kwargs: None,
+    )
+
+
+def test_published_rag_port_is_rejected_before_http_probes(tmp_path):
+    spec, installation, compose = _prepared(tmp_path)
+    compose["services"]["customer-rag"]["ports"] = [
+        {"published": "18081", "target": 8000, "host_ip": "127.0.0.1", "protocol": "tcp"}
+    ]
+    with pytest.raises(NetworkBoundaryError, match="RAG published ports can bypass"):
+        verify_deployment_contract(
+            installation=installation, spec=spec, resolved_compose=compose,
+        )
+
+
+def test_employee_cutover_probes_authentic_rag_endpoint_and_computes_real_http_hashes(tmp_path, monkeypatch):
+    _mock_prechecked_topology_for_http_unit(monkeypatch)
     spec, installation, compose = _prepared(tmp_path)
     seen = []
     def serve(req: httpx.Request) -> httpx.Response:
@@ -53,7 +80,7 @@ def test_employee_cutover_probes_authentic_rag_endpoint_and_computes_real_http_h
             })
         return httpx.Response(403, json={"detail": {"code": "NO_AUTHORIZED_RESOURCES"}})
 
-    with httpx.Client(base_url="http://127.0.0.1:18081",
+    with httpx.Client(base_url="http://127.0.0.1:18108",
                       transport=httpx.MockTransport(serve)) as client:
         receipt = probe_customer_employee_route(
             installation=installation, spec=spec, resolved_compose=compose,
@@ -71,10 +98,10 @@ def test_employee_cutover_probes_authentic_rag_endpoint_and_computes_real_http_h
     assert "verified-synthetic-allow" not in json.dumps(receipt)
 
 
-def test_employee_route_cannot_point_to_gateway_or_unpublished_remote_endpoint(tmp_path):
+def test_employee_route_rejects_unpublished_or_non_gateway_endpoint(tmp_path):
     spec, _, compose = _prepared(tmp_path)
     for candidate in [
-        "http://127.0.0.1:18108/v1/chat/completions",
+        "http://127.0.0.1:18081/v1/chat/completions",
         "http://169.254.169.254:18081/v1/chat/completions",
         "https://127.0.0.1:18081/v1/chat/completions",
         "http://127.0.0.1:18082/v1/chat/completions",
@@ -92,7 +119,8 @@ def test_employee_route_cannot_point_to_gateway_or_unpublished_remote_endpoint(t
     "wrong_denial_code", "denied_canary_leak", "wrong_positive_path",
     "tamper_failed_open", "tamper_wrong_reason", "tamper_leaks_content",
 ])
-def test_customer_route_protection_fails_closed_for_bypass_scenarios(tmp_path, case):
+def test_customer_route_protection_fails_closed_for_bypass_scenarios(tmp_path, case, monkeypatch):
+    _mock_prechecked_topology_for_http_unit(monkeypatch)
     spec, installation, compose = _prepared(tmp_path)
     def reply(req: httpx.Request) -> httpx.Response:
         is_allow = req.headers["Authorization"].endswith("verified-synthetic-allow")

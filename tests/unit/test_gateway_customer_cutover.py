@@ -18,8 +18,12 @@ from tests.unit.test_gateway_cutover_agent import _probe
 
 def _cutover_setup(tmp_path: Path):
     spec, installation, compose, challenge, machine = _scenario(tmp_path)
-    compose["services"]["customer-rag"]["ports"] = [{
-        "published": "18081", "target": 8000, "host_ip": "127.0.0.1", "protocol": "tcp",
+    # The RAG must not publish a host port: doing so would create an
+    # employee-accessible path that bypasses the Gateway.  These tests supply
+    # an in-process HTTP mock explicitly. The employee route is exposed by the
+    # Gateway, while the RAG stays on internal-only networks.
+    compose["services"]["accessproof-gateway"]["ports"] = [{
+        "published": "18108", "target": 8090, "host_ip": "127.0.0.1", "protocol": "tcp",
     }]
     digest = hashlib.sha256(challenge["challenge_nonce"].encode()).hexdigest()[:24]
     challenge["challenge_id"] = "123e4567-e89b-12d3-a456-426614174000"

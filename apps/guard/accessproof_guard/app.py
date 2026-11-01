@@ -4,6 +4,7 @@ import os
 import asyncio
 import json
 import stat
+import httpx
 from ipaddress import ip_address
 from pathlib import Path
 from uuid import uuid4
@@ -100,7 +101,10 @@ identity_mode = _machine_settings.get("identity_mode", identity_mode)
 expected_tenant = expected_tenant or _machine_settings.get("tenant_id")
 subject_claim = _machine_settings.get("subject_claim", subject_claim)
 guard_version = os.getenv("ACCESSPROOF_GUARD_VERSION", "0.1.0")
+# Security presence is deliberately independent from the policy/audit loop.
+# A one-second target is not a hard real-time guarantee over unreliable networks.
 sync_interval_seconds = max(2.0, float(os.getenv("ACCESSPROOF_GUARD_SYNC_SECONDS", "10")))
+presence_interval_seconds = max(1.0, float(os.getenv("ACCESSPROOF_GUARD_PRESENCE_SECONDS", "1")))
 _sync_error: str | None = None
 _oidc_verifier: OidcVerifier | None = None
 
@@ -161,10 +165,6 @@ async def _sync_loop() -> None:
                     # Audit delivery is retried from the durable local buffer;
                     # it must not suppress liveness and policy health reports.
                     audit_error = f"AUDIT_UPLOAD_{type(exc).__name__}"
-                identity_degraded = [] if identity_mode == "oidc" and issuer and audience else ["OIDC_IDENTITY_NOT_CONFIGURED"]
-                if audit_error:
-                    identity_degraded.append("AUDIT_UPLOAD_FAILED")
-                await asyncio.to_thread(client.heartbeat, degraded_conditions=identity_degraded)
                 _sync_error = audit_error
             except Exception as exc:
                 # Do not log credentials or request bodies.  The data plane
@@ -174,7 +174,7 @@ async def _sync_loop() -> None:
             # propagation without making policy content or authorization depend
             # on a notification; sync_once remains the authoritative fetch.
             try:
-                changed = await asyncio.to_thread(client.wait_for_policy_update, wait_seconds=min(25, int(sync_interval_seconds * 3))) if client else False
+                changed = await asyncio.to_thread(client.wait_for_policy_update, wait_seconds=1) if client else False
             except Exception:
                 changed = False
             if not changed:
@@ -184,15 +184,75 @@ async def _sync_loop() -> None:
             client.close()
 
 
+async def _presence_loop() -> None:
+    """Independent machine-authenticated Guard presence; never claims Protect.
+
+    The 1s target remains best effort. Failed/late requests are reported by
+    control-plane receipt timestamps, not by self-declared client uptime.
+    """
+    client: GuardSyncClient | None = None
+    presence_transport: httpx.Client | None = None
+    active_identity: tuple[str, str, str] | None = None
+    try:
+        while True:
+            started = asyncio.get_running_loop().time()
+            settings = _effective_machine_settings()
+            current = (settings.get("control_plane_url", ""), settings.get("guard_id", ""), settings.get("credential", ""))
+            if not all(current):
+                if presence_transport is not None:
+                    presence_transport.close()
+                    presence_transport = None
+                client = None
+                active_identity = None
+            else:
+                if current != active_identity:
+                    if presence_transport is not None:
+                        presence_transport.close()
+                    # Own the dedicated transport across heartbeats and close
+                    # it when credentials rotate or this task is cancelled.
+                    presence_transport = httpx.Client(
+                        timeout=1.5, follow_redirects=False, trust_env=False
+                    )
+                    client = GuardSyncClient(
+                        cache,
+                        GuardMachineCredentials(
+                            control_plane_url=current[0], guard_id=current[1],
+                            credential=current[2], version=guard_version,
+                        ),
+                        presence_transport,
+                    )
+                    active_identity = current
+                try:
+                    conditions = []
+                    if identity_mode != "oidc" or not issuer or not audience:
+                        conditions.append("OIDC_IDENTITY_NOT_CONFIGURED")
+                    if _sync_error:
+                        conditions.append("POLICY_SYNC_OR_AUDIT_DEGRADED")
+                    assert client is not None
+                    await asyncio.to_thread(client.heartbeat, degraded_conditions=conditions)
+                except Exception:
+                    # Missing receipts cause control plane OFFLINE after TTL.
+                    # Never convert a rejected heartbeat into an online claim.
+                    pass
+            elapsed = asyncio.get_running_loop().time() - started
+            await asyncio.sleep(max(0.0, presence_interval_seconds - elapsed))
+    finally:
+        if presence_transport is not None:
+            presence_transport.close()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    task = asyncio.create_task(_sync_loop())
+    sync_task = asyncio.create_task(_sync_loop())
+    presence_task = asyncio.create_task(_presence_loop())
     try:
         yield
     finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        sync_task.cancel()
+        presence_task.cancel()
+        for task in (sync_task, presence_task):
+            with suppress(asyncio.CancelledError):
+                await task
         if _oidc_verifier is not None:
             _oidc_verifier.close()
 

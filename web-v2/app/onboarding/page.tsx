@@ -121,7 +121,14 @@ export default function Onboarding() {
   });
   const checkReadiness = () => perform(async () => {
     if (!id) return;
-    setActivation(await api<{ state: string; message: string }>(`/api/v1/current/ai-applications/${id}/protection/enable`, { method: "POST" }));
+    const readiness = await api<{ ready: boolean; checks: { code: string; ok: boolean; reason?: string | null }[] }>(`/api/v1/current/ai-applications/${id}/protect-readiness`);
+    const firstFailure = readiness.checks.find(check => !check.ok);
+    setActivation({
+      state: readiness.ready ? "ready_for_review" : "action_required",
+      message: readiness.ready
+        ? "Read-only readiness checks passed. Protect still requires a separate approved cutover and Guard acknowledgement."
+        : firstFailure?.reason ?? "Read-only readiness checks found incomplete security evidence.",
+    });
     await refresh();
   });
   return <ProtectedPage><div className="onboard-page">
@@ -144,7 +151,7 @@ export default function Onboarding() {
         {app && <div className="onboard-fact"><b>{app.name}</b><small>{guard ? `Guard connected · policy ${guard.active_policy_version ?? "none"} · verify readiness` : "Enroll and bind a Guard first"}</small></div>}
         {!app && <Link href="/applications">Register an application →</Link>}
         {app && bound && !reported && <div className="onboard-actions">
-          <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=auto-verify-r8-20261101" download="accessproof-gateway-connector.zip">Download Gateway installer</a>
+          <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=guard-readiness-r10-20261101" download="accessproof-gateway-connector.zip">Download Gateway installer</a>
           <button className="button" disabled={busy} onClick={() => void issuePairing()}>{busy ? "Preparing…" : "Download pairing key"}</button>
           <div className="onboard-command"><b>Run from your Docker RAG project directory</b><code>{installCommand}</code><small>Existing Gateways are detected. Refresh expired keys only when new pairing is actually needed.</small></div>
         </div>}
@@ -172,7 +179,7 @@ export default function Onboarding() {
         </div>}
         {challengeStatus && <small>Challenge: {challengeStatus.state.replaceAll("_", " ")}</small>}
         {activation && <p role="status">{activation.message}</p>}
-        <button className="button secondary" disabled={busy || !app} onClick={() => void checkReadiness()}>{busy ? "Checking…" : "Run protection readiness checks"}</button>
+        <button className="button secondary" disabled={busy || !app} onClick={() => void checkReadiness()}>{busy ? "Checking…" : "Refresh read-only readiness"}</button>
         <Link href="/protection">View continuous monitoring →</Link>
       </section>
     </div><footer className="onboard-footer">🔒 Your data stays under your control. Microsoft consent, customer-side installation and traffic cutover require explicit approval. Unknown permissions fail closed. <span>Checked {checkedAt || "now"}</span></footer>

@@ -3088,7 +3088,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     })
     guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
     source = db.get(SourceConnection, row.source_id) if row.source_id else None
-    heartbeat_ok = bool(guard and guard.last_heartbeat_at and (now - (guard.last_heartbeat_at.replace(tzinfo=timezone.utc) if guard.last_heartbeat_at.tzinfo is None else guard.last_heartbeat_at)).total_seconds() <= settings.runner_offline_seconds)
+    heartbeat_ok = bool(guard and guard.last_heartbeat_at and (now - (guard.last_heartbeat_at.replace(tzinfo=timezone.utc) if guard.last_heartbeat_at.tzinfo is None else guard.last_heartbeat_at)).total_seconds() <= settings.guard_offline_seconds)
     checks.append({"code": "APPLICATION_EXISTS", "ok": True, "reason": None})
     checks.append({"code": "TENANT_SCOPE_VALID", "ok": row.organization_id == organization_id, "reason": None if row.organization_id == organization_id else "Application belongs to another organization."})
     checks.append({"code": "GUARD_BOUND", "ok": guard is not None, "reason": None if guard else "Bind an AccessProof Guard."})
@@ -3153,7 +3153,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
             else None
         )
         source_in_v1_scope = source_in_v1_scope or certified_sharepoint_scope_allowed(
-            source.provider,
+            source.provider if source else "",
             provider_profile=profile[0] if profile else None,
             certificate_verified=certified,
             feature_enabled=settings.microsoft_certified_protect,
@@ -3407,7 +3407,7 @@ def _guard_health_state(guard: GuardRegistration | None, now: datetime) -> str:
     if guard.enrolled_at is None:
         return "not_enrolled"
     age = _age_seconds(guard.last_heartbeat_at, now)
-    if age is not None and age <= settings.runner_offline_seconds:
+    if age is not None and age <= settings.guard_offline_seconds:
         return "online"
     return "offline"
 

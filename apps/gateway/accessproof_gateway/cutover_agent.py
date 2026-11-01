@@ -1,8 +1,9 @@
-"""Validate the actual customer RAG HTTP route after operator-approved cutover.
+"""Validate the actual Gateway HTTP route after operator-approved cutover.
 
 A successful Gateway-only test is NOT deployment proof. This helper only
 supports the explicit reference Compose contract and a localhost-published
-customer RAG /v1/chat/completions route. It never changes customer resources.
+Gateway /v1/chat/completions route. The RAG itself remains private. It never
+changes customer resources.
 """
 from __future__ import annotations
 
@@ -76,16 +77,21 @@ def verify_published_customer_route(
     *, resolved_compose: dict[str, Any], rag_service: str, url: str,
     gateway_port: int,
 ) -> None:
-    """Confirm a RAG service, not the Gateway, owns the loopback port."""
+    """Confirm the sole published employee route is the Gateway.
+
+    The RAG has no host port in the reference topology.  Requiring it here
+    contradicted the Compose isolation verifier and made certified cutover
+    impossible without creating a bypass.
+    """
     _, port = _parsed_reference_route(url)
-    if port == gateway_port:
-        raise CustomerAgentError("Gateway-only tests do not certify employee RAG cutover")
     services = resolved_compose.get("services")
-    rag = services.get(rag_service) if isinstance(services, dict) else None
-    if not isinstance(rag, dict):
-        raise CustomerAgentError("Customer RAG service is absent")
+    gateway = services.get("accessproof-gateway") if isinstance(services, dict) else None
+    if not isinstance(gateway, dict):
+        raise CustomerAgentError("AccessProof Gateway service is absent")
+    if port != gateway_port:
+        raise CustomerAgentError("Employee route is not the authorized Gateway port")
     exposed = False
-    for item in rag.get("ports") or []:
+    for item in gateway.get("ports") or []:
         if isinstance(item, dict):
             published = item.get("published")
             host_ip = item.get("host_ip")
@@ -97,7 +103,7 @@ def verify_published_customer_route(
                 f"127.0.0.1:{port}:8000", f"127.0.0.1:{port}:8090",
             }
     if not exposed:
-        raise CustomerAgentError("Employee route is not a loopback-published customer RAG port")
+        raise CustomerAgentError("Employee route is not a loopback-published Gateway port")
 
 
 def _body_json_bytes(
