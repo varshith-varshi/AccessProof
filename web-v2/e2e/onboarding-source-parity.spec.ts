@@ -32,6 +32,8 @@ test("onboarding restores complete steps and displays fail-closed readiness", as
   await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", r =>
     r.fulfill({ json: { state: "installation_reported_unverified", deployment_sha256: "a".repeat(64), route_sha256: "b".repeat(64) } }));
   await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+  const sidebar = page.getByRole("navigation", { name: "Primary navigation" });
+  await expect(sidebar.getByRole("link", { name: "Get Started" })).toHaveAttribute("href", "/onboarding");
   await expect(page.getByText("Connect SharePoint", { exact: true })).toBeVisible();
   await expect(page.getByText("Connect your RAG", { exact: true })).toBeVisible();
   await expect(page.getByText("Verify & protect", { exact: true })).toBeVisible();
