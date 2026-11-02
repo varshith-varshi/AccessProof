@@ -1,0 +1,114 @@
+{
+  "schema": "accessproof.security_evidence/v1",
+  "signed": false,
+  "signature_note": "Unsigned engineering evidence. No legitimate signing authority was available, and no live evidence qualified for issuance.",
+  "readiness_determination": "NOT_READY",
+  "deployment_protection_state": "NOT_PROTECTED (last reported protect_pending; not re-observed)",
+  "git_base_commit": "6014a18a5df11f3cb20ec21a9e14935d4687f617",
+  "test_results_sha256": "3ca56cefa0b096f750336e03d099f7dba0d17da825b71a58e017ef9c54b743a6",
+  "checks": [
+    {
+      "area": "Source security",
+      "item": "SharePoint effective-permission certificate",
+      "status": "BLOCKED"
+    },
+    {
+      "area": "Source security",
+      "item": "Certificate trust boundary (API cannot mint)",
+      "status": "PASS",
+      "evidence": "tests/security/test_source_certificate_trust_boundary.py",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Identity",
+      "item": "Real Entra OIDC for Alice/Bob",
+      "status": "BLOCKED"
+    },
+    {
+      "area": "Identity",
+      "item": "OIDC iss/aud/exp/sig/tid verification",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Identity",
+      "item": "Static shared-secret identity refused in production",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Layer 1",
+      "item": "Unauthorized chunks never in model context",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Layer 1",
+      "item": "Mission \u00a76 tests 5-9 on real RAG",
+      "status": "BLOCKED"
+    },
+    {
+      "area": "Layer 2",
+      "item": "Signed provenance, trace completeness, L1==L2 revision, buffered release",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Revocation",
+      "item": "Live revoke/restore and latency",
+      "status": "BLOCKED"
+    },
+    {
+      "area": "Revocation",
+      "item": "Revision-based denial and replay resistance",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Cache",
+      "item": "Cached answer re-authorization per employee/revision",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Gateway",
+      "item": "Authenticated, replay-protected heartbeat; activation gate",
+      "status": "PASS",
+      "level": "LOCAL"
+    },
+    {
+      "area": "Gateway",
+      "item": "Real customer route protected",
+      "status": "BLOCKED"
+    },
+    {
+      "area": "Reliability",
+      "item": "Production restart/outage drills",
+      "status": "NOT_TESTED"
+    },
+    {
+      "area": "Deployment",
+      "item": "Fixes deployed and verified in production",
+      "status": "BLOCKED"
+    },
+    {
+      "area": "Model integration",
+      "item": "Real local LLM (Ollama) denied-doc test",
+      "status": "NOT_TESTED",
+      "reason": "SKIPPED: Ollama not running"
+    }
+  ],
+  "documents": {
+    "docs/ACCESSPROOF_ARCHITECTURE_AUDIT.md": "4f7b6d544674f30cc9b0844edc24e7a7982678864b0676d3aac097860dd729d3",
+    "docs/ACCESSPROOF_FEATURE_MATRIX.md": "b65aac5d9a1bf3452b9daa601815c28f801ef1562cbbfc3e95da0c9b5d6c2c1d",
+    "docs/ACCESSPROOF_DEFECT_REGISTER.md": "14ed487788b98a09481bcf3d00921997de7e5076f8a140f33a9d0f3a45f7f93f",
+    "docs/ACCESSPROOF_SECURITY_THREAT_MODEL.md": "1e2f013986ba186e60224eb0e5ea8bf4092dbe0357f51188c15f646c6b6ecdef",
+    "docs/ACCESSPROOF_ONBOARDING_VALIDATION.md": "f27b24c4b4ea670f0b61298ad4a1ef8a5cd688525a72855d90aa784dce8f4f39",
+    "docs/ACCESSPROOF_GUARD_VALIDATION.md": "6b940e8cca970293a6e8d1df3a31d93cff976337ba9d82222fe347751217842e",
+    "docs/ACCESSPROOF_GATEWAY_VALIDATION.md": "f7adfb1761f4ad7fa05c501693e3bad9b04804e9c684ee0aeed2f6df7b4faa5c",
+    "docs/ACCESSPROOF_SHAREPOINT_AUTHORIZATION.md": "c11f97c6f8595cc0f0767a738acec5d5f25f1eedd2c759856a91727882686c84",
+    "docs/ACCESSPROOF_LAYER1_LAYER2_EVIDENCE.md": "08790ca3c3ed3d673a033b99cde0f277d0a7824ad23dbe4114c8bc0ab1dbe8cf",
+    "docs/ACCESSPROOF_REVOCATION_TESTS.md": "d3de1072dfcb727c3db843bb34fd5d03a7f82560835c42c8ac5b5ba9b6fb243e",
+    "docs/ACCESSPROOF_PRODUCTION_READINESS.md": "a6ffcac58af522e7709a5e9c6745506047251fa603e2d91b017d699b70feae5b"
+  }
+}

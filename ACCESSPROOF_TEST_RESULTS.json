@@ -1,0 +1,140 @@
+{
+  "schema": "accessproof.test_results/v1",
+  "generated_from": "pytest JUnit XML of this run (not hand-entered)",
+  "timestamp": "2026-11-02T20:50:30.806564+00:00",
+  "git_base_commit": "6014a18a5df11f3cb20ec21a9e14935d4687f617",
+  "git_commit_tested": "6014a18a5df11f3cb20ec21a9e14935d4687f617",
+  "uncommitted_changes_at_test_time": true,
+  "environment": "Claude Code cloud container, Python 3.13, SQLite test DB, in-process ASGI + loopback TCP; no production access",
+  "totals": {
+    "tests": 1317,
+    "failed": 0,
+    "skipped": 4,
+    "passed": 1313,
+    "duration_seconds": 134.183
+  },
+  "by_directory": {
+    "contract": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "integration": {
+      "passed": 160,
+      "failed": 0,
+      "skipped": 4,
+      "blocked": 0
+    },
+    "load": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "security": {
+      "passed": 472,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "unit": {
+      "passed": 670,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    }
+  },
+  "by_category_module_name_match": {
+    "Guard": {
+      "passed": 182,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "Gateway": {
+      "passed": 350,
+      "failed": 0,
+      "skipped": 3,
+      "blocked": 0
+    },
+    "SharePoint": {
+      "passed": 148,
+      "failed": 0,
+      "skipped": 1,
+      "blocked": 0
+    },
+    "Cache": {
+      "passed": 74,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "Revocation": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "Layer 1/Layer 2": {
+      "passed": 53,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    },
+    "Source certification (D-01)": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "blocked": 0
+    }
+  },
+  "skipped": [
+    {
+      "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[authorized]",
+      "reason": "Local Ollama not running"
+    },
+    {
+      "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[partial]",
+      "reason": "Local Ollama not running"
+    },
+    {
+      "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[revoked_midstream]",
+      "reason": "Local Ollama not running"
+    },
+    {
+      "test": "tests.integration.test_live_sharepoint_fixture_ollama::test_actual_sharepoint_synthetic_bytes_authorized_into_real_ollama",
+      "reason": "No opt-in connected SharePoint synthetic fixture"
+    }
+  ],
+  "failed": [],
+  "blocked_not_run": [
+    {
+      "category": "SharePoint live tenant tests",
+      "status": "BLOCKED",
+      "reason": "Tenant credentials and interactive employee sign-in unavailable"
+    },
+    {
+      "category": "RAG tests (real customer SharePoint RAG)",
+      "status": "BLOCKED",
+      "reason": "Customer host / sharepoint-rag-lab not reachable"
+    },
+    {
+      "category": "Revocation (live provider)",
+      "status": "BLOCKED",
+      "reason": "Owner-authorized revoke/restore not available here"
+    },
+    {
+      "category": "Production tests",
+      "status": "BLOCKED",
+      "reason": "app.accessproof.in / api.accessproof.in denied by session network policy; AWS STS rejected credentials"
+    }
+  ],
+  "static_checks": {
+    "ruff_changed_files": "PASS",
+    "mypy_strict_changed_modules": "PASS",
+    "web_tsc_noEmit": "PASS",
+    "web_eslint_changed_file": "PASS"
+  },
+  "note": "Skipped and BLOCKED items are never counted as passing."
+}
