@@ -22,3 +22,18 @@
 .onboard-verification-history summary{font-size:12px;color:#244a76;cursor:pointer}
 .onboard-verification-history ul{padding-left:16px;font-size:11px;line-height:1.9}
 @media(max-width:430px){.onboard-workflow-metrics{grid-template-columns:1fr}.onboard-workflow{padding:11px}}
+
+/* r12: customer-first live RAG validation. Internal checks stay server-side. */
+.onboard-rag-session,.onboard-live-guide,.onboard-live-results,.onboard-cutover{border:1px solid #dce8f4;border-radius:11px;background:#f8fbff;padding:14px;display:flex;flex-direction:column;gap:10px}
+.onboard-rag-session>b,.onboard-live-guide>b,.onboard-live-results>b,.onboard-cutover>b{font-size:13px;color:#123d66}
+.onboard-rag-session p,.onboard-live-guide p,.onboard-live-results p,.onboard-cutover p{font-size:12px;line-height:1.7;color:#526b84;margin:0}
+.onboard-rag-session input{display:block;width:100%;min-height:42px;margin-top:7px;padding:10px;border:1px solid #c9d6e8;border-radius:9px;background:#fff;color:#0e2c49;font-size:12px}
+.onboard-rag-session .button,.onboard-live-guide .button{width:100%;justify-content:center}
+.onboard-live-status{grid-template-columns:repeat(2,minmax(0,1fr))}
+.onboard-inline-links{display:flex;gap:12px;flex-wrap:wrap}
+.onboard-observations{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.onboard-observations>div{background:#fff;border:1px solid #deeaf6;border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.onboard-observations strong{font-size:12px;color:#174677}
+.onboard-observations small{font-size:11px}
+.onboard-cutover{border-color:#d9e4f1;background:#f3f8fd}
+@media(max-width:560px){.onboard-observations{grid-template-columns:1fr}}
