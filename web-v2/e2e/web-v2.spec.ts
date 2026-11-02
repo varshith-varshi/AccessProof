@@ -198,6 +198,16 @@ test("AI applications check Guard and Gateway before protection activation", asy
   await page.route("**/api/v1/guards", route => route.fulfill({ json: [] }));
   await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
   await page.route("**/api/v1/current/adapters", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/gateway-pairing", route => route.fulfill({
+    json: { state: "not_started" },
+  }));
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/verification-run", route => route.fulfill({
+    json: { state: "PENDING", run_id: "run",
+      guard: { connectivity: "OFFLINE", security_readiness: "UNKNOWN", heartbeat_age_seconds: null } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/status", route => route.fulfill({
+    json: { route_certificate: { certified: false, status: "MISSING" }, checks: [] },
+  }));
   let submitted = 0;
   await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/enable", route => {
     expect(route.request().method()).toBe("POST");
@@ -219,8 +229,10 @@ test("AI applications check Guard and Gateway before protection activation", asy
   const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
   await expect(review).toBeVisible();
   await expect(review.getByText("Guard connection")).toBeVisible();
-  await expect(review.getByText("Gateway installation")).toBeVisible();
-  await expect(review.getByText("Gateway protected route")).toBeVisible();
+  await expect(review.getByText("Gateway installation record")).toBeVisible();
+  await expect(review.getByText("Gateway route certificate")).toBeVisible();
+  await expect(review.getByText("No installation report")).toBeVisible();
+  await expect(review.getByText(/missing or expired pairing receipt does not mean your Gateway stopped running/)).toBeVisible();
   await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
   expect(submitted).toBe(0);
 });
@@ -627,7 +639,9 @@ test("Guard and paired Gateway can request activation without claiming Protect o
       guard: { connectivity: "CONNECTED", security_readiness: "READY", heartbeat_age_seconds: 0.4 } },
   }));
   await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/status", route => route.fulfill({
-    json: { route_certification: { certified: false, status: "NOT_CERTIFIED" } },
+    json: { route_certificate: { certified: false, status: "MISSING" },
+      checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+        reason: "Live-provider SharePoint permission certification is required." }] },
   }));
   let requests = 0;
   await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/enable", route => {
@@ -642,10 +656,81 @@ test("Guard and paired Gateway can request activation without claiming Protect o
   await page.goto("/applications");
   await page.getByRole("button", { name: "Check & Enable Protection" }).click();
   const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
-  await expect(review.getByText("Paired", { exact: true })).toBeVisible();
-  await expect(review.getByText("Not verified active")).toBeVisible();
+  await expect(review.getByText("Installation reported", { exact: true })).toBeVisible();
+  await expect(review.getByText("Not certified", { exact: true })).toBeVisible();
+  await expect(review.getByText(/Live-provider SharePoint permission certification is required/)).toHaveCount(0);
   await review.getByRole("button", { name: "Enable Protection" }).click();
   await expect(review.getByText("Protection not active yet")).toBeVisible();
   await expect(review.getByText("Effective source permissions require certification.")).toBeVisible();
   expect(requests).toBe(1);
+});
+
+
+test("Missing temporary Gateway receipt is not presented as a stopped container", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  const app = { id: "application-one", application_id: "finance-rag", name: "Finance RAG", mode: "protect_pending",
+    guard_id: "guard-one", source_id: "sharepoint-one", adapter_type: "accessproof-gateway",
+    adapter_contract_version: "accessproof.rag/v1", readiness: [] };
+  await page.route("**/api/v1/current/protection/overview", route => route.fulfill({
+    json: protectionOverviewJson([{ application_id: "finance-rag", effective_state: "NOT_VERIFIED" }]),
+  }));
+  await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson() }));
+  await page.route("**/api/v1/current/ai-applications", route => route.fulfill({ json: [app] }));
+  await page.route("**/api/v1/guards", route => route.fulfill({ json: [
+    { id: "guard-one", name: "Guard", health: "online", active_policy_version: 8 },
+  ] }));
+  await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/gateway-pairing", route => route.fulfill({
+    json: { state: "not_started" },
+  }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/verification-run", route => route.fulfill({
+    json: { run_id: "run", state: "PENDING",
+      guard: { connectivity: "CONNECTED", security_readiness: "DEGRADED", heartbeat_age_seconds: 1.2 } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/protection/status", route => route.fulfill({
+    json: { route_certificate: { certified: false, status: "MISSING" },
+      checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+        reason: "Microsoft SharePoint effective rights not certified." }] },
+  }));
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
+  await expect(review.getByText("No installation report", { exact: true })).toBeVisible();
+  await expect(review.getByText(/missing or expired pairing receipt does not mean your Gateway stopped running/)).toBeVisible();
+  await expect(review.getByText("Not paired", { exact: true })).toHaveCount(0);
+  await expect(review.getByText("Not certified", { exact: true })).toBeVisible();
+  await expect(review.getByText("Microsoft SharePoint effective rights not certified.")).toBeVisible();
+  await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
+  await expect(review.getByRole("link", { name: "Get Started" }))
+    .toHaveAttribute("href", "/onboarding?application=finance-rag");
+});
+
+test("Route certificate UI consumes the actual backend route_certificate field", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson() }));
+  await page.route("**/api/v1/current/protection/overview", route => route.fulfill({
+    json: protectionOverviewJson([{ application_id: "finance-rag", effective_state: "NOT_VERIFIED" }]),
+  }));
+  await page.route("**/api/v1/current/ai-applications", route => route.fulfill({ json: [{
+    id: "one", application_id: "finance-rag", name: "Finance", mode: "protect_pending",
+    guard_id: "guard-one", source_id: "sharepoint-one", adapter_type: "accessproof-gateway",
+    adapter_contract_version: "accessproof.rag/v1", readiness: [],
+  }] }));
+  await page.route("**/api/v1/guards", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/gateway-pairing", route => route.fulfill({
+    json: { state: "not_started" },
+  }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/verification-run", route => route.fulfill({
+    json: { run_id: null, state: "NOT_STARTED",
+      guard: { connectivity: "UNKNOWN", security_readiness: "UNKNOWN", heartbeat_age_seconds: null } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/protection/status", route => route.fulfill({
+    json: { route_certificate: { certified: true, status: "CERTIFIED" }, checks: [] },
+  }));
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
+  await expect(review.getByText("Reference route certified")).toBeVisible();
+  await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
 });

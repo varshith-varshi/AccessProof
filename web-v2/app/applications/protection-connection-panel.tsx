@@ -10,7 +10,10 @@ type Verification = {
   state: string;
   guard?: { connectivity: string; security_readiness: string; heartbeat_age_seconds: number | null };
 };
-type Route = { route_certification?: { certified: boolean; status: string } };
+type Route = {
+  route_certificate?: { certified: boolean; status: string };
+  checks?: Array<{ code: string; ok: boolean; reason: string | null }>;
+};
 type Review = {
   guard: Guard | null;
   pairing: PairedInstallation;
@@ -59,7 +62,19 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   const guardConnected = review?.verification.guard?.connectivity === "CONNECTED";
   const guardReady = guardConnected && review?.verification.guard?.security_readiness === "READY";
   const gatewayPaired = review?.pairing.state === "installation_reported_unverified";
-  const routeCertified = review?.route.route_certification?.certified === true;
+  const routeCertified = review?.route.route_certificate?.certified === true;
+  const installationState = review?.pairing.state;
+  const installationLabel = installationState === "installation_reported_unverified"
+    ? "Installation reported"
+    : installationState === "awaiting_customer_install" ? "Awaiting installer"
+    : installationState === "pairing_expired" ? "Pairing expired"
+    : "No installation report";
+  const missingEvidence = review?.route.checks?.filter(check => !check.ok) ?? [];
+  const firstSourceIssue = missingEvidence.find(check => (
+    check.code === "PERMISSION_SOURCE_USABLE"
+    || check.code === "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"
+    || check.code === "V1_PROVIDER_SCOPE"
+  ));
   // A pairing report proves installer contact, not a live Gateway. Likewise a
   // heartbeat proves Guard connectivity, not security readiness.
   const activationCheckable = !!guardReady && !!gatewayPaired && !busy;
@@ -98,14 +113,18 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         <small>Connected does not mean security-ready.</small>
       </div>
       <div className="onboard-fact">
-        <b>Gateway installation</b>
-        <strong>{!review ? "Checking…" : gatewayPaired ? "Paired" : "Not paired"}</strong>
-        <small>Pairing confirms installation, not current Gateway liveness.</small>
+        <b>Gateway installation record</b>
+        <strong>{!review ? "Checking…" : installationLabel}</strong>
+        <small>{gatewayPaired
+          ? "Last installer receipt received. Live Gateway connectivity still requires customer-host verification."
+          : "A missing or expired pairing receipt does not mean your Gateway stopped running."}</small>
       </div>
       <div className="onboard-fact">
-        <b>Gateway protected route</b>
-        <strong>{!review ? "Checking…" : routeCertified ? "Verified" : "Not verified active"}</strong>
-        <small>Independent customer-route certification is required for verified Protect.</small>
+        <b>Gateway route certificate</b>
+        <strong>{!review ? "Checking…" : routeCertified ? "Reference route certified" : "Not certified"}</strong>
+        <small>{review?.route.route_certificate?.status
+          ? `Certificate status: ${review.route.route_certificate.status}. This does not attest every customer route.`
+          : "Current route certification has not been confirmed."}</small>
       </div>
     </div>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -116,10 +135,18 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         {busy ? "Checking…" : "Enable Protection"}
       </button>
     </div>
-    {review && !activationCheckable && <p role="status" className="muted">
-      Protection cannot be activated yet. The Guard must be connected and security-ready, and the Gateway must be paired.
-      Fix the connection or policy issue and check again. Do not attempt to bypass a degraded Guard.
-    </p>}
+    {review && !activationCheckable && <div role="status" className="muted">
+      <p>Protection is not active. The Guard must be connected and security-ready, and the installer must report a valid
+        binding. We cannot confirm live Gateway availability from a one-time pairing receipt.</p>
+      {!guardReady && <p><strong>Guard is not ready.</strong> Check the customer-host Guard health and source ACL synchronization.
+        Source permission failures must be resolved rather than bypassed.</p>}
+      {!gatewayPaired && <p><strong>Installation receipt missing.</strong> If you already installed the Gateway,
+        generate a fresh pairing file under <Link href={`/onboarding?application=${id}`}>Get Started</Link> and
+        re-run the installer in the existing RAG Compose project to re-report that installation.
+        Do not reinstall another Gateway just to refresh the dashboard.</p>}
+      {firstSourceIssue && <p><strong>Source authorization blocker:</strong> {firstSourceIssue.reason
+        ?? firstSourceIssue.code.replaceAll("_", " ").toLowerCase()}</p>}
+    </div>}
     {review && activationCheckable && !routeCertified && <p role="status" className="muted">
       Guard and Gateway pairing prerequisites are present. You may request activation, but it will remain pending until
       the actual Gateway route and source authorization are verified by the backend.
