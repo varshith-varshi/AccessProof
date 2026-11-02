@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 import httpx
@@ -231,6 +231,17 @@ class GuardClient:
         return data
 
 
+class AuthorizationGuard(Protocol):
+    """The two Guard calls ProtectedRAG needs (GuardClient, ParticipantAwareGuard)."""
+
+    def filter_resources(self, *, employee_token: str, application_id: str, request_id: str,
+                         resources: list[RetrievedResource]) -> dict[str, Any]: ...
+
+    def check_output(self, *, employee_token: str, application_id: str, request_id: str,
+                     decision_id: str, resources: list[RetrievedResource],
+                     additional_decision_ids: list[str] | None = None) -> dict[str, Any]: ...
+
+
 class ProtectedRAG:
     """Runs retrieve → Layer 1 → model buffer → Layer 2 → release.
 
@@ -244,7 +255,7 @@ class ProtectedRAG:
     responses are ineligible for certification.
     """
     def __init__(
-        self, guard: GuardClient, *, max_response_bytes: int = 1_000_000,
+        self, guard: AuthorizationGuard, *, max_response_bytes: int = 1_000_000,
         max_regenerations: int = 0,
         provenance_verifier: SourceAttestationVerifier | None = None,
         allow_unattested_metadata: bool = False,
