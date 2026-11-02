@@ -5,6 +5,7 @@ from sqlalchemy.engine import Connection
 from datetime import datetime, timezone
 from uuid import uuid4
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -370,7 +371,8 @@ class SourceEffectiveCertification(Base):
     status: Mapped[str] = mapped_column(String(20), default="unverified")
     certified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    signature: Mapped[str] = mapped_column(String(64))
+    # "ed25519:<key_id>:<base64url signature>" verified with pinned public keys.
+    signature: Mapped[str] = mapped_column(String(160))
 
 
 class ProviderSyncCursor(Base):
@@ -1351,3 +1353,30 @@ class GuardPresenceLease(Base):
     sequence: Mapped[int] = mapped_column(default=0)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class GatewayInstallation(Base):
+    """Durable, machine-authenticated identity of ONE installed Gateway (D-02).
+
+    Issued once at a successful one-use pairing claim. Heartbeats prove
+    *current* reachability and self-reported enforcement readiness; neither
+    is Protect evidence. A new claim for the same application rotates (and
+    thereby revokes) the previous credential.
+    """
+    __tablename__ = "gateway_installations"
+    __table_args__ = (UniqueConstraint("application_row_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    credential_hash: Mapped[str] = mapped_column(String(128))
+    guard_id: Mapped[str] = mapped_column(String(36))
+    source_id: Mapped[str] = mapped_column(String(36))
+    deployment_sha256: Mapped[str] = mapped_column(String(64))
+    route_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sequence: Mapped[int] = mapped_column(BigInteger, default=0)
+    last_reported_ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_readiness_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    gateway_version: Mapped[str | None] = mapped_column(String(64), nullable=True)

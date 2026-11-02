@@ -8,13 +8,14 @@ only then releases a fully buffered model response.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import ipaddress
 import re
 import json
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator, Iterator
@@ -32,6 +33,7 @@ from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource, Sour
 from packages.rag_core.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
 from packages.demo_cache.trusted_snapshot import load_snapshot, SnapshotInvalid
 from .model_adapters import ModelAdapter, ModelProtocolError, selected_adapter
+from .presence import PresenceReporter, PresenceSettings
 
 
 class RetrievedResourceInput(BaseModel):
@@ -530,15 +532,52 @@ class GatewayService:
 def create_app(
     settings: GatewaySettings | None = None, *, client: httpx.Client | None = None,
     model_adapter: ModelAdapter | None = None,
+    presence: PresenceReporter | None = None,
 ) -> FastAPI:
     resolved = settings or GatewaySettings.from_env()
     service = GatewayService(resolved, client=client, model_adapter=model_adapter)
+    if presence is None and settings is None:
+        presence_settings = PresenceSettings.from_env()
+        if presence_settings is not None:
+            if presence_settings.application_id != resolved.application_id:
+                raise RuntimeError("Gateway presence application binding mismatch")
+            presence = PresenceReporter(presence_settings)
+
+    def readiness() -> tuple[bool, str | None]:
+        """Single source of truth for /health/ready and authenticated presence."""
+        try:
+            health = GuardClient(resolved.guard_url, client=service.client).health(
+                application_id=resolved.application_id,
+            )
+        except Exception:
+            return False, "GUARD_UNAVAILABLE"
+        if health.get("status") != "ok" or health.get("ready") is not True:
+            return False, "GUARD_NOT_READY"
+        return True, None
+
+    async def presence_loop(reporter: PresenceReporter) -> None:
+        while True:
+            try:
+                ready_now, code = await run_in_threadpool(readiness)
+                await run_in_threadpool(reporter.beat, ready=ready_now, readiness_code=code)
+            except Exception:
+                # A failed heartbeat is observed by the control plane as
+                # silence and becomes DISCONNECTED; never fake success.
+                pass
+            await asyncio.sleep(reporter.settings.interval_seconds)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        task = asyncio.create_task(presence_loop(presence)) if presence is not None else None
         try:
             yield
         finally:
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+            if presence is not None:
+                presence.close()
             service.close()
 
     app = FastAPI(
@@ -577,14 +616,9 @@ def create_app(
 
     @app.get("/health/ready")
     def ready() -> dict[str, str]:
-        try:
-            health = GuardClient(resolved.guard_url, client=service.client).health(
-                application_id=resolved.application_id,
-            )
-        except Exception:
-            raise HTTPException(503, "GUARD_UNAVAILABLE") from None
-        if health.get("status") != "ok" or health.get("ready") is not True:
-            raise HTTPException(503, "GUARD_NOT_READY")
+        is_ready, code = readiness()
+        if not is_ready:
+            raise HTTPException(503, code)
         return {"status": "ok"}
 
     def completion_response(response: dict[str, Any], stream: bool) -> Any:

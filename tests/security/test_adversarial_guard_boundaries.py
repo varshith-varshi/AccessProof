@@ -331,3 +331,25 @@ def test_a01_invalid_bearer_token_stops_before_model(sandbox):
     assert answer.decision == "block"
     assert answer.response is None
     assert called == []
+
+
+def test_d03_production_guard_refuses_shared_secret_identity(sandbox, monkeypatch):
+    """D-03: a shared HS256 key lets its holder mint any employee; never in production."""
+    module, _, client, token = sandbox
+    assert _filter(client, token("bob"), [("src-alpha", "handbook")]).status_code == 200
+    assert client.get("/health").json()["identity_ready"] is True
+    monkeypatch.setenv("ACCESSPROOF_ENV", "production")
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as refused:
+        module._identity("Bearer " + token("bob"))
+    assert refused.value.status_code == 503
+    assert refused.value.detail == "IDENTITY_STATIC_MODE_FORBIDDEN_IN_PRODUCTION"
+    assert _filter(client, token("bob"), [("src-alpha", "handbook")]).status_code == 503
+    # Readiness must agree with enforcement: a Gateway must not see "ready".
+    health = client.get("/health").json()
+    assert health["identity_ready"] is False and health["ready"] is False
+    # A production OIDC Guard with issuer and audience configured is identity-ready.
+    monkeypatch.setattr(module, "identity_mode", "oidc")
+    assert module._identity_ready() is True
+    monkeypatch.setattr(module, "audience", None)
+    assert module._identity_ready() is False

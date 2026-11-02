@@ -62,6 +62,8 @@ class Settings:
     # Guard presence is an enforcement dependency, not a job-runner signal.
     # A missing authenticated Guard heartbeat must degrade protection quickly.
     guard_offline_seconds: int = int(os.getenv("ACCESSPROOF_GUARD_OFFLINE_SECONDS", "3"))
+    # Gateway heartbeats every ~10s; three missed beats mean DISCONNECTED (D-02).
+    gateway_offline_seconds: int = int(os.getenv("ACCESSPROOF_GATEWAY_OFFLINE_SECONDS", "35"))
     retention_sweep_seconds: int = int(os.getenv("ACCESSPROOF_RETENTION_SWEEP_SECONDS", "3600"))
     rls_bypass: bool = os.getenv("ACCESSPROOF_RLS_BYPASS", "0").lower() in {"1", "true", "yes"}
     # Development keeps legacy connectors for compatibility coverage. The

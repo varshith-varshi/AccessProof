@@ -12,6 +12,15 @@ from apps.guard.accessproof_guard.cache import PolicyCache
 from packages.rag_core import SourceAttestationVerifier
 
 
+@pytest.fixture(autouse=True)
+def _configured_oidc_identity(monkeypatch):
+    # D-03: a Guard without an identity provider cannot authenticate anyone
+    # and is never ready. These tests concern binding/source readiness.
+    monkeypatch.setattr(guard_app, "identity_mode", "oidc")
+    monkeypatch.setattr(guard_app, "issuer", "https://idp.example")
+    monkeypatch.setattr(guard_app, "audience", "api://accessproof-test")
+
+
 def test_guard_health_checks_selected_application_binding_and_source(tmp_path, monkeypatch):
     cache = PolicyCache(str(tmp_path / "scoped-ready.db"))
     cache.install(1, [{"subject_id": "employee-a", "source_id": "drive-a",

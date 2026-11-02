@@ -96,6 +96,11 @@ def test_claim_runs_verification_only_after_valid_tenant_and_guard(monkeypatch):
     monkeypatch.setattr(api, "_automatic_activation_checklist", lambda db, row: _checklist())
     monkeypatch.setattr(api, "set_tenant_context", lambda db, org: None)
     monkeypatch.setattr(api.verification_engine, "start_or_resume", lambda db, row, **kwargs: SimpleNamespace(id="durable-run"))
+    # D-02 issuance is exercised against a real DB in test_gateway_presence.py.
+    issued = []
+    monkeypatch.setattr(api.gateway_presence, "issue_installation", lambda db, row, **kwargs: (
+        issued.append(kwargs) or (SimpleNamespace(id="installation-1"), "machine-credential-once")))
+    monkeypatch.setattr(api, "_audit", lambda *args, **kwargs: None)
     Session.commit = lambda self: None
     response = api.claim_customer_gateway_pairing(
         installation={"deployment_sha256": "a" * 64, "route_sha256": "b" * 64},
@@ -106,6 +111,9 @@ def test_claim_runs_verification_only_after_valid_tenant_and_guard(monkeypatch):
     assert response["verification"]["state"] == "action_required"
     assert response["verification_run_id"] == "durable-run"
     assert not response["verification"]["production_certification"]
+    assert issued == [{"deployment_sha256": "a" * 64, "route_sha256": "b" * 64}]
+    assert response["gateway_presence"]["installation_id"] == "installation-1"
+    assert response["gateway_presence"]["credential"] == "machine-credential-once"
 
 
 def test_claim_missing_pairing_token_requires_machine_auth():

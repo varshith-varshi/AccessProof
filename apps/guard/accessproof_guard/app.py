@@ -409,6 +409,20 @@ class ProvenanceItem(BaseModel):
     source_resource_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
+def _production() -> bool:
+    return os.getenv("ACCESSPROOF_ENV", "").lower() == "production"
+
+
+def _identity_ready() -> bool:
+    """Whether this Guard can authenticate employees in its environment."""
+    if subject_claim not in {"sub", "oid"}:
+        return False
+    if identity_mode == "oidc":
+        return bool(issuer and audience)
+    return (identity_mode == "static" and not _production() and bool(issuer and audience)
+            and len((verification_key or "").encode("utf-8")) >= 32)
+
+
 def _identity(authorization: str | None) -> tuple[str, str, str | None]:
     # Applies to static development tokens as well as production OIDC.
     # Never key ACLs on reassigned emails or other mutable identity fields.
@@ -426,6 +440,11 @@ def _identity(authorization: str | None) -> tuple[str, str, str | None]:
             raise HTTPException(status, exc.args[0]) from exc
     if identity_mode != "static" or not issuer or not audience or not verification_key:
         raise HTTPException(503, "IDENTITY_PROVIDER_UNAVAILABLE")
+    if _production():
+        # D-03: whoever holds a shared HS256 secret (typically the customer
+        # RAG itself) can mint ANY employee identity. A production Guard
+        # only accepts asymmetric, issuer-published OIDC signatures.
+        raise HTTPException(503, "IDENTITY_STATIC_MODE_FORBIDDEN_IN_PRODUCTION")
     # Static HS256 credentials are a development / explicitly managed
     # integration option.  A short shared secret makes an otherwise strict
     # signature check susceptible to offline guessing, so fail closed instead
@@ -492,9 +511,10 @@ def health(application_id: str | None = None) -> dict[str, object]:
         not cache.authorization_revisions_received()
         or cache.all_protect_revisions_present()
     )
+    identity_ready = _identity_ready()
     ready = (
         cache.version() > 0 and source_healthy and audit_buffer_ready and bindings_ready
-        and revisions_ready and (not configured or fresh)
+        and revisions_ready and (not configured or fresh) and identity_ready
     )
     if application_id is not None:
         binding = cache.application_binding(application_id) if cache.application_bindings_received() else None
@@ -517,6 +537,7 @@ def health(application_id: str | None = None) -> dict[str, object]:
         "ready": ready,
         "policy_fresh": fresh if configured else None,
         "audit_buffer_ready": audit_buffer_ready,
+        "identity_ready": identity_ready,
         "control_plane_configured": configured,
         "sync_error": _sync_error,
     }

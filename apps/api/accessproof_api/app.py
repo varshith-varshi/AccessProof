@@ -7,6 +7,7 @@ from packages.rag_core import adapter_registry
 from apps.api.accessproof_api.rag_challenge_verifier import verify_reference_evidence, request_ids
 from apps.api.accessproof_api import gateway_pairing
 from apps.api.accessproof_api import verification_engine
+from apps.api.accessproof_api import gateway_presence
 from apps.api.accessproof_api.source_certification import effective_source_certified, _source_scope
 from apps.api.accessproof_api.protection_state import (
     PROTECTION_STATES,
@@ -3162,6 +3163,10 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
         # this cannot be satisfied with mock Graph responses, an admin toggle
         # or a healthy Guard heartbeat.
         certified = False
+        # D-04: bind before decrypting. A missing/undecryptable credential
+        # previously raised UnboundLocalError below, turning the dashboard,
+        # activation status and Guard heartbeat into HTTP 500s.
+        certificate_credentials: Any = {}
         try:
             certificate_credentials = json.loads(_secret_box.decrypt(source.encrypted_credentials or "")) if source else {}
             certified = effective_source_certified(db, source, certificate_credentials) if source else False
@@ -3388,6 +3393,9 @@ def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[
         "reason": None if reference_cutover else
         "The employee-facing customer RAG route must be re-tested after its explicitly approved deployment cutover and matched with fresh Guard Layer 1/2 audit events.",
     })
+    if row.adapter_type == "accessproof-gateway":
+        # D-02: an old installation record is not a running Gateway.
+        checks.append(gateway_presence.activation_check(db, row))
     return checks
 
 
@@ -3612,6 +3620,8 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
                 "acl_fresh": acl_age is not None and acl_age <= acl_limit,
                 "directory_fresh": directory_age is not None and directory_age <= directory_limit,
             },
+            "gateway": (gateway_presence.connectivity(db, row, now)
+                        if row.adapter_type == "accessproof-gateway" else None),
             "route_certification": {
                 "required": row.adapter_type == "accessproof-gateway",
                 "expired": certification_expired,
@@ -3953,7 +3963,19 @@ def get_customer_gateway_pairing(
         raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
     if status.get("state") == "installation_reported_unverified":
         status["verification"] = _automatic_gateway_pairing_verification(db, row)
+    # Live connectivity is separate from (possibly historical) installation.
+    status["gateway_connectivity"] = gateway_presence.connectivity(db, row)
     return status
+
+
+@app.post("/api/v1/gateway-installations/heartbeat")
+def gateway_installation_heartbeat(
+    payload: gateway_presence.GatewayHeartbeat,
+    authorization: str | None = Header(default=None),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Machine-only Gateway presence. Never activates or certifies Protect."""
+    return gateway_presence.record_heartbeat(db, payload, authorization)
 
 
 @app.get("/api/v1/current/ai-applications/{application_id}/gateway-discovery")
@@ -4088,8 +4110,24 @@ def claim_customer_gateway_pairing(
             db, row, deployment=installation["deployment_sha256"],
             route=installation["route_sha256"],
         )
+        # D-02: a durable, rotatable machine identity for authenticated
+        # heartbeats. Returned exactly once; only its hash is stored.
+        record, gateway_credential = gateway_presence.issue_installation(
+            db, row, deployment_sha256=installation["deployment_sha256"],
+            route_sha256=installation["route_sha256"],
+        )
+        _audit(db, None, row.organization_id, "GATEWAY_INSTALLATION_CREDENTIAL_ISSUED",
+               "ai_application", row.id, {"installation_id": record.id})
         db.commit()
         result["verification_run_id"] = run.id
+        result["gateway_presence"] = {
+            "control_plane_url": settings.api_public_url.rstrip("/"),
+            "organization_id": row.organization_id,
+            "installation_id": record.id,
+            "credential": gateway_credential,
+            "application_id": row.application_id,
+            "route_sha256": installation["route_sha256"],
+        }
         return result
     except gateway_pairing.PairingError as exc:
         raise HTTPException(409, str(exc)) from exc

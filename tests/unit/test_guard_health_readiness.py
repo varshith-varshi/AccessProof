@@ -33,6 +33,10 @@ def test_guard_health_tracks_policy_readiness(
     monkeypatch.setattr(guard_app, "guard_id", "fake-machine")
     monkeypatch.setattr(guard_app, "guard_credential", "synthetic-test-only")
     monkeypatch.setattr(guard_app, "_sync_error", sync_error)
+    # Policy readiness is the subject here; identity is configured (D-03).
+    monkeypatch.setattr(guard_app, "identity_mode", "oidc")
+    monkeypatch.setattr(guard_app, "issuer", "https://login.example.invalid/tenant/v2.0")
+    monkeypatch.setattr(guard_app, "audience", "api://accessproof-test")
 
     response = guard_app.health()
     assert response["ready"] is (policy_version > 0)

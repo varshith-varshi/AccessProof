@@ -223,7 +223,13 @@ def compose_override(spec: InstallationSpec, route_env: str, private_env_file: P
             spec.gateway_service: {
                 "image": spec.gateway_image,
                 "restart": "unless-stopped",
-                "env_file": [{"path": str(private_env_file), "format": "raw", "required": True}],
+                "env_file": [
+                    {"path": str(private_env_file), "format": "raw", "required": True},
+                    # D-02: written (0600) only after a successful pairing
+                    # claim returns this installation's heartbeat credential.
+                    {"path": str(private_env_file.parent / PRESENCE_ENV_NAME),
+                     "format": "raw", "required": False},
+                ],
                 "read_only": True,
                 "cap_drop": ["ALL"],
                 "security_opt": ["no-new-privileges:true"],
@@ -238,6 +244,36 @@ def compose_override(spec: InstallationSpec, route_env: str, private_env_file: P
     }
     manifest["services"][spec.gateway_service]["networks"] = gateway_networks
     return manifest
+
+
+PRESENCE_ENV_NAME = "gateway-presence.env"
+_PRESENCE_KEYS = {
+    "control_plane_url": "ACCESSPROOF_GATEWAY_PRESENCE_CONTROL_PLANE_URL",
+    "organization_id": "ACCESSPROOF_GATEWAY_PRESENCE_ORGANIZATION_ID",
+    "installation_id": "ACCESSPROOF_GATEWAY_PRESENCE_INSTALLATION_ID",
+    "credential": "ACCESSPROOF_GATEWAY_PRESENCE_CREDENTIAL",
+    "route_sha256": "ACCESSPROOF_GATEWAY_PRESENCE_ROUTE_SHA256",
+}
+
+
+def write_presence_environment(output_dir: Path, presence: dict[str, Any]) -> Path:
+    """Persist the claim-issued heartbeat credential for the Gateway only.
+
+    Replaces a previous file atomically (credential rotation on re-pair).
+    Never printed; mode 0600 inside the private installation directory.
+    """
+    if (not isinstance(presence, dict) or output_dir.is_symlink() or not output_dir.is_dir()
+            or not all(isinstance(presence.get(key), str) and presence[key] for key in _PRESENCE_KEYS)):
+        raise InstallationError("Control plane returned an invalid Gateway presence credential")
+    body = "".join(
+        f"{env}={_text(presence[key], env, max_length=2048)}\n" for key, env in _PRESENCE_KEYS.items()
+    )
+    target = output_dir / PRESENCE_ENV_NAME
+    staging = output_dir / (PRESENCE_ENV_NAME + ".new")
+    staging.unlink(missing_ok=True)
+    _write_new(staging, body, 0o600)
+    os.replace(staging, target)
+    return target
 
 
 def private_environment(spec: InstallationSpec, environ: dict[str, str]) -> str:

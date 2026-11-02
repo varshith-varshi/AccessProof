@@ -4,7 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type AIApplication, type Guard, type ProtectionStatus } from "../../lib/api";
 
-type PairedInstallation = { state: string; received_at?: string | null };
+type GatewayConnectivity = {
+  connection: "CONNECTED" | "DISCONNECTED" | "UNKNOWN";
+  enforcement_ready_reported: boolean;
+  heartbeat_age_seconds: number | null;
+  reason: string | null;
+};
+type PairedInstallation = {
+  state: string;
+  received_at?: string | null;
+  gateway_connectivity?: GatewayConnectivity;
+};
 type Verification = {
   run_id: string | null;
   state: string;
@@ -61,7 +71,11 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
 
   const guardConnected = review?.verification.guard?.connectivity === "CONNECTED";
   const guardReady = guardConnected && review?.verification.guard?.security_readiness === "READY";
-  const gatewayPaired = review?.pairing.state === "installation_reported_unverified";
+  const gatewayLive = review?.pairing.gateway_connectivity;
+  const gatewayConnected = gatewayLive?.connection === "CONNECTED";
+  const gatewayReady = gatewayConnected && gatewayLive?.enforcement_ready_reported === true;
+  // A live authenticated heartbeat supersedes the one-time pairing receipt.
+  const gatewayPaired = review?.pairing.state === "installation_reported_unverified" || gatewayReady;
   const routeCertified = review?.route.route_certificate?.certified === true;
   const installationState = review?.pairing.state;
   const installationLabel = installationState === "installation_reported_unverified"
@@ -121,6 +135,15 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
           : installationState === "installation_reported_historical"
             ? "Durable installation record found. Current Gateway liveness and route readiness are NOT verified."
             : "A missing or expired pairing receipt does not mean your Gateway stopped running."}</small>
+      </div>
+      <div className="onboard-fact">
+        <b>Gateway live connection</b>
+        <strong>{!review ? "Checking…" : gatewayReady ? "Connected · ready"
+          : gatewayConnected ? "Connected · not ready"
+          : gatewayLive?.connection === "DISCONNECTED" ? "Disconnected" : "Unknown"}</strong>
+        <small>{gatewayLive?.heartbeat_age_seconds != null
+          ? `Last authenticated heartbeat ${gatewayLive.heartbeat_age_seconds}s ago${gatewayLive.reason ? ` · ${gatewayLive.reason.replaceAll("_", " ").toLowerCase()}` : ""}.`
+          : "No authenticated Gateway heartbeat received. Installers before this release report Unknown."}</small>
       </div>
       <div className="onboard-fact">
         <b>Gateway route certificate</b>

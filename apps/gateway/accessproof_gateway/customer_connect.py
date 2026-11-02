@@ -245,6 +245,40 @@ def report_claim(pairing: dict[str, str], manifest: dict[str, object]) -> dict[s
     return payload
 
 
+def enable_gateway_presence(
+    claim: dict[str, object], manifest: dict[str, object], output_dir: Path,
+) -> bool:
+    """Start authenticated heartbeats by recreating ONLY the Gateway service.
+
+    The RAG service and every other container are left untouched. Failure is
+    reported honestly; the dashboard will then show the Gateway as
+    DISCONNECTED/UNKNOWN rather than inventing connectivity.
+    """
+    from apps.gateway.accessproof_gateway.installer import write_presence_environment
+
+    presence = claim.get("gateway_presence")
+    if not isinstance(presence, dict):
+        print("Control plane did not issue a Gateway heartbeat credential; live status will show UNKNOWN.")
+        return False
+    write_presence_environment(output_dir, presence)
+    compose, override = manifest.get("customer_compose"), manifest.get("override")
+    service = manifest.get("gateway_service")
+    if not all(isinstance(value, str) and value for value in (compose, override, service)):
+        print("Heartbeat credential saved; restart the Gateway service to begin live status reporting.")
+        return False
+    recreated = subprocess.run(
+        ["docker", "compose", "-f", str(compose), "-f", str(override),
+         "up", "-d", "--no-deps", "--force-recreate", str(service)],
+        check=False, capture_output=True, text=True, timeout=120,
+    )
+    if recreated.returncode != 0:
+        # Never print Docker stderr; it can include environment content.
+        print("Heartbeat credential saved, but the Gateway restart failed; live status will show DISCONNECTED.")
+        return False
+    print("Gateway authenticated heartbeat enabled. Dashboard shows CONNECTED only while heartbeats arrive.")
+    return True
+
+
 def await_dashboard_chatbot(
     pairing: dict[str, str], applications: list[object], *,
     poll_seconds: float = 3.0, max_seconds: float = 660.0,
@@ -477,6 +511,11 @@ def main(argv: list[str] | None = None) -> int:
                 claim = report_claim(pairing, existing)
                 print("Existing Gateway paired:", claim["state"])
                 print("No Docker containers or RAG routes changed.")
+                # Adoption never restarts containers, so this older Gateway
+                # cannot receive its heartbeat credential here (D-02).
+                print("Live Gateway status will show DISCONNECTED until this Gateway is "
+                      "re-installed with the current installer, which enables "
+                      "authenticated heartbeats.")
                 for message in summarize_automatic_verification(claim):
                     print(message)
                 return 0
@@ -590,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = read_private_json(Path(result["installation"]))
         claim = report_claim(pairing, manifest)
         print("Gateway installed and paired:", claim["state"])
+        enable_gateway_presence(claim, manifest, Path(result["installation"]).parent)
         for message in summarize_automatic_verification(claim):
             print(message)
         print("No RAG route cutover has occurred.")

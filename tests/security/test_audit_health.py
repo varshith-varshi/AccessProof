@@ -26,6 +26,9 @@ def test_full_audit_queue_is_reported_unready_and_in_heartbeat(tmp_path, monkeyp
     monkeypatch.setattr(guard_app, "guard_id", "synthetic-guard")
     monkeypatch.setattr(guard_app, "guard_credential", "synthetic-machine-token")
     monkeypatch.setattr(guard_app, "_sync_error", None)
+    monkeypatch.setattr(guard_app, "identity_mode", "oidc")
+    monkeypatch.setattr(guard_app, "issuer", "https://idp.example")
+    monkeypatch.setattr(guard_app, "audience", "api://accessproof-test")
     assert guard_app.health()["ready"] is True
 
     cache.buffer_audit(
