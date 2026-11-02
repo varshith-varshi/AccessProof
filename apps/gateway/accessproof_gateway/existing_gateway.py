@@ -71,7 +71,9 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         if not isinstance(item, dict):
             continue
         labels = (item.get("Config") or {}).get("Labels") or {}
-        if labels.get("com.docker.compose.service") != "accessproof-gateway":
+        gateway_service = labels.get("com.docker.compose.service")
+        if (not isinstance(gateway_service, str)
+                or not gateway_service.startswith("accessproof-gateway")):
             continue
         env = dict(x.split("=", 1) for x in item["Config"].get("Env", []) if "=" in x)
         # Other customer projects are ignored when auto-detecting.
@@ -110,14 +112,14 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         project = labels.get("com.docker.compose.project")
         if not project:
             raise ExistingGatewayError("GATEWAY_COMPOSE_PROJECT_MISSING")
-        matches.append((item, env, project, mapped[0]["HostPort"]))
+        matches.append((item, env, project, mapped[0]["HostPort"], gateway_service))
     if not matches:
         if container_name:
             raise ExistingGatewayError("GATEWAY_NOT_FOUND_FOR_PAIRING_APPLICATION")
         return None
     if len(matches) != 1:
         raise ExistingGatewayError("MULTIPLE_GATEWAYS_REQUIRE_EXPLICIT_SELECTION")
-    gateway, env, project, port = matches[0]
+    gateway, env, project, port, gateway_service = matches[0]
 
     peers = _container_ids(_docker_listing())
     rag_candidates = []
@@ -138,7 +140,7 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         penv = dict(x.split("=",1) for x in peer.get("Config",{}).get("Env",[]) if "=" in x)
         route_key = plabels.get("com.accessproof.gateway.route_env", "")
         if (not route_key or
-                penv.get(route_key) != "http://accessproof-gateway:8090/v1/chat/completions"
+                penv.get(route_key) != f"http://{gateway_service}:8090/v1/chat/completions"
                 or peer.get("State", {}).get("Status") != "running"):
             continue
         rag_candidates.append(peer)
@@ -151,6 +153,7 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         "rag_container_id": rag_candidates[0]["Id"],
         "rag_image_id": rag_candidates[0]["Image"],
         "project": project,
+        "gateway_service": gateway_service,
         "application_id": pairing["application_id"],
         "public_port": int(port),
         "source_key_ids": sorted(json.loads(env["ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON"])),

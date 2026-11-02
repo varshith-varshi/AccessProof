@@ -55,6 +55,25 @@ def test_installer_stages_gateway_with_no_customer_source_modifications(tmp_path
     assert metadata["reference_contract"] == "accessproof.gateway/v1"
 
 
+def test_multiple_selected_rags_get_independent_gateway_service_and_port(tmp_path: Path) -> None:
+    compose = tmp_path / "customer.yml"
+    compose.write_text("services: {}\n")
+    resolved = {"services": {
+        "finance-rag": {"labels": _compose()["services"]["customer-rag"]["labels"]},
+        "hr-rag": {"labels": _compose()["services"]["customer-rag"]["labels"]},
+    }}
+    finance = _spec(rag_service="finance-rag", gateway_service="accessproof-gateway-finance", listen_port=18090)
+    hr = _spec(rag_service="hr-rag", gateway_service="accessproof-gateway-hr", listen_port=18091)
+    finance_paths = stage_installation(finance, compose, tmp_path / "finance", resolved)
+    hr_paths = stage_installation(hr, compose, tmp_path / "hr", resolved)
+    finance_override = json.loads(Path(finance_paths["override"]).read_text())
+    hr_override = json.loads(Path(hr_paths["override"]).read_text())
+    assert "accessproof-gateway-finance" in finance_override["services"]
+    assert "accessproof-gateway-hr" in hr_override["services"]
+    assert finance_override["services"]["finance-rag"]["environment"]["ACCESSPROOF_CHAT_URL"] == "http://accessproof-gateway-finance:8090/v1/chat/completions"
+    assert hr_override["services"]["hr-rag"]["environment"]["ACCESSPROOF_CHAT_URL"] == "http://accessproof-gateway-hr:8090/v1/chat/completions"
+
+
 def test_installer_never_deploys_unsupported_customer_rag(tmp_path: Path) -> None:
     spec = _spec()
     customer = tmp_path / "customer.yml"

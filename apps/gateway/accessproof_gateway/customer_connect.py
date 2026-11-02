@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from apps.gateway.accessproof_gateway.challenge_cli import read_private_json
+from apps.gateway.accessproof_gateway.application_discovery import DiscoveryError, discover, docker_inventory
 from apps.gateway.accessproof_gateway.integration_wizard import (
     IntegrationWizardError,
     _resolved_compose,
@@ -284,6 +285,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Connect a compatible Docker RAG to AccessProof in one guided flow"
     )
     p.add_argument("--pairing-file", type=Path)
+    p.add_argument(
+        "--discover", action="store_true",
+        help="Read-only local Docker discovery; does not pair, install, or modify any service",
+    )
     p.add_argument("--compose", type=Path, help="Your RAG Compose file (auto-detected when omitted)")
     p.add_argument("--auto-detect", action="store_true", help="Detect running RAG and any installed Gateway")
     p.add_argument("--adopt-existing", action="store_true", help="Pair an already-installed official Gateway without reinstalling")
@@ -308,6 +313,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
     try:
+        if args.discover:
+            if any((args.approve_install, args.adopt_existing, args.challenge_file, args.pairing_file)):
+                raise ConnectError("--discover is read-only and cannot be combined with installation, pairing, or verification options.")
+            applications = [entry.as_dict() for entry in discover(docker_inventory())]
+            print(json.dumps({
+                "schema": "accessproof.host_discovery/v1",
+                "certification_status": "NOT_CERTIFIED",
+                "applications": applications,
+                "notice": "Discovery is read-only. Select applications explicitly before any compatibility plan or installation.",
+            }, sort_keys=True))
+            return 0
         if args.challenge_file:
             if args.compose is None:
                 raise ConnectError("A Compose file is required for security challenges; pass --compose /path/to/docker-compose.yml")
@@ -428,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
             print(message)
         print("No RAG route cutover has occurred.")
         return 0
-    except (ConnectError, IntegrationWizardError, ValueError, OSError, KeyError) as exc:
+    except (ConnectError, DiscoveryError, IntegrationWizardError, ValueError, OSError, KeyError) as exc:
         guidance = {
             "SUPPORTED_RAG_CONTRACT_REQUIRED": (
                 "The RAG has not implemented AccessProof's signed retrieval and "

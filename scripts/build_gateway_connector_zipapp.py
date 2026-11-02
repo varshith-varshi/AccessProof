@@ -15,6 +15,7 @@ from pathlib import Path
 
 ENTRYPOINT = "__main__.py"
 CONNECTOR = "accessproof-gateway-connector/apps/gateway/accessproof_gateway/customer_connect.py"
+DISCOVERY = "accessproof-gateway-connector/apps/gateway/accessproof_gateway/application_discovery.py"
 RUNTIME = "accessproof-gateway-connector/accessproof-gateway-runtime.tar.gz"
 
 
@@ -32,6 +33,7 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
     replacements = {
         ENTRYPOINT: (repo / "scripts/gateway_customer_zipapp_main.py").read_bytes(),
         CONNECTOR: (repo / "apps/gateway/accessproof_gateway/customer_connect.py").read_bytes(),
+        DISCOVERY: (repo / "apps/gateway/accessproof_gateway/application_discovery.py").read_bytes(),
     }
     target_zip.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=target_zip.parent) as tmp:
@@ -40,7 +42,8 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
             pending, "w", allowZip64=True
         ) as updated:
             names = old.namelist()
-            if len(names) != len(set(names)) or not set(replacements).issubset(names) or RUNTIME not in names:
+            required = {ENTRYPOINT, CONNECTOR}
+            if len(names) != len(set(names)) or not required.issubset(names) or RUNTIME not in names:
                 raise ValueError("Unsupported or incomplete Gateway installer archive.")
             runtime_digest = sha256(old, RUNTIME)
             for item in old.infolist():
@@ -51,9 +54,11 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
                     else:
                         with old.open(item.filename) as source:
                             shutil.copyfileobj(source, output, 1024 * 1024)
+            if DISCOVERY not in names:
+                updated.writestr(DISCOVERY, replacements[DISCOVERY])
         with zipfile.ZipFile(pending) as verified:
             assert verified.testzip() is None
-            assert verified.namelist() == names
+            assert set(verified.namelist()) == set(names) | {DISCOVERY}
             assert sha256(verified, RUNTIME) == runtime_digest
             for filename, expected in replacements.items():
                 if verified.read(filename) != expected:

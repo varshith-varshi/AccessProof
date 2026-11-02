@@ -85,6 +85,7 @@ class InstallationSpec:
     model_token_env: str = ""
     model_provider: str = "openai-compatible"
     listen_port: int = 8090
+    gateway_service: str = "accessproof-gateway"
 
     @classmethod
     def parse(cls, value: dict[str, Any]) -> "InstallationSpec":
@@ -92,7 +93,7 @@ class InstallationSpec:
             raise InstallationError("Installation specification must be an object")
         expected = {
             "tenant_id", "application_id", "rag_service", "guard_url", "model_url",
-            "trusted_public_keys", "gateway_image", "model_name", "model_token_env", "model_provider", "listen_port",
+            "trusted_public_keys", "gateway_image", "model_name", "model_token_env", "model_provider", "listen_port", "gateway_service",
         }
         if set(value) - expected:
             raise InstallationError("Unknown installation specification field")
@@ -126,6 +127,11 @@ class InstallationSpec:
         port = value.get("listen_port", 8090)
         if type(port) is not int or not 1024 <= port <= 65535:
             raise InstallationError("Invalid loopback Gateway port")
+        gateway_service = value.get("gateway_service", "accessproof-gateway")
+        if (not isinstance(gateway_service, str)
+                or not _ALLOWED_NAME.fullmatch(gateway_service)
+                or not gateway_service.startswith("accessproof-gateway")):
+            raise InstallationError("Invalid Gateway Compose service name")
         return cls(
             tenant_id=tenant, application_id=app, rag_service=service,
             guard_url=_url(value["guard_url"], "guard_url"),
@@ -133,6 +139,7 @@ class InstallationSpec:
             trusted_public_keys=_public_keys(value["trusted_public_keys"]),
             gateway_image=image, model_name=model_name,
             model_token_env=model_token_env, model_provider=provider, listen_port=port,
+            gateway_service=gateway_service,
         )
 
 
@@ -155,7 +162,7 @@ def validate_reference_service(spec: InstallationSpec, resolved_compose: dict[st
     services = resolved_compose.get("services")
     if not isinstance(services, dict) or not isinstance(services.get(spec.rag_service), dict):
         raise InstallationError("The requested RAG service is not in this Docker Compose deployment")
-    if "accessproof-gateway" in services:
+    if spec.gateway_service in services:
         raise InstallationError("Existing Gateway service requires explicit migration review")
     labels = _labels(services[spec.rag_service].get("labels"))
     if any(labels.get(key) != value for key, value in REQUIRED_LABELS.items()):
@@ -210,10 +217,10 @@ def compose_override(spec: InstallationSpec, route_env: str, private_env_file: P
         "networks": {"accessproof-gateway-host": {"internal": False}},
         "services": {
             spec.rag_service: {
-                "environment": {route_env: "http://accessproof-gateway:8090/v1/chat/completions"},
-                "depends_on": {"accessproof-gateway": {"condition": "service_healthy"}},
+                "environment": {route_env: f"http://{spec.gateway_service}:8090/v1/chat/completions"},
+                "depends_on": {spec.gateway_service: {"condition": "service_healthy"}},
             },
-            "accessproof-gateway": {
+            spec.gateway_service: {
                 "image": spec.gateway_image,
                 "restart": "unless-stopped",
                 "env_file": [{"path": str(private_env_file), "format": "raw", "required": True}],
@@ -229,7 +236,7 @@ def compose_override(spec: InstallationSpec, route_env: str, private_env_file: P
             },
         },
     }
-    manifest["services"]["accessproof-gateway"]["networks"] = gateway_networks
+    manifest["services"][spec.gateway_service]["networks"] = gateway_networks
     return manifest
 
 
@@ -292,6 +299,7 @@ def stage_installation(spec: InstallationSpec, compose_file: Path, output_dir: P
         _write_new(instructions, json.dumps({
             "state": "INSTALLED_UNVERIFIED", "application_id": spec.application_id,
             "tenant_id": spec.tenant_id, "rag_service": spec.rag_service,
+            "gateway_service": spec.gateway_service,
             "customer_compose": str(compose_file.resolve()), "override": str(override),
             "deployment_sha256": deploy_hash, "route_sha256": route_hash,
             "gateway_loopback_port": spec.listen_port, "reference_contract": CONTRACT,
@@ -351,6 +359,7 @@ def verify_existing_staged_installation(
             or receipt.get("application_id") != spec.application_id
             or receipt.get("tenant_id") != spec.tenant_id
             or receipt.get("rag_service") != spec.rag_service
+            or receipt.get("gateway_service") != spec.gateway_service
             or receipt.get("deployment_sha256") != expected_deployment
             or receipt.get("route_sha256") != expected_route
             or env.get("ACCESSPROOF_GATEWAY_TENANT_ID") != spec.tenant_id
@@ -363,7 +372,7 @@ def verify_existing_staged_installation(
         raise InstallationError("Staged deployment or credential configuration changed")
     try:
         deployed = json.loads(override_bytes)
-        actual_gateway = deployed["services"]["accessproof-gateway"]
+        actual_gateway = deployed["services"][spec.gateway_service]
         actual_rag = deployed["services"][spec.rag_service]
         if (actual_gateway["image"] != spec.gateway_image
                 or actual_gateway["env_file"][0]["path"] != str(private_env.resolve())
@@ -376,7 +385,7 @@ def verify_existing_staged_installation(
                             },
                         }},
                     })
-                ] != "http://accessproof-gateway:8090/v1/chat/completions"):
+                ] != f"http://{spec.gateway_service}:8090/v1/chat/completions"):
             raise InstallationError("Staged service route changed")
     except (ValueError, TypeError, KeyError, IndexError) as exc:
         raise InstallationError("Staged Compose override is not valid") from exc
@@ -415,12 +424,12 @@ def wait_for_gateway_liveness(port: int, *, attempts: int = 50,
     raise InstallationError("Gateway failed its local HTTP liveness check")
 
 
-def _remove_new_gateway(paths: dict[str, str]) -> None:
+def _remove_new_gateway(paths: dict[str, str], spec: InstallationSpec) -> None:
     """Rollback only this installer-created service, never the RAG stack."""
     try:
         subprocess.run(
             ["docker", "compose", "-f", paths["compose"], "-f", paths["override"],
-             "rm", "--stop", "--force", "accessproof-gateway"],
+             "rm", "--stop", "--force", spec.gateway_service],
             check=False, capture_output=True, text=True, timeout=25,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -449,19 +458,19 @@ def main() -> int:
             compose_cmd = ["docker", "compose", "-f", paths["compose"], "-f", paths["override"]]
             # Do not silently restart/remove an existing customer-side Gateway
             # from an older installation or another operator's changes.
-            existing = _checked([*compose_cmd, "ps", "--all", "--quiet", "accessproof-gateway"])
+            existing = _checked([*compose_cmd, "ps", "--all", "--quiet", spec.gateway_service])
             if existing.stdout.strip():
                 raise InstallationError("An existing Gateway container requires explicit migration review")
             _checked(["docker", "build", "-f", str(repo / "apps/gateway/Dockerfile"),
                       "-t", spec.gateway_image, str(repo)])
             started = True  # No pre-existing Gateway; even a partial Compose up is ours to clean.
             try:
-                _checked([*compose_cmd, "up", "-d", "--no-deps", "accessproof-gateway"])
+                _checked([*compose_cmd, "up", "-d", "--no-deps", spec.gateway_service])
                 wait_for_gateway_liveness(spec.listen_port)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
                     InstallationError, OSError):
                 if started:
-                    _remove_new_gateway(paths)
+                    _remove_new_gateway(paths, spec)
                 raise InstallationError("Gateway installation failed; local Gateway rollback attempted") from None
         print(json.dumps({
             "state": "INSTALLED_UNVERIFIED" if args.apply or args.apply_staged else "STAGED_UNVERIFIED",
