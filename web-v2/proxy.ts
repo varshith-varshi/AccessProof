@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const publicRoutes = new Set(["/", "/login", "/register", "/verify", "/forgot-password", "/reset-password"]);
+const publicRoutes = new Set(["/", "/login", "/register", "/verify", "/forgot-password", "/reset-password", "/accept-invitation", "/security", "/pricing"]);
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -9,4 +9,4 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"] };

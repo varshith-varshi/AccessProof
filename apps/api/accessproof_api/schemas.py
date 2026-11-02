@@ -471,3 +471,8 @@ class OidcCallbackRequest(BaseModel):
 class ScimConfigurationUpdate(BaseModel):
     default_role: str = "VIEWER"
     enabled: bool = True
+
+
+class OrganizationRename(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=200)

@@ -125,6 +125,7 @@ from apps.api.accessproof_api.db import (
     set_tenant_context,
 )
 from apps.api.accessproof_api.schemas import (
+    OrganizationRename,
     SignupRequest as SignupRequest,
     LoginRequest as LoginRequest,
     ProjectCreate as ProjectCreate,
@@ -5867,6 +5868,55 @@ def get_organization(
         "name": org.name,
         "mutations_disabled": org.mutations_disabled,
         "role": actor.membership.role,
+    }
+
+
+@app.patch("/api/v1/organization")
+def rename_organization(
+    payload: OrganizationRename,
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Rename the active workspace (admins only, audited)."""
+    org = db.get(Organization, actor.membership.organization_id)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    name = " ".join(payload.name.split())
+    if len(name) < 2:
+        raise HTTPException(422, "Workspace name must contain at least 2 characters")
+    previous = org.name
+    org.name = name
+    _audit(db, actor, org.id, "ORGANIZATION_RENAMED", "organization", org.id,
+           {"previous_name": previous, "name": name})
+    db.commit()
+    return {"id": org.id, "name": org.name, "mutations_disabled": org.mutations_disabled,
+            "role": actor.membership.role}
+
+
+@app.get("/api/v1/auth/me")
+def current_account(
+    actor: Actor = Depends(current_actor), db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The signed-in person and the workspaces they can switch between.
+
+    Only the caller's own memberships are returned; never other users' data.
+    """
+    memberships = list(db.scalars(select(Membership).where(Membership.user_id == actor.user.id)))
+    org_ids = [m.organization_id for m in memberships]
+    names = {o.id: o.name for o in db.scalars(select(Organization).where(Organization.id.in_(org_ids)))} if org_ids else {}
+    mfa_enabled = db.scalar(select(MfaMethod.id).where(
+        MfaMethod.user_id == actor.user.id, MfaMethod.enabled.is_(True),
+    ).limit(1)) is not None
+    return {
+        "user": {"id": actor.user.id, "email": actor.user.email,
+                 "email_verified": bool(actor.user.email_verified), "mfa_enabled": mfa_enabled},
+        "active_organization_id": actor.membership.organization_id,
+        "role": actor.membership.role,
+        "organizations": sorted(
+            ({"id": m.organization_id, "name": names.get(m.organization_id, "Workspace"), "role": m.role}
+             for m in memberships),
+            key=lambda item: item["name"].lower(),
+        ),
     }
 
 

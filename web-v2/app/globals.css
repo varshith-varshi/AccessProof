@@ -16,3 +16,77 @@ input,select{width:100%;height:42px;padding:0 11px;border:1px solid var(--line-s
 .source-form{grid-template-columns:repeat(2,minmax(0,1fr))}.source-form .form-actions{display:flex;align-items:center;gap:14px}
 @media(max-width:720px){.source-form{grid-template-columns:1fr}}
 @media(max-width:720px){.setup-steps{grid-template-columns:1fr}}
+
+/* ---- App shell v3: grouped navigation, real workspace + account, mobile top bar ---- */
+.workspace-switcher{position:relative}
+.workspace-menu{position:absolute;z-index:40;left:0;right:0;top:calc(100% + 6px);padding:6px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);box-shadow:0 16px 40px rgba(10,30,40,.22)}
+.workspace-menu p{margin:4px 8px 6px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.workspace-menu button,.workspace-menu a{display:flex;align-items:center;gap:9px;width:100%;padding:8px;border:0;border-radius:6px;background:transparent;color:var(--ink);font-size:13px;text-align:left;cursor:pointer}
+.workspace-menu button:hover,.workspace-menu a:hover,.workspace-menu button:focus-visible,.workspace-menu a:focus-visible{background:var(--wash)}
+.workspace-menu button span:nth-child(2){flex:1;min-width:0}
+.workspace-menu b,.workspace-menu small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.workspace-menu small{color:var(--muted);font-size:11px}
+.workspace-menu a{margin-top:4px;border-top:1px solid var(--line);border-radius:0 0 6px 6px;color:var(--blue)}
+.avatar.small{width:24px;height:24px;font-size:8px}
+.nav-groups{display:block!important}
+.nav-group{display:grid;gap:2px}
+.nav-group .workspace{margin:18px 11px 6px}
+.app aside nav a.get-started-link{margin-top:18px;border:1px solid #2f5867;background:linear-gradient(90deg,#174257,#14364a);color:#fff;font-weight:650}
+.app aside nav a.get-started-link.active,.app aside nav a.get-started-link:hover{background:#1d5170}
+.app aside a:focus-visible,.app aside button:focus-visible{outline:2px solid #7cc4e8;outline-offset:2px}
+.aside-bottom>a.active{background:var(--nav-hover);color:#fff}
+.account-row{display:flex;align-items:center;gap:9px;margin-top:8px;padding:8px 6px 0 10px}
+.account-meta{flex:1;min-width:0}
+.account-meta b,.account-meta small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.account-meta b{color:#fff;font-size:12px;font-weight:600}
+.account-meta small{color:#8fa5af;font-size:10px}
+.icon-button{display:grid;place-items:center;width:32px;height:32px;border:1px solid #2f4d59;border-radius:7px;background:transparent;color:#cfe0e7;cursor:pointer}
+.icon-button:hover{background:var(--nav-hover);color:#fff}
+.mobile-topbar{display:none}
+@media(max-width:720px){
+  .mobile-topbar{position:fixed;z-index:20;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;height:56px;padding:0 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96);backdrop-filter:saturate(1.4) blur(8px)}
+  .mobile-topbar .mobile-menu{position:static}
+  .content{padding-top:80px}
+}
+
+/* ---- Settings, invitations and shared utilities ---- */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.settings-panel{display:grid;gap:18px;max-width:880px}
+.settings-card{padding:26px}
+.settings-card h2{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-size:18px;letter-spacing:-.02em}
+.settings-card>.muted{margin:0 0 6px}
+.settings-card .form{margin-top:18px}
+.settings-card h3{display:flex;align-items:center;gap:8px;margin:0;font-size:15px}
+.settings-block{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
+.settings-block .muted{margin:4px 0 12px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.inline-form{grid-template-columns:minmax(0,1fr) auto;align-items:end}
+.invite-form{grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;align-items:end}
+.form .button.compact{justify-self:start;height:42px}
+.button.danger{border-color:var(--red);background:var(--red)}
+.danger-text{color:var(--red)}
+.text-button{display:inline-flex;align-items:center;gap:5px}
+.notice-ok{margin:10px 0 0;padding:10px 12px;border:1px solid #b9dccd;border-radius:6px;background:#eef8f3;color:var(--green);font-size:13px}
+.small{font-size:12px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:22px 0 0}
+.facts div{padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--wash)}
+.facts dt{color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.facts dd{margin:4px 0 0;font-weight:650;overflow-wrap:anywhere}
+.facts code,.secret,.key-once code,.recovery-codes code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.pill{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--wash-deep);color:var(--ink-soft);font-size:11px;font-weight:700}
+.pill-ok{background:#e3f4ec;color:var(--green)}
+.pill-warn{background:#fbf1e1;color:var(--amber)}
+.mfa-setup ol{display:grid;gap:12px;margin:14px 0;padding-left:20px;line-height:1.6}
+.secret{padding:3px 7px;border-radius:5px;background:var(--wash-deep);letter-spacing:.06em}
+.recovery-codes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin:8px 0}
+.recovery-codes code{padding:6px 8px;border:1px dashed var(--line-strong);border-radius:6px;text-align:center;background:#fff}
+.key-once{display:grid;gap:8px;margin:16px 0;padding:14px;border:1px solid #e9d3a6;border-radius:8px;background:#fdf8ee}
+.key-once code{overflow-wrap:anywhere}
+.compact-table td,.compact-table th{padding:10px 12px}
+.row-actions{text-align:right}
+.settings-card table{margin-top:16px}
+.invite-state{margin-top:24px;line-height:1.6}
+.invite-actions{display:grid;gap:10px;margin-top:18px}
+.invite-actions .button{margin:0;text-align:center}
+@media(max-width:720px){.form-grid,.inline-form,.invite-form{grid-template-columns:1fr}.settings-card{padding:18px}.settings-card table{display:block;overflow-x:auto}}
+@media(max-width:720px){.tabs{overflow-x:auto;scrollbar-width:none}.tabs button{flex:0 0 auto;white-space:nowrap}}
