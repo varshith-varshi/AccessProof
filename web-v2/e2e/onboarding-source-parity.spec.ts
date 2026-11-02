@@ -119,11 +119,65 @@ test("observing real RAG requests updates backend decision counters without enab
 test("pre-pairing flow explains adapter limits and how to install without RAG URL", async ({ page }) => {
   await mockSetup(page, { paired: false });
   await page.goto("/onboarding?application=synthetic-sharepoint-rag");
-  await expect(page.getByRole("link", { name: "Download Gateway" })).toHaveAttribute("href", /guard-readiness-r10-20261101/);
+  await expect(page.getByRole("link", { name: "Download Gateway" })).toHaveAttribute("href", /dashboard-choice-r15-20261102/);
   await expect(page.getByRole("button", { name: "Generate one-time pairing file" })).toBeEnabled();
   await expect(page.getByText(/signed retrieval, identity forwarding, and buffered answer enforcement/)).toBeVisible();
   await expect(page.getByText("python3 ~/Downloads/accessproof-gateway-connector.zip")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start observing test requests" })).toHaveCount(0);
   await expect(page.getByText("First, connect your Gateway")).toBeVisible();
   await expect(page.getByText("1 / 3")).toBeVisible();
+});
+
+test("administrator selects exactly one chatbot in the dashboard, without Protect activation", async ({ page }) => {
+  await mockSetup(page, { paired: false });
+  let selected = "";
+  let selectionCalls = 0;
+  let protectCalls = 0;
+  const candidates = [
+    { stable_id: "host-app-" + "a".repeat(24), display_name: "Finance RAG",
+      compose_project: "finance-project", service: "finance-rag", state: "SUPPORTED" },
+    { stable_id: "host-app-" + "b".repeat(24), display_name: "HR RAG",
+      compose_project: "hr-project", service: "hr-rag", state: "SUPPORTED" },
+    { stable_id: "host-app-" + "c".repeat(24), display_name: "Sales RAG",
+      compose_project: "sales-project", service: "sales-rag", state: "REQUIRES_INTEGRATION" },
+  ];
+  await page.route("**/api/v1/current/ai-applications/*/gateway-discovery", route => route.fulfill({
+    json: { state: selected ? "selected" : "awaiting_selection",
+      applications: candidates, selected_id: selected || null, production_certification: false },
+  }));
+  await page.route("**/api/v1/current/ai-applications/*/gateway-discovery/select", async route => {
+    selectionCalls++;
+    const body = route.request().postDataJSON() as { stable_id: string };
+    selected = body.stable_id;
+    return route.fulfill({ json: { state: "selected", selected_id: selected, production_certification: false } });
+  });
+  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => {
+    protectCalls++; return route.fulfill({ status: 403, json: {} });
+  });
+  await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+  const picker = page.getByRole("region", { name: "Choose your discovered chatbot" });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByText("Finance RAG")).toBeVisible();
+  await expect(picker.getByText("HR RAG")).toBeVisible();
+  await expect(picker.getByText("Sales RAG")).toBeVisible();
+  await expect(picker.getByRole("radio", { name: /Sales RAG/ })).toBeDisabled();
+  await picker.getByRole("radio", { name: /Finance RAG/ }).check();
+  await picker.getByRole("button", { name: "Confirm this one chatbot" }).click();
+  await expect(picker.getByText(/One chatbot selected/)).toBeVisible();
+  await expect(picker.getByRole("radio", { name: /HR RAG/ })).toBeDisabled();
+  expect(selected).toBe(candidates[0].stable_id);
+  expect(selectionCalls).toBe(1);
+  expect(protectCalls).toBe(0);
+});
+
+test("chatbot picker waits for private Docker host to report inventory", async ({ page }) => {
+  await mockSetup(page, { paired: false });
+  await page.route("**/api/v1/current/ai-applications/*/gateway-discovery", route => route.fulfill({
+    json: { state: "not_ready", applications: [], selected_id: null, production_certification: false },
+  }));
+  await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+  const picker = page.getByRole("region", { name: "Choose your discovered chatbot" });
+  await expect(picker.getByText(/Run the downloaded installer on the Docker host/)).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Confirm this one chatbot" })).toHaveCount(0);
+  await expect(page.getByText(/valid 15 minutes/)).toBeVisible();
 });

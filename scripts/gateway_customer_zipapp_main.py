@@ -320,7 +320,7 @@ def main() -> None:
     elif args.compose is None and args.gateway_container is None:
         # Customer runs one command; let the local connector offer a single
         # interactive choice if several compatible chatbots are found.
-        command.append("--choose-one")
+        command.append("--dashboard-select")
     environment = os.environ.copy()
     environment["ACCESSPROOF_RAG_WORKDIR"] = str(Path.cwd())
     print("AccessProof: detecting your RAG and existing Gateway...", flush=True)

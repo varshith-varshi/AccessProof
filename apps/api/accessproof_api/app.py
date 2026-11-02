@@ -3915,6 +3915,90 @@ def get_customer_gateway_pairing(
     return status
 
 
+@app.get("/api/v1/current/ai-applications/{application_id}/gateway-discovery")
+def get_current_gateway_discovery(
+    application_id: str,
+    actor: Actor = Depends(require(Permission.RESULT_READ)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Session-scoped listing of sanitized inventory reported by the paired host."""
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None or row.adapter_type != "accessproof-gateway":
+        raise HTTPException(404, "AI application not found")
+    try:
+        return gateway_pairing.discovery_status(org_id=row.organization_id, app_row_id=row.id)
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_DISCOVERY_TEMPORARILY_UNAVAILABLE") from exc
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/gateway-discovery/select")
+def select_current_gateway_chatbot(
+    application_id: str,
+    body: dict[str, Any],
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """An organization admin chooses exactly ONE compatible chatbot.
+
+    Selection grants no remote execution capability and NEVER enables Protect.
+    """
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ))
+    if row is None or row.adapter_type != "accessproof-gateway":
+        raise HTTPException(404, "AI application not found")
+    if set(body) != {"stable_id"}:
+        raise HTTPException(422, "SELECT_EXACTLY_ONE_CHATBOT")
+    try:
+        result = gateway_pairing.select_discovered(
+            org_id=row.organization_id, app_row_id=row.id, stable_id=body["stable_id"],
+        )
+    except gateway_pairing.PairingError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_DISCOVERY_TEMPORARILY_UNAVAILABLE") from exc
+    _audit(db, actor, row.organization_id, "GATEWAY_CHATBOT_SELECTED", "ai_application", row.id,
+           {"selected_discovery_id": result["selected_id"]})
+    db.commit()
+    return result
+
+
+@app.post("/api/v1/gateway-pairings/discovery")
+def submit_customer_gateway_discovery(
+    body: dict[str, Any], authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "PAIRING_TOKEN_REQUIRED")
+    if set(body) != {"applications"}:
+        raise HTTPException(422, "DISCOVERY_INVALID_FIELDS")
+    try:
+        return gateway_pairing.publish_discovery(
+            token=authorization.removeprefix("Bearer "), applications=body["applications"],
+        )
+    except gateway_pairing.PairingError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_DISCOVERY_TEMPORARILY_UNAVAILABLE") from exc
+
+
+@app.get("/api/v1/gateway-pairings/discovery/selection")
+def customer_gateway_selected_chatbot(
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "PAIRING_TOKEN_REQUIRED")
+    try:
+        return gateway_pairing.selected_for_host(token=authorization.removeprefix("Bearer "))
+    except gateway_pairing.PairingError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, "GATEWAY_DISCOVERY_TEMPORARILY_UNAVAILABLE") from exc
+
+
 @app.post("/api/v1/gateway-pairings/claim", status_code=202)
 def claim_customer_gateway_pairing(
     installation: dict[str, Any],

@@ -14,6 +14,7 @@ import os
 import stat
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -244,6 +245,71 @@ def report_claim(pairing: dict[str, str], manifest: dict[str, object]) -> dict[s
     return payload
 
 
+def await_dashboard_chatbot(
+    pairing: dict[str, str], applications: list[object], *,
+    poll_seconds: float = 3.0, max_seconds: float = 660.0,
+    client: httpx.Client | None = None,
+) -> str:
+    """Send only sanitized discovery fields and wait for ONE admin-approved ID.
+
+    The pairing token is application-scoped, short-lived and never printed.
+    No cloud endpoint can send Docker commands or enable Protect.
+    """
+    if not 0.1 <= poll_seconds <= 10 or not 0.1 <= max_seconds <= 720:
+        raise ConnectError("Invalid bounded dashboard selection wait")
+    available = [
+        {"stable_id": x.stable_id, "display_name": x.display_name,
+         "compose_project": x.compose_project, "service": x.service,
+         "state": x.state}
+        for x in applications
+        if (x.compose_project and x.service
+            and x.state in {"SUPPORTED", "REQUIRES_INTEGRATION", "AMBIGUOUS", "NON_AI_SERVICE"})
+    ]
+    if not any(x["state"] == "SUPPORTED" for x in available):
+        raise ConnectError("No compatible running RAG detected. Complete the Gateway adapter integration first.")
+    # Dashboard inventory is intentionally bounded; do not export all Docker
+    # metadata, labels, environment, source paths, or document content.
+    if len(available) > 32:
+        raise ConnectError("More than 32 Docker applications discovered. Reduce scan scope before pairing.")
+    base = pairing["control_plane_url"].rstrip("/")
+    headers = {"Authorization": "Bearer " + pairing["pairing_token"]}
+    own = client is None
+    http = client or httpx.Client(timeout=12, follow_redirects=False, trust_env=False)
+    try:
+        try:
+            response = http.post(base + "/api/v1/gateway-pairings/discovery",
+                                 json={"applications": available}, headers=headers)
+        except httpx.HTTPError as exc:
+            raise ConnectError("Cannot publish chatbot inventory; check your API connection.") from exc
+        if response.status_code != 200:
+            raise ConnectError(f"Dashboard discovery rejected (HTTP {response.status_code}). No installation occurred.")
+        print("Chatbots discovered. In AccessProof → Get Started, select ONE chatbot.", flush=True)
+        print("Waiting for your dashboard selection. No Docker containers will change until it is received.", flush=True)
+        deadline = time.monotonic() + max_seconds
+        valid_ids = {x["stable_id"] for x in available if x["state"] == "SUPPORTED"}
+        while time.monotonic() < deadline:
+            try:
+                result = http.get(base + "/api/v1/gateway-pairings/discovery/selection",
+                                  headers=headers)
+            except httpx.HTTPError as exc:
+                raise ConnectError("Cannot check dashboard selection. No installation occurred.") from exc
+            if result.status_code != 200:
+                raise ConnectError(f"Dashboard selection unavailable (HTTP {result.status_code}). No installation occurred.")
+            payload = result.json()
+            if payload.get("state") == "selected":
+                selected = payload.get("selected_id")
+                if not isinstance(selected, str) or selected not in valid_ids:
+                    raise ConnectError("Dashboard returned an invalid/unsupported chatbot selection.")
+                return selected
+            if payload.get("state") not in {"not_ready", "awaiting_selection"}:
+                raise ConnectError("Unexpected dashboard selection status.")
+            time.sleep(poll_seconds)
+        raise ConnectError("Dashboard selection expired. Generate a fresh 15-minute pairing file and retry.")
+    finally:
+        if own:
+            http.close()
+
+
 def summarize_automatic_verification(claim: dict[str, object]) -> list[str]:
     """Present server-calculated facts; NEVER treat a pairing claim as Protect."""
     report = claim.get("verification")
@@ -307,7 +373,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--compose", type=Path, help="Your RAG Compose file (auto-detected when omitted)")
     p.add_argument("--choose-one", action="store_true",
-                   help="Select one supported chatbot interactively if several are discovered")
+                   help="Legacy terminal selection (advanced mode)")
+    p.add_argument("--dashboard-select", action="store_true",
+                   help="Publish sanitized local inventory and wait for one dashboard-approved selection")
     p.add_argument("--auto-detect", action="store_true", help="Detect running RAG and any installed Gateway")
     p.add_argument("--adopt-existing", action="store_true", help="Pair an already-installed official Gateway without reinstalling")
     p.add_argument("--gateway-container", help="Explicit existing Gateway container name when multiple exist")
@@ -331,11 +399,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
     try:
+        if args.dashboard_select and (args.select or args.choose_one or args.adopt_existing
+                                      or args.compose or args.rag_service):
+            raise ConnectError("Dashboard selection cannot be combined with another chatbot selection.")
         if len(args.select) > 1:
             raise ConnectError("Select exactly one chatbot. Other applications must remain untouched.")
         if args.discover or args.plan:
             if (any((args.approve_install, args.adopt_existing, args.challenge_file,
-                     args.pairing_file, args.auto_detect, args.choose_one, args.guard_credentials,
+                     args.pairing_file, args.auto_detect, args.choose_one, args.dashboard_select, args.guard_credentials,
                      args.compose, args.gateway_container, args.rag_service, args.guard_url,
                      args.model_url, args.ingestion_signing_key))
                     or (args.discover and args.select)):
@@ -411,6 +482,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if args.adopt_existing:
                 raise ConnectError("No existing healthy Gateway matches this application. Use --auto-detect from your RAG project folder.")
+        if args.dashboard_select:
+            rows = docker_inventory()
+            applications = discover(rows)
+            args.select = [await_dashboard_chatbot(pairing, applications)]
         if args.select or (args.choose_one and args.compose is None):
             rows = docker_inventory()
             applications = discover(rows)

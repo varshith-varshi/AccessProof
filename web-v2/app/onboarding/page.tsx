@@ -6,6 +6,7 @@ import { api, type AIApplication, type Guard, type ProtectionOverview, type Sour
 import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 import "./onboarding.css";
+import { GatewayDiscoveryPicker } from "./gateway-discovery-picker";
 
 type Pairing = {
   state: string; expires_at?: string | null;
@@ -247,12 +248,13 @@ export default function Onboarding() {
         {app && !bound && <div className="onboard-next-action"><b>Complete the connection</b><p>Bind a SharePoint source and an enrolled Guard to this Gateway application before installation.</p><Link href="/applications">Review application →</Link><Link href="/guards">Enroll or check Guard →</Link></div>}
         {app && bound && !reported && <div className="onboard-supported-note"><b>Compatibility required</b><p>The installer supports Docker Compose RAGs implementing signed retrieval, identity forwarding, and buffered answer enforcement. An application owner may need to adapt an unsupported RAG first; AccessProof cannot safely convert arbitrary RAG code automatically.</p><Link href="/integrations">Check supported integration →</Link></div>}
         {app && bound && !reported && <div className="onboard-actions">
-          <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=guard-readiness-r10-20261101" download="accessproof-gateway-connector.zip">Download Gateway</a>
+          <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=dashboard-choice-r15-20261102" download="accessproof-gateway-connector.zip">Download Gateway</a>
           <button type="button" className="button" disabled={busy} onClick={() => void issuePairing()}>Generate one-time pairing file</button>
-          <div className="onboard-command"><b>Application owner: run once from the RAG Compose directory</b><code>{installCommand}</code>
-            <small>Download the private pairing file first (valid for 15 minutes). The installer checks compatibility, reports an existing Gateway without reinstalling, and requests missing local integration details when needed. It does not change production employee routing.</small>
+          <div className="onboard-command"><b>Application owner: run once on your Docker host</b><code>{installCommand}</code>
+            <small>Download the one-time pairing file first (valid 15 minutes). The installer discovers your local chatbots and waits for your selection here, without exposing Docker or changing employee routing.</small>
           </div>
         </div>}
+        {app && bound && <GatewayDiscoveryPicker key={app.application_id + ":" + (pairing?.expires_at ?? "")} applicationId={app.application_id} installed={reported} />}
         {reported && <div className="onboard-success">✓ Gateway paired. Existing RAG routing and production protection are unchanged; test the guarded route below.</div>}
         <Link href="/integrations">Installation and compatibility help →</Link>
       </section>
@@ -301,7 +303,7 @@ export default function Onboarding() {
           <Link href="/protection">See verified evidence and next actions →</Link>
         </section>}
         <div className="onboard-cutover"><b>4. Approve production cutover</b>
-          <p>An administrator must approve the actual production route change after independently verified source and Gateway evidence. An observation session does not trigger a cutover; unknown permissions always fail closed.</p>
+          <p>An administrator must approve cutover after independent SharePoint effective-permission, employee SSO, Layer 1/2, provenance, cache, and route evidence. A chatbot selection never bypasses these checks; unknown permissions fail closed.</p>
           <Link href="/protection">Review protection status →</Link>
         </div>
       </section>

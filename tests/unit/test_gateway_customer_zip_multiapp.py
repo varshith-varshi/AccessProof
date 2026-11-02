@@ -147,7 +147,7 @@ def test_zip_default_installer_enables_single_choice_without_unsafe_reselection(
     with pytest.raises(SystemExit) as exc:
         module.main()
     assert exc.value.code == 0
-    assert "--choose-one" in recorded[0]
+    assert "--dashboard-select" in recorded[0]
     assert "--select" not in recorded[0]
     assert "--approve-install" in recorded[0]
 
