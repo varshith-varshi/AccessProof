@@ -37,3 +37,7 @@
 .onboard-observations small{font-size:11px}
 .onboard-cutover{border-color:#d9e4f1;background:#f3f8fd}
 @media(max-width:560px){.onboard-observations{grid-template-columns:1fr}}
+.onboard-next-action,.onboard-supported-note{display:flex;flex-direction:column;gap:9px;border:1px solid #efdbab;background:#fffbf0;border-radius:10px;padding:14px}
+.onboard-next-action>b,.onboard-supported-note>b{font-size:12px;color:#704e12}
+.onboard-next-action p,.onboard-supported-note p{margin:0;font-size:11px;color:#725c36;line-height:1.65}
+.onboard-next-action>a,.onboard-supported-note>a{font-size:12px!important}

@@ -16,7 +16,6 @@ type Verification = {
   deployment_sha256?: string; route_sha256?: string;
   guard?: { connectivity: string; security_readiness: string; heartbeat_age_seconds: number | null };
 };
-type Challenge = { challenge_id: string | null; state: string; expires_at?: string; verified_at?: string | null; certified_for_reference_route?: boolean };
 type Data = { sources: Source[]; guards: Guard[]; apps: AIApplication[]; protection: ProtectionOverview | null; errors: string[] };
 const EMPTY: Data = { sources: [], guards: [], apps: [], protection: null, errors: [] };
 const installCommand = "python3 ~/Downloads/accessproof-gateway-connector.zip";
@@ -37,16 +36,14 @@ function Pill({ ok, label }: { ok: boolean; label: string }) {
   return <span className={"onboard-pill " + (ok ? "success" : "pending")}>{ok ? "✓ " : "• "}{label}</span>;
 }
 
-function parseRagUrl(raw: string): string | null {
-  try {
-    const url = new URL(raw.trim());
-    if (url.username || url.password || url.hash) return null;
-    if (url.protocol === "https:") return url.href;
-    if (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return url.href;
-    return null;
-  } catch {
-    return null;
-  }
+type DecisionCounts = { l1Allow: number; l1Block: number; l2Allow: number; l2Block: number };
+function observedCounts(overview: ProtectionOverview["applications"][number] | undefined): DecisionCounts | null {
+  const telemetry = overview?.decision_telemetry;
+  if (!telemetry || telemetry.telemetry !== "OBSERVED") return null;
+  return {
+    l1Allow: telemetry.layer1?.allow ?? 0, l1Block: telemetry.layer1?.block ?? 0,
+    l2Allow: telemetry.layer2?.allow ?? 0, l2Block: telemetry.layer2?.block ?? 0,
+  };
 }
 
 export default function Onboarding() {
@@ -55,9 +52,8 @@ export default function Onboarding() {
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [presence, setPresence] = useState<{ connectivity: string; security_readiness: string } | null>(null);
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
-  const [challengeStatus, setChallengeStatus] = useState<Challenge | null>(null);
-  const [ragUrl, setRagUrl] = useState("");
+  const [observing, setObserving] = useState(false);
+  const [baseline, setBaseline] = useState<DecisionCounts | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
@@ -113,10 +109,23 @@ export default function Onboarding() {
   const connected = (presence?.connectivity ?? verification?.guard?.connectivity) === "CONNECTED";
   const guardReadiness = presence?.security_readiness ?? verification?.guard?.security_readiness ?? "UNKNOWN";
   const count = Number(sourceReady) + Number(reported) + Number(protectedVerified);
-  const deployment = pairing?.deployment_sha256 ?? verification?.deployment_sha256;
-  const route = pairing?.route_sha256 ?? verification?.route_sha256;
-  const canIssueChallenge = !!id && reported && !!deployment && !!route;
-  const telemetry = readiness?.decision_telemetry;
+  const counts = observedCounts(readiness);
+  // These 24-hour aggregate Guard counters can reflect other employees.
+  // Their deltas provide live diagnostic feedback, NEVER certification proof.
+  // Without an initial Guard sample, do not mistake existing 24-hour traffic for fresh tests.
+  useEffect(() => {
+    if (!observing || baseline !== null || counts === null) return;
+    // Sample the first nonempty backend telemetry as the baseline. Never
+    // count unknown earlier traffic as though the test produced it.
+    const snapshot = counts;
+    queueMicrotask(() => setBaseline(current => current ?? snapshot));
+  }, [observing, baseline, counts]);
+  const delta = observing && baseline && counts ? {
+    l1Allow: Math.max(0, counts.l1Allow - (baseline?.l1Allow ?? 0)),
+    l1Block: Math.max(0, counts.l1Block - (baseline?.l1Block ?? 0)),
+    l2Allow: Math.max(0, counts.l2Allow - (baseline?.l2Allow ?? 0)),
+    l2Block: Math.max(0, counts.l2Block - (baseline?.l2Block ?? 0)),
+  } : null;
 
   useEffect(() => {
     if (!id) return;
@@ -137,15 +146,9 @@ export default function Onboarding() {
   const refreshVerification = useCallback(async () => {
     if (!id) return;
     try {
-      const [run, lastChallenge] = await Promise.all([
-        api<Verification>(`/api/v1/current/ai-applications/${id}/verification-run`),
-        api<Challenge>(`/api/v1/current/ai-applications/${id}/protection/challenge`),
-      ]);
-      setVerification(run);
-      setChallengeStatus(lastChallenge);
+      setVerification(await api<Verification>(`/api/v1/current/ai-applications/${id}/verification-run`));
     } catch {
       setVerification(null);
-      setChallengeStatus(null);
     }
   }, [id]);
 
@@ -174,6 +177,13 @@ export default function Onboarding() {
     return () => { events.close(); clearInterval(fallback); setPresence(null); };
   }, [id, refresh, refreshVerification]);
 
+  useEffect(() => {
+    if (!observing || !reported) return;
+    const refreshObserved = () => { void refresh(); };
+    const timer = setInterval(refreshObserved, 5_000);
+    return () => clearInterval(timer);
+  }, [observing, reported, refresh]);
+
   const perform = async (action: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -193,30 +203,17 @@ export default function Onboarding() {
     setPairing({ state: "awaiting_customer_install", expires_at: result.expires_at });
   });
 
-  const issueChallenge = () => perform(async () => {
-    if (!id || !deployment || !route) return;
-    // This creates a 10-minute, auditable test challenge only. It does not
-    // turn on production Protect or bypass the server's validation gate.
-    const result = await api<Challenge>(`/api/v1/current/ai-applications/${id}/protection/challenge`, {
-      method: "POST",
-      body: JSON.stringify({ deployment_sha256: deployment, route_sha256: route }),
-    });
-    downloadJson("accessproof-security-challenge.json", result);
-    setChallenge(result);
-    await refreshVerification();
-  });
-
-  const openRag = () => {
-    const url = parseRagUrl(ragUrl);
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
-    else setError("Enter your RAG application's HTTPS URL, or an HTTP localhost URL for a local lab.");
+  const startObservation = () => {
+    setBaseline(counts);
+    setObserving(true);
+    void refresh();
   };
 
   return <ProtectedPage><div className="onboard-page">
-    <PageHeader eyebrow="GET STARTED" title="Connect your RAG. Test real protection." description="Connect SharePoint, install the Gateway, then test actual employee requests before approving cutover." action={<button type="button" className="button compact secondary" onClick={() => void refresh()}>Refresh</button>}/>
+    <PageHeader eyebrow="GET STARTED" title="Connect your RAG. Test real protection." description="Authorize SharePoint, connect a compatible Docker RAG, verify real access decisions, then review cutover." action={<button type="button" className="button compact secondary" onClick={() => void refresh()}>Refresh</button>}/>
     <section className="onboard-hero">
       <div><span className="onboard-overline">◈ ACCESSPROOF SETUP</span><h2>Connect. Test.<br/><em>Protect your RAG.</em></h2>
-        <p>Test the real Gateway route with permitted and denied employees. Security evidence is recorded automatically; production protection is never activated by a test.</p>
+        <p>Use the RAG application you already have. AccessProof watches verified Guard decisions without asking for a RAG URL or exposing private ports.</p>
       </div>
       <div className="onboard-progress"><div><span>Setup progress</span><b>{loaded ? `${count} / 3` : "Checking…"}</b></div>
         <meter min="0" max="3" value={count} aria-label="Completed setup steps"/>
@@ -238,77 +235,73 @@ export default function Onboarding() {
       <section className="onboard-card">
         <header><span>02</span><Pill ok={reported} label={reported ? "Installed" : "Install Gateway"}/></header>
         <h3>Connect your RAG</h3>
-        <p>Install Gateway alongside your RAG. The RAG stays private; the Gateway is the employee-facing route.</p>
+        <p>An application owner installs Gateway beside a supported Docker RAG. AccessProof does not need a public RAG URL or your credentials.</p>
         <label className="onboard-select">AI application
-          <select value={app?.application_id ?? ""} onChange={event => { setSelectedId(event.target.value); setPairing(null); setVerification(null); setChallenge(null); setChallengeStatus(null); }}>
+          <select value={app?.application_id ?? ""} onChange={event => { setSelectedId(event.target.value); setPairing(null); setVerification(null); setObserving(false); setBaseline(null); }}>
             {!app && <option value="">Select application</option>}
             {data.apps.map(item => <option key={item.id} value={item.application_id}>{item.name}</option>)}
           </select>
         </label>
         {app && <div className="onboard-fact"><b>{app.name}</b><small>Guard: {guard?.name ?? "Not bound"} · Policy: {guard?.active_policy_version ?? "None"}</small></div>}
-        {!app && <Link href="/applications">Register an application →</Link>}
+        {!app && <div className="onboard-next-action"><b>Application owner setup needed</b><p>Register your RAG and bind its approved SharePoint source and enrolled Guard.</p><Link href="/applications">Register a Gateway application →</Link><Link href="/guards">Enroll a Guard →</Link></div>}
+        {app && !bound && <div className="onboard-next-action"><b>Complete the connection</b><p>Bind a SharePoint source and an enrolled Guard to this Gateway application before installation.</p><Link href="/applications">Review application →</Link><Link href="/guards">Enroll or check Guard →</Link></div>}
+        {app && bound && !reported && <div className="onboard-supported-note"><b>Compatibility required</b><p>The installer supports Docker Compose RAGs implementing signed retrieval, identity forwarding, and buffered answer enforcement. An application owner may need to adapt an unsupported RAG first; AccessProof cannot safely convert arbitrary RAG code automatically.</p><Link href="/integrations">Check supported integration →</Link></div>}
         {app && bound && !reported && <div className="onboard-actions">
           <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=guard-readiness-r10-20261101" download="accessproof-gateway-connector.zip">Download Gateway</a>
-          <button type="button" className="button" disabled={busy} onClick={() => void issuePairing()}>Download pairing key</button>
-          <div className="onboard-command"><b>Run in your Docker RAG project</b><code>{installCommand}</code>
-            <small>Pairing is one-time. An existing installed Gateway does not need reinstalling.</small>
+          <button type="button" className="button" disabled={busy} onClick={() => void issuePairing()}>Generate one-time pairing file</button>
+          <div className="onboard-command"><b>Application owner: run once from the RAG Compose directory</b><code>{installCommand}</code>
+            <small>Download the private pairing file first (valid for 15 minutes). The installer checks compatibility, reports an existing Gateway without reinstalling, and requests missing local integration details when needed. It does not change production employee routing.</small>
           </div>
         </div>}
-        {reported && <div className="onboard-success">✓ Gateway installation reported. You can now test the security route.</div>}
+        {reported && <div className="onboard-success">✓ Gateway paired. Existing RAG routing and production protection are unchanged; test the guarded route below.</div>}
         <Link href="/integrations">Installation and compatibility help →</Link>
       </section>
       <section className="onboard-card" data-testid="live-rag-test-card">
         <header><span>03</span><Pill ok={!!protectedVerified} label={protectedVerified ? "Protected & verified" : "Test protection"}/></header>
         <h3>Test protection in your RAG</h3>
-        <p>Use real employee sign-in and questions to observe what your Guard actually allows or blocks.</p>
+        <p>Open your existing RAG normally and send approved test questions. AccessProof monitors Guard decisions; you do not enter the RAG address here.</p>
         <div className="onboard-workflow-metrics onboard-live-status" role="status">
           <div><small>Guard connection</small><strong className={connected ? "positive" : "caution"}>{connected ? "Connected" : "Offline / checking"}</strong></div>
           <div><small>Security readiness</small><strong>{guardReadiness.toLowerCase()}</strong></div>
           <div><small>Production protection</small><strong className={protectedVerified ? "positive" : "caution"}>{protectedVerified ? "Verified" : "Not active"}</strong></div>
         </div>
-        <section className="onboard-rag-session" aria-label="Open your own RAG application">
-          <b>1. Open your RAG application</b>
-          <p>Enter the employee-facing Gateway/RAG URL. Your RAG stays in your environment; AccessProof does not save this URL.</p>
-          <label className="onboard-select">RAG application URL
-            <input aria-label="RAG application URL" type="url" value={ragUrl}
-              placeholder="https://your-rag.example.com"
-              onChange={event => setRagUrl(event.target.value)}/>
-          </label>
-          <button type="button" className="button" onClick={openRag}>Open my RAG →</button>
-        </section>
-        <section className="onboard-live-guide" aria-label="Real employee security testing">
-          <b>2. Test real employee access</b>
-          <p>Sign in using your organization&apos;s existing SSO. Ask the RAG about a document the employee <strong>can access</strong>, then one they <strong>cannot access</strong>. Confirm that blocked content never appears in the answer or cache.</p>
-          <p>For approved synthetic data, also test permission revocation and restored access. Keep the raw RAG endpoint private.</p>
-          <div className="onboard-inline-links"><Link href="/blocked-requests">View blocked requests →</Link><Link href="/audit">View Guard audit →</Link></div>
-        </section>
-        <section className="onboard-live-guide" aria-label="Gateway verification challenge">
-          <b>3. Verify the protected Gateway route</b>
-          <p>A signed challenge checks actual Gateway HTTP responses against matching Guard audit decisions. It is a security test, <strong>not</strong> an activation button.</p>
-          {reported && <button type="button" className="button" disabled={!canIssueChallenge || busy} onClick={() => void issueChallenge()}>
-            {busy ? "Preparing…" : "Generate live Gateway challenge"}
-          </button>}
-          {!reported && <small>Connect your Gateway first to begin live testing.</small>}
-          {reported && !canIssueChallenge && <small>Gateway installation fingerprints are not available yet. Refresh the connection or pair the Gateway.</small>}
-          {challenge && <div className="onboard-command"><b>Run the test in your customer RAG project</b>
-            <code>{installCommand} --challenge-file ~/Downloads/accessproof-security-challenge.json</code>
-            <small>Use only your approved synthetic test resources. Challenge expires {challenge.expires_at ? new Date(challenge.expires_at).toLocaleTimeString() : "soon"}.</small>
-          </div>}
-          <div className="onboard-fact" aria-live="polite"><b>Gateway challenge: {challengeStatus?.state.replaceAll("_", " ") ?? "not requested"}</b>
-            <small>{challengeStatus?.certified_for_reference_route ? "Reference Gateway challenge verified. Production cutover is still separate." : "A real passing challenge and independent source evidence are required before production Protect."}</small>
+        {!reported && <div className="onboard-next-action" role="status"><b>First, connect your Gateway</b><p>The test view becomes useful after the local installer pairs this application. Your RAG is not exposed or modified from the cloud.</p></div>}
+        {reported && <section className="onboard-live-guide" aria-label="Live RAG test instructions">
+          <b>1. Use your normal RAG application</b>
+          <p>On a customer-controlled device, open the RAG your employees already use. No separate test URL or new public endpoint is required.</p>
+          <p>Sign in as an approved employee, ask about a document they can access, then repeat with a different employee who must be denied. Use test documents and your existing Microsoft SSO; do not paste tokens or passwords into AccessProof.</p>
+          <p>If a legitimate request is blocked while Guard shows <strong>degraded</strong>, investigate source authorization and Guard readiness. Never force-allow it to make the test appear successful.</p>
+          <div className="onboard-inline-links">
+            <Link href="/blocked-requests">Inspect denied requests →</Link>
+            <Link href="/audit">Inspect Guard audit →</Link>
           </div>
-          <button type="button" className="button secondary" disabled={!reported || busy} onClick={() => void perform(async () => { await refreshVerification(); await refresh(); })}>Refresh live test results</button>
-        </section>
-        <section className="onboard-live-results" aria-label="Observed security decisions">
-          <b>Observed Guard decisions</b>
-          {telemetry?.telemetry === "OBSERVED" ? <div className="onboard-observations">
-            <div><small>Layer 1</small><strong>{telemetry.layer1?.allow ?? 0} allowed · {telemetry.layer1?.block ?? 0} blocked</strong></div>
-            <div><small>Layer 2</small><strong>{telemetry.layer2?.allow ?? 0} allowed · {telemetry.layer2?.block ?? 0} blocked</strong></div>
-          </div> : <p>No independent Guard decisions observed for this application yet. Run a real request through Gateway to collect evidence.</p>}
-          <small>These are observed decisions, not a certification claim. See <Link href="/protection">Protection monitoring →</Link> for source, route and enforcement status.</small>
-        </section>
+        </section>}
+        {reported && <section className="onboard-live-results" aria-label="Observed live Guard decisions">
+          <b>2. Observe real Guard decisions</b>
+          <p>Start observing before sending approved test questions in your RAG. AccessProof checks the backend decision counters every 5 seconds; no RAG address is required.</p>
+          <button className="button" type="button" disabled={busy} onClick={startObservation}>
+            {observing ? "Restart observation" : "Start observing test requests"}
+          </button>
+          {observing ? <>
+            <div className="onboard-observations" aria-live="polite">
+              <div><small>Layer 1 since observation began</small><strong>{delta ? `${delta.l1Allow} allowed · ${delta.l1Block} blocked` : "Waiting for decisions…"}</strong></div>
+              <div><small>Layer 2 since observation began</small><strong>{delta ? `${delta.l2Allow} allowed · ${delta.l2Block} blocked` : "Waiting for decisions…"}</strong></div>
+            </div>
+            <small>Diagnostics only: application-wide 24-hour counters may include other employees or shift when the reporting window rolls forward. Individual audited decisions—not counter changes or manual RAG answers—provide security evidence.</small>
+          </> : <p>No test observation is active yet.</p>}
+          <button className="button secondary" type="button" disabled={busy} onClick={() => void perform(async () => { await refresh(); await refreshVerification(); })}>Refresh observed decisions</button>
+          {readiness?.latest_decision_at && <small>Most recent recorded decision: {new Date(readiness.latest_decision_at).toLocaleString()}</small>}
+          <Link href="/protection">Review independent protection monitoring →</Link>
+        </section>}
+        {reported && <section className="onboard-live-guide" aria-label="Customer security testing status">
+          <b>3. Independent security verification</b>
+          <p>Manual questions help you observe behavior, but they do not certify Layer 1, Layer 2, cache, provenance, or revocation. AccessProof must match actual Guard/Gateway audit evidence for the installed route.</p>
+          <div className="onboard-fact"><b>{protectedVerified ? "Production protection verified" : guardReadiness === "READY" ? "Guard ready; route verification still required" : "Source or Guard verification still pending"}</b>
+            <small>{protectedVerified ? "The control plane reports verified protection." : "Use protection monitoring to resolve the remaining security prerequisites. No unverified challenge is offered as a one-click pass."}</small></div>
+          <Link href="/protection">See verified evidence and next actions →</Link>
+        </section>}
         <div className="onboard-cutover"><b>4. Approve production cutover</b>
-          <p>Once your RAG tests pass and AccessProof independently verifies the source and route evidence, your administrator can approve switching employee traffic. Until then, production remains fail-closed.</p>
+          <p>An administrator must approve the actual production route change after independently verified source and Gateway evidence. An observation session does not trigger a cutover; unknown permissions always fail closed.</p>
           <Link href="/protection">Review protection status →</Link>
         </div>
       </section>
