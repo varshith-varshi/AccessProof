@@ -37,3 +37,20 @@ def test_planner_fails_closed_when_approved_port_range_is_exhausted():
     app = _app("finance", "finance", "finance-rag")
     with pytest.raises(SelectionPlanError, match="No approved"):
         plan_selection([app], [app.stable_id], occupied_ports=[19000], port_start=19000, port_end=19000)
+
+
+def test_connector_plan_requires_explicit_selection_and_changes_nothing(monkeypatch, capsys):
+    from apps.gateway.accessproof_gateway import customer_connect
+
+    rows = [{"Names": "finance-rag", "Image": "rag:1", "Ports": "127.0.0.1:18090->8090/tcp", "Labels": {
+        "com.docker.compose.project": "finance", "com.docker.compose.service": "finance-rag",
+        "com.accessproof.gateway.contract": "accessproof.gateway/v1",
+        "com.accessproof.gateway.enforces": "attested-retrieval-and-buffered-output",
+        "com.accessproof.gateway.route_env": "ACCESSPROOF_CHAT_URL",
+    }}]
+    monkeypatch.setattr(customer_connect, "docker_inventory", lambda: rows)
+    discovered = customer_connect.discover(rows)
+    assert customer_connect.main(["--plan", "--select", discovered[0].stable_id]) == 0
+    output = capsys.readouterr().out
+    assert '"gateway_service"' in output
+    assert '"listen_port": 18091' in output

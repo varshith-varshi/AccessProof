@@ -1,7 +1,7 @@
 import pytest
 
 from apps.gateway.accessproof_gateway import application_discovery
-from apps.gateway.accessproof_gateway.application_discovery import DiscoveryError, discover
+from apps.gateway.accessproof_gateway.application_discovery import DiscoveryError, discover, published_host_ports
 
 
 def _row(name, project, service, image="customer-rag:1", labels=None):
@@ -51,7 +51,7 @@ def test_docker_inventory_is_bounded_sanitized_and_read_only(monkeypatch):
     monkeypatch.setattr(application_discovery.subprocess, "run", fake_run)
     assert application_discovery.docker_inventory() == [{
         "ID": "1", "Names": "finance-rag", "Image": "rag:1", "State": None,
-        "Status": None, "Labels": "x=y",
+        "Status": None, "Labels": "x=y", "Ports": None,
     }]
     assert seen["command"] == ["docker", "ps", "--format", "{{json .}}"]
     assert seen["kwargs"]["timeout"] == 15
@@ -79,3 +79,10 @@ def test_connector_discovery_is_read_only_and_needs_no_pairing(monkeypatch, caps
     output = capsys.readouterr().out
     assert '"certification_status": "NOT_CERTIFIED"' in output
     assert '"state": "SUPPORTED"' in output
+
+
+def test_published_port_inventory_is_bounded_and_does_not_guess_unparseable_data():
+    assert published_host_ports([
+        {"Ports": "127.0.0.1:18090->8090/tcp, 0.0.0.0:5432->5432/tcp"},
+        {"Ports": "not a docker port"},
+    ]) == {18090, 5432}

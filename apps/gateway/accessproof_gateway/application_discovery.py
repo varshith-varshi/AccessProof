@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import Iterable
@@ -16,6 +17,7 @@ from .installer import REQUIRED_LABELS, _labels
 
 MAX_CONTAINERS = 500
 MAX_TEXT = 255
+_PUBLISHED_PORT = re.compile(r":([0-9]{1,5})->[0-9]+/(?:tcp|udp)")
 
 
 class DiscoveryError(ValueError):
@@ -141,5 +143,28 @@ def docker_inventory() -> list[dict[str, object]]:
         # Keep only fields intentionally used by the classifier.  In
         # particular, don't accidentally retain an environment-like field if
         # Docker changes its formatted output in a future version.
-        rows.append({key: value.get(key) for key in ("ID", "Names", "Image", "State", "Status", "Labels")})
+        rows.append({key: value.get(key) for key in (
+            "ID", "Names", "Image", "State", "Status", "Labels", "Ports",
+        )})
     return rows
+
+
+def published_host_ports(rows: Iterable[dict[str, object]]) -> set[int]:
+    """Extract only published numeric ports from Docker's summary field.
+
+    This is used for local collision avoidance, never as a network scan or as
+    evidence that an endpoint is safe.  Unparseable values are ignored rather
+    than transformed into a guessed port reservation.
+    """
+    result: set[int] = set()
+    for index, row in enumerate(rows):
+        if index >= MAX_CONTAINERS:
+            break
+        ports = row.get("Ports") or row.get("ports")
+        if not isinstance(ports, str) or len(ports) > MAX_TEXT * 4:
+            continue
+        for raw in _PUBLISHED_PORT.findall(ports):
+            port = int(raw)
+            if 1 <= port <= 65535:
+                result.add(port)
+    return result

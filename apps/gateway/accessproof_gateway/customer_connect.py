@@ -23,7 +23,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from apps.gateway.accessproof_gateway.challenge_cli import read_private_json
-from apps.gateway.accessproof_gateway.application_discovery import DiscoveryError, discover, docker_inventory
+from apps.gateway.accessproof_gateway.application_discovery import (
+    DiscoveryError, discover, docker_inventory, published_host_ports,
+)
+from apps.gateway.accessproof_gateway.selection_planner import SelectionPlanError, plan_selection
 from apps.gateway.accessproof_gateway.integration_wizard import (
     IntegrationWizardError,
     _resolved_compose,
@@ -289,6 +292,14 @@ def main(argv: list[str] | None = None) -> int:
         "--discover", action="store_true",
         help="Read-only local Docker discovery; does not pair, install, or modify any service",
     )
+    p.add_argument(
+        "--plan", action="store_true",
+        help="Create a read-only Gateway plan for explicit discovered application IDs",
+    )
+    p.add_argument(
+        "--select", action="append", default=[], metavar="DISCOVERED_ID",
+        help="Application stable ID to include in --plan; repeat for each selected RAG",
+    )
     p.add_argument("--compose", type=Path, help="Your RAG Compose file (auto-detected when omitted)")
     p.add_argument("--auto-detect", action="store_true", help="Detect running RAG and any installed Gateway")
     p.add_argument("--adopt-existing", action="store_true", help="Pair an already-installed official Gateway without reinstalling")
@@ -313,14 +324,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
     try:
-        if args.discover:
+        if args.discover or args.plan:
             if any((args.approve_install, args.adopt_existing, args.challenge_file, args.pairing_file)):
-                raise ConnectError("--discover is read-only and cannot be combined with installation, pairing, or verification options.")
-            applications = [entry.as_dict() for entry in discover(docker_inventory())]
+                raise ConnectError("--discover/--plan are read-only and cannot be combined with installation, pairing, or verification options.")
+            if args.discover and args.plan:
+                raise ConnectError("Choose --discover to list applications or --plan with one or more --select IDs.")
+            rows = docker_inventory()
+            applications = discover(rows)
+            if args.plan:
+                planned = plan_selection(applications, args.select, occupied_ports=published_host_ports(rows))
+                print(json.dumps({
+                    "schema": "accessproof.host_installation_plan/v1",
+                    "certification_status": "NOT_CERTIFIED",
+                    "applications": [item.__dict__ for item in planned],
+                    "notice": "Plan only. No containers, Compose files, routes, pairings, or protections were changed.",
+                }, sort_keys=True))
+                return 0
             print(json.dumps({
                 "schema": "accessproof.host_discovery/v1",
                 "certification_status": "NOT_CERTIFIED",
-                "applications": applications,
+                "applications": [entry.as_dict() for entry in applications],
                 "notice": "Discovery is read-only. Select applications explicitly before any compatibility plan or installation.",
             }, sort_keys=True))
             return 0
@@ -444,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
             print(message)
         print("No RAG route cutover has occurred.")
         return 0
-    except (ConnectError, DiscoveryError, IntegrationWizardError, ValueError, OSError, KeyError) as exc:
+    except (ConnectError, DiscoveryError, SelectionPlanError, IntegrationWizardError, ValueError, OSError, KeyError) as exc:
         guidance = {
             "SUPPORTED_RAG_CONTRACT_REQUIRED": (
                 "The RAG has not implemented AccessProof's signed retrieval and "
