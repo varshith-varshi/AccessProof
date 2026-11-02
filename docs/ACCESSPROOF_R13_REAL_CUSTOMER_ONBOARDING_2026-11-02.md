@@ -75,3 +75,28 @@
 - Tests assert: no RAG URL or dead challenge action; one-time setup with
   truthful compatibility requirements; observed backend telemetry deltas;
   no POST /protection/enable when observing; no false 3/3 result.
+
+## Verified production rollout (2026-11-02)
+
+- AWS SSM instance `i-0c11427d4d9c1b438` in `eu-north-1`.
+- Website image: `accessproof/web-v2:real-customer-rag-r13-20261102`,
+  image digest `sha256:6949224e705ddd25bcf65bfdb215023d6d0ca9d89a679e85b74930726aff9b80`.
+- Running API: `accessproof/api:verification-r11-20261101` healthy.
+- Running worker: `accessproof/worker:verification-r11-20261101` running.
+- Compiled production Next.js page includes
+  `Start observing test requests`; public API ready and website login
+  both returned HTTP 200.
+- Current SharePoint application is `protect_pending`,
+  `certificate_verified=false`, and `safe_to_enable_protect=false`.
+  The established nine remaining backend checks still block live Protect.
+- Previous r12 image and `.env` backup are retained for rollback at
+  `/home/ubuntu/accessproof-releases/real-customer-rag-r13-20261102/rollback/`.
+- Source hashes (independently matched AWS staging):
+  page `5debfc09c3380141dc0d9967d3dea0f0ad6435f8b95424ea6b3128f8eefe4a18`;
+  CSS `340b6181769780b054c9bfb70e782f7b6962f6320df966052f8e2b92348b64fa`.
+- Disk remains approximately 96% full, 935 MB free. Pruning unused
+  build cache older than one hour freed 0 bytes; do not delete live or
+  rollback images. Increase EBS storage before further image-intensive work.
+- Full Playwright regression 45 passed/5 skipped, production web build and
+  lint/typecheck passed. The frontend test suite uses synthetic fixtures,
+  and is not independent live provider certification.
