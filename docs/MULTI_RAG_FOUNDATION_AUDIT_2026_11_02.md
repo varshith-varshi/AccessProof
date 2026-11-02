@@ -106,3 +106,26 @@ installation tests separately before production launch.
   test virtualenv. The reliable isolated invocation is:
   `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -p pytest_asyncio.plugin ...`.
   The override is isolated to the test process and does not affect runtime.
+
+## Completed final test matrix
+
+- **Unit suite:** 643 passed, 0 failed.
+- **Existing integration suite:** 152 passed, 1 skipped, 0 failed.
+- **Security + contract + load suites:** 472 passed, 0 failed, after
+  adding the declared optional `pymemcache` test dependency.
+- **New real Docker Compose multi-Gateway configuration test:** 1 passed.
+- **Website:** Next.js production build, ESLint and TypeScript passed;
+  Playwright desktop/mobile 45 passed, 5 skipped.
+- **Final zip safety regressions:** 10 passed, including symlink rejection.
+- **Real customer-style CLI smoke:** official-runtime-preserving ZIP
+  `--discover` and two selected `--plan` executed successfully against
+  an actual Ubuntu Docker environment. No real production installation.
+- **Code quality:** Ruff on modified modules and tests; Mypy on discovery
+  and selection modules passed.
+- **Git:** two audit commits after the original discovery/planning foundation,
+  with clean working tree after the final evidence update.
+- **Local reviewed installer copy:**
+  `/home/white-devil/Downloads/accessproof-customer-lab/accessproof-gateway-connector-multi-rag-reviewed-20261102.zip`;
+  SHA-256 `330b9690a9207dd18520cb93c8d04205de42c49f0b19a61c8236e94cf8501333`.
+  This is a **local candidate installer**, not a production-certified
+  release or a new production onboarding mechanism.
