@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from apps.gateway.accessproof_gateway.challenge_cli import read_private_json
 from apps.gateway.accessproof_gateway.application_discovery import (
-    DiscoveryError, discover, docker_inventory, published_host_ports,
+    DiscoveryError, compose_for_selected, discover, docker_inventory, published_host_ports,
 )
 from apps.gateway.accessproof_gateway.selection_planner import SelectionPlanError, plan_selection
 from apps.gateway.accessproof_gateway.integration_wizard import (
@@ -138,6 +138,11 @@ def inspect_supported_rag(compose: Path, service: str | None) -> str:
         ]
         if len(candidates) == 1:
             service = candidates[0]
+        elif len(candidates) > 1:
+            raise ConnectError(
+                "Multiple supported chatbots exist in this Compose project. "
+                "Choose ONE with --rag-service SERVICE or --select DISCOVERED_ID."
+            )
         elif "rag" in services:
             service = "rag"
         else:
@@ -294,13 +299,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument(
         "--plan", action="store_true",
-        help="Create a read-only Gateway plan for explicit discovered application IDs",
+        help="Read-only plan for exactly one selected discovered chatbot",
     )
     p.add_argument(
         "--select", action="append", default=[], metavar="DISCOVERED_ID",
-        help="Application stable ID to include in --plan; repeat for each selected RAG",
+        help="Select exactly one discovered chatbot to preview or connect",
     )
     p.add_argument("--compose", type=Path, help="Your RAG Compose file (auto-detected when omitted)")
+    p.add_argument("--choose-one", action="store_true",
+                   help="Select one supported chatbot interactively if several are discovered")
     p.add_argument("--auto-detect", action="store_true", help="Detect running RAG and any installed Gateway")
     p.add_argument("--adopt-existing", action="store_true", help="Pair an already-installed official Gateway without reinstalling")
     p.add_argument("--gateway-container", help="Explicit existing Gateway container name when multiple exist")
@@ -324,16 +331,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
     try:
-        if args.select and not args.plan:
-            raise ConnectError("--select requires --plan; selection never installs or pairs automatically.")
+        if len(args.select) > 1:
+            raise ConnectError("Select exactly one chatbot. Other applications must remain untouched.")
         if args.discover or args.plan:
             if (any((args.approve_install, args.adopt_existing, args.challenge_file,
-                     args.pairing_file, args.auto_detect, args.guard_credentials, args.compose, args.gateway_container,
-                     args.rag_service, args.guard_url, args.model_url, args.ingestion_signing_key))
+                     args.pairing_file, args.auto_detect, args.choose_one, args.guard_credentials,
+                     args.compose, args.gateway_container, args.rag_service, args.guard_url,
+                     args.model_url, args.ingestion_signing_key))
                     or (args.discover and args.select)):
-                raise ConnectError("--discover/--plan are read-only and cannot be combined with installation, pairing, or verification options.")
+                raise ConnectError("--discover/--plan are read-only; do not combine with installation, pairing, or verification.")
             if args.discover and args.plan:
-                raise ConnectError("Choose --discover to list applications or --plan with one or more --select IDs.")
+                raise ConnectError("Choose --discover or --plan --select ONE_ID.")
             rows = docker_inventory()
             applications = discover(rows)
             if args.plan:
@@ -342,17 +350,19 @@ def main(argv: list[str] | None = None) -> int:
                     "schema": "accessproof.host_installation_plan/v1",
                     "certification_status": "NOT_CERTIFIED",
                     "applications": [item.__dict__ for item in planned],
-                    "notice": "Plan only. No containers, Compose files, routes, pairings, or protections were changed.",
+                    "notice": "One-chatbot preview only; no routes, pairing or protection changed.",
                 }, sort_keys=True))
                 return 0
             print(json.dumps({
                 "schema": "accessproof.host_discovery/v1",
                 "certification_status": "NOT_CERTIFIED",
                 "applications": [entry.as_dict() for entry in applications],
-                "notice": "Discovery is read-only. Select applications explicitly before any compatibility plan or installation.",
+                "notice": "Choose ONE supported chatbot. Other services remain untouched.",
             }, sort_keys=True))
             return 0
         if args.challenge_file:
+            if args.select or args.choose_one:
+                raise ConnectError("Security challenge verification does not select applications; use the approved installed route.")
             if args.compose is None:
                 raise ConnectError("A Compose file is required for security challenges; pass --compose /path/to/docker-compose.yml")
             if not args.guard_credentials:
@@ -387,6 +397,8 @@ def main(argv: list[str] | None = None) -> int:
             except ExistingGatewayError as exc:
                 raise ConnectError(str(exc)) from exc
             if existing is not None:
+                if args.select:
+                    raise ConnectError("An existing Gateway is already paired for this application. Review that Gateway before selecting a different chatbot.")
                 if not args.approve_install:
                     print("Matching existing Gateway verified. No installation or pairing requested.")
                     print("Rerun with --approve-install to report this existing installation.")
@@ -399,6 +411,41 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if args.adopt_existing:
                 raise ConnectError("No existing healthy Gateway matches this application. Use --auto-detect from your RAG project folder.")
+        if args.select or (args.choose_one and args.compose is None):
+            rows = docker_inventory()
+            applications = discover(rows)
+            available = [item for item in applications if item.state == "SUPPORTED"]
+            if args.select:
+                chosen = next((item for item in available if item.stable_id == args.select[0]), None)
+                if chosen is None:
+                    raise ConnectError("Selected chatbot is no longer a supported running Docker RAG; rediscover and retry.")
+            elif len(available) == 1:
+                chosen = available[0]
+            elif len(available) > 1:
+                print("Select ONE compatible chatbot to connect:", flush=True)
+                for number, item in enumerate(available, start=1):
+                    print(f"  {number}. {item.display_name} (project: {item.compose_project})  [{item.stable_id}]", flush=True)
+                if not sys.stdin.isatty():
+                    raise ConnectError("Multiple compatible chatbots found. Run --discover, then --select ONE_ID to choose explicitly.")
+                entered = input("Chatbot number to connect: ").strip()
+                if not entered.isascii() or not entered.isdecimal() or not 1 <= int(entered) <= len(available):
+                    raise ConnectError("Choose exactly one valid chatbot number; no changes were made.")
+                chosen = available[int(entered) - 1]
+            else:
+                chosen = None
+                if args.select:
+                    raise ConnectError("Selected chatbot is unavailable.")
+            if chosen is not None:
+                # The current product installs ONE standard Gateway on 8090.
+                # Do not offer an install if another service already publishes it.
+                plan_selection(applications, [chosen.stable_id],
+                               occupied_ports=published_host_ports(rows))
+                args.compose = compose_for_selected(chosen, rows, explicit_compose=args.compose)
+                if args.rag_service and args.rag_service != chosen.service:
+                    raise ConnectError("Selected chatbot conflicts with --rag-service.")
+                args.rag_service = chosen.service
+                print(f"Selected ONE chatbot: {chosen.display_name} (project {chosen.compose_project})", flush=True)
+                print("All other discovered services remain unchanged.", flush=True)
         if args.compose is None and args.auto_detect:
             base = Path(os.getenv("ACCESSPROOF_RAG_WORKDIR") or os.getcwd())
             names = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")

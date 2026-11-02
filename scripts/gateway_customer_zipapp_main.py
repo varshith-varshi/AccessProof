@@ -200,7 +200,7 @@ def main() -> None:
     parser.add_argument("--discover", action="store_true", help="Read-only discovery of local Docker RAG applications")
     parser.add_argument("--plan", action="store_true", help="Read-only plan for explicitly selected application IDs")
     parser.add_argument("--select", action="append", default=[], metavar="DISCOVERED_ID",
-                        help="Select a discovered application for --plan; may be repeated")
+                        help="Select exactly one discovered chatbot for --plan or installation")
     parser.add_argument("--doctor", action="store_true", help="Check local Guard/Gateway readiness without downloading any pairing or challenge")
     parser.add_argument("--no-auto-verify", action="store_true",
                         help="Skip automatic local post-install preflight (troubleshooting only; never certifies Protect)")
@@ -213,23 +213,26 @@ def main() -> None:
     if sys.version_info < (3, 11):
         fail("Python 3.11+ is required.")
     if args.discover or args.plan or args.select:
-        if ((args.discover and args.plan) or (args.select and not args.plan)
-                or (args.discover and args.select) or (args.plan and not args.select)):
-            fail("Use --discover or --plan --select DISCOVERED_ID, with one or more selections.")
-        if (args.check or args.doctor or args.challenge_file is not None
-                or args.guard_credentials is not None or args.compose is not None
-                or args.gateway_container is not None or args.no_auto_verify
-                or "--pairing-file" in sys.argv[1:]):
-            fail("Discovery and planning are read-only; do not combine them with installation or credentials.")
-        if shutil.which("docker") is None:
-            fail("Docker CLI is required for local discovery.")
-        connector = verified_connector_from_bundle()
-        command = ["bash", str(connector), "--plan" if args.plan else "--discover"]
-        for selected in args.select:
-            command.extend(("--select", selected))
-        environment = os.environ.copy()
-        environment["ACCESSPROOF_RAG_WORKDIR"] = str(Path.cwd())
-        raise SystemExit(subprocess.call(command, env=environment))
+        if (args.discover and (args.plan or args.select)
+                or (args.plan and len(args.select) != 1)
+                or len(args.select) > 1):
+            fail("Discover freely, but select exactly ONE chatbot for a plan or installation.")
+        if args.discover or args.plan:
+            if (args.check or args.doctor or args.challenge_file is not None
+                    or args.guard_credentials is not None or args.compose is not None
+                    or args.gateway_container is not None or args.no_auto_verify
+                    or "--pairing-file" in sys.argv[1:]):
+                fail("Discovery and planning are read-only; do not combine them with installation or credentials.")
+        if args.discover or args.plan:
+            if shutil.which("docker") is None:
+                fail("Docker CLI is required for local discovery.")
+            connector = verified_connector_from_bundle()
+            command = ["bash", str(connector), "--plan" if args.plan else "--discover"]
+            for selected in args.select:
+                command.extend(("--select", selected))
+            environment = os.environ.copy()
+            environment["ACCESSPROOF_RAG_WORKDIR"] = str(Path.cwd())
+            raise SystemExit(subprocess.call(command, env=environment))
     if args.doctor:
         if args.check or args.challenge_file:
             fail("Choose --doctor OR --check/--challenge-file, not both.")
@@ -312,6 +315,12 @@ def main() -> None:
         command.extend(("--compose", str(args.compose.expanduser().resolve())))
     if args.gateway_container:
         command.extend(("--gateway-container", args.gateway_container))
+    if args.select:
+        command.extend(("--select", args.select[0]))
+    elif args.compose is None and args.gateway_container is None:
+        # Customer runs one command; let the local connector offer a single
+        # interactive choice if several compatible chatbots are found.
+        command.append("--choose-one")
     environment = os.environ.copy()
     environment["ACCESSPROOF_RAG_WORKDIR"] = str(Path.cwd())
     print("AccessProof: detecting your RAG and existing Gateway...", flush=True)

@@ -72,6 +72,8 @@ def test_zip_main_forwards_only_explicit_plan_selections(monkeypatch: pytest.Mon
     ["--plan"], ["--discover", "--select", "host-app-123"],
     ["--discover", "--check"], ["--discover", "--pairing-file", "private.json"],
     ["--plan", "--select", "host-app-123", "--challenge-file", "challenge.json"],
+    ["--plan", "--select", "a", "--select", "b"],
+    ["--select", "a", "--select", "b"],
 ])
 def test_zip_main_rejects_invalid_or_mutating_discovery_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[str],
@@ -123,3 +125,53 @@ def test_zipmain_does_not_execute_symlinked_installer(monkeypatch: pytest.Monkey
     with pytest.raises(SystemExit) as exc:
         module.verified_connector_from_bundle()
     assert exc.value.code == 2
+
+
+def test_zip_default_installer_enables_single_choice_without_unsafe_reselection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    module = _module()
+    pairing = tmp_path / "pairing.json"
+    pairing.write_text('{"synthetic":"never-read"}')
+    pairing.chmod(0o600)
+    recorded = []
+    monkeypatch.setattr(module, "verified_connector_from_bundle", lambda: tmp_path / "connect.sh")
+    monkeypatch.setattr(module.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(module.subprocess, "run", lambda command, **kwargs:
+                        __import__("subprocess").CompletedProcess(command, 0))
+    monkeypatch.setattr(module.subprocess, "call", lambda command, **kwargs: recorded.append(command) or 0)
+    monkeypatch.setattr(sys, "argv", [
+        str(tmp_path / "installer.zip"), "--pairing-file", str(pairing),
+        "--no-auto-verify",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+    assert exc.value.code == 0
+    assert "--choose-one" in recorded[0]
+    assert "--select" not in recorded[0]
+    assert "--approve-install" in recorded[0]
+
+
+def test_zip_selected_chatbot_is_forwarded_for_existing_single_gateway_install(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    module = _module()
+    pairing = tmp_path / "pairing.json"
+    pairing.write_text('{"synthetic":"never-read"}')
+    pairing.chmod(0o600)
+    calls = []
+    monkeypatch.setattr(module, "verified_connector_from_bundle", lambda: tmp_path / "connect.sh")
+    monkeypatch.setattr(module.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(module.subprocess, "run", lambda command, **kwargs:
+                        __import__("subprocess").CompletedProcess(command, 0))
+    monkeypatch.setattr(module.subprocess, "call", lambda command, **kwargs: calls.append(command) or 0)
+    monkeypatch.setattr(sys, "argv", [
+        str(tmp_path / "installer.zip"), "--pairing-file", str(pairing),
+        "--select", "host-app-123", "--no-auto-verify",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+    assert exc.value.code == 0
+    assert calls[0][-2:] == ["--select", "host-app-123"]
+    assert "--choose-one" not in calls[0]
+    assert "--approve-install" in calls[0]

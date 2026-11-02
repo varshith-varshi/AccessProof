@@ -10,33 +10,42 @@ def _app(stable_id: str, project: str, service: str, state: str = "SUPPORTED") -
     return DiscoveredApplication(stable_id, service, project, service, "rag:1", state, "test")
 
 
-def test_only_explicitly_selected_supported_apps_receive_independent_plans():
+def test_one_selected_rag_is_planned_and_others_left_untouched():
     finance = _app("host-finance", "finance", "rag")
     hr = _app("host-hr", "hr", "rag")
     ignored = _app("host-sales", "sales", "rag", "REQUIRES_INTEGRATION")
-    plans = plan_selection([finance, hr, ignored], [finance.stable_id, hr.stable_id], occupied_ports=[18090])
-    assert [(item.compose_project, item.rag_service, item.listen_port) for item in plans] == [
-        ("finance", "rag", 18091), ("hr", "rag", 18092),
-    ]
-    assert len({item.gateway_service for item in plans}) == 2
-    assert all(item.gateway_service.startswith("accessproof-gateway-rag-") for item in plans)
+    plans = plan_selection([finance, hr, ignored], [finance.stable_id], occupied_ports=[18090])
+    assert len(plans) == 1
+    assert plans[0].stable_id == "host-finance"
+    assert (plans[0].compose_project, plans[0].rag_service, plans[0].listen_port) == (
+        "finance", "rag", 8090,
+    )
+    assert plans[0].gateway_service == "accessproof-gateway"
+    assert "hr" not in plans[0].gateway_service
+
+
+def test_multi_select_is_rejected_even_if_all_chatbots_are_supported():
+    finance = _app("host-finance", "finance", "rag")
+    hr = _app("host-hr", "hr", "rag")
+    with pytest.raises(SelectionPlanError, match="exactly one"):
+        plan_selection([finance, hr], [finance.stable_id, hr.stable_id])
 
 
 def test_planner_rejects_unselected_stale_or_unsupported_apps():
     supported = _app("supported", "finance", "finance-rag")
     unsupported = _app("unsupported", "sales", "sales-rag", "REQUIRES_INTEGRATION")
-    with pytest.raises(SelectionPlanError, match="verified adapter"):
+    with pytest.raises(SelectionPlanError, match="adapter contract"):
         plan_selection([supported, unsupported], [unsupported.stable_id])
     with pytest.raises(SelectionPlanError, match="no longer present"):
         plan_selection([supported], ["missing"])
-    with pytest.raises(SelectionPlanError, match="distinct"):
+    with pytest.raises(SelectionPlanError, match="exactly one"):
         plan_selection([supported], [supported.stable_id, supported.stable_id])
 
 
 def test_planner_fails_closed_when_approved_port_range_is_exhausted():
     app = _app("finance", "finance", "finance-rag")
-    with pytest.raises(SelectionPlanError, match="No approved"):
-        plan_selection([app], [app.stable_id], occupied_ports=[19000], port_start=19000, port_end=19000)
+    with pytest.raises(SelectionPlanError, match="already published"):
+        plan_selection([app], [app.stable_id], occupied_ports=[8090])
 
 
 def test_connector_plan_requires_explicit_selection_and_changes_nothing(monkeypatch, capsys):
@@ -53,7 +62,7 @@ def test_connector_plan_requires_explicit_selection_and_changes_nothing(monkeypa
     assert customer_connect.main(["--plan", "--select", discovered[0].stable_id]) == 0
     output = capsys.readouterr().out
     assert '"gateway_service"' in output
-    assert '"listen_port": 18091' in output
+    assert '"listen_port": 8090' in output
 
 
 def test_reject_ambiguous_duplicate_discovery_identities() -> None:
@@ -63,15 +72,9 @@ def test_reject_ambiguous_duplicate_discovery_identities() -> None:
         plan_selection([a, b], ["same-id"])
 
 
-def test_reject_two_runtime_versions_of_one_compose_service() -> None:
-    a = _app("old-image-id", "finance", "rag")
-    b = _app("new-image-id", "finance", "rag")
-    with pytest.raises(SelectionPlanError, match="same Compose service"):
-        plan_selection([a, b], [a.stable_id, b.stable_id])
-
-
-def test_select_without_plan_never_falls_back_to_pairing(monkeypatch, capsys) -> None:
+def test_select_without_pairing_does_not_touch_docker(monkeypatch, capsys):
     from apps.gateway.accessproof_gateway import customer_connect
-    monkeypatch.setattr(customer_connect, "docker_inventory", lambda: (_ for _ in ()).throw(AssertionError("unexpected Docker discovery")))
+    monkeypatch.setattr(customer_connect, "docker_inventory",
+                        lambda: (_ for _ in ()).throw(AssertionError("unexpected Docker discovery")))
     assert customer_connect.main(["--select", "host-app-any"]) == 1
-    assert "requires --plan" in capsys.readouterr().err
+    assert "pairing file" in capsys.readouterr().err.lower()

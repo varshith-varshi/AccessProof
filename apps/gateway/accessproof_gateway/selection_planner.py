@@ -1,22 +1,18 @@
-"""Explicit, fail-closed planning for selected Docker RAG applications.
+"""Fail-closed planning for exactly one selected Docker RAG.
 
-This module makes no Docker changes.  It exists so a host agent and the
-dashboard can derive the same per-application Gateway names and loopback ports
-from an authenticated, persisted selection rather than selecting every service
-or guessing from a container name.
+AccessProof can discover several chatbots on the same host, but onboarding
+connects exactly ONE. The plan matches the existing single-Gateway installer:
+one legacy service name and the existing single loopback port.
 """
 from __future__ import annotations
 
-import hashlib
-import re
 from dataclasses import dataclass
 from typing import Iterable
 
 from .application_discovery import DiscoveredApplication
 
-_SERVICE_SAFE = re.compile(r"[^a-z0-9-]+")
-DEFAULT_PORT_START = 18090
-DEFAULT_PORT_END = 18189
+DEFAULT_GATEWAY_PORT = 8090
+DEFAULT_GATEWAY_SERVICE = "accessproof-gateway"
 
 
 class SelectionPlanError(ValueError):
@@ -32,72 +28,38 @@ class PlannedApplication:
     listen_port: int
 
 
-def _gateway_service(app: DiscoveredApplication) -> str:
-    # A readable prefix helps customer operators; a hash avoids collisions for
-    # equal service names across Compose projects and survives recreation.
-    readable = _SERVICE_SAFE.sub("-", app.display_name.lower()).strip("-")[:48] or "rag"
-    suffix = hashlib.sha256(app.stable_id.encode()).hexdigest()[:10]
-    return f"accessproof-gateway-{readable}-{suffix}"
-
-
 def plan_selection(
     discovered: Iterable[DiscoveredApplication], selected_ids: Iterable[str], *,
-    occupied_ports: Iterable[int] = (), port_start: int = DEFAULT_PORT_START,
-    port_end: int = DEFAULT_PORT_END,
+    occupied_ports: Iterable[int] = (),
 ) -> list[PlannedApplication]:
-    """Create independent plans only for explicitly selected supported apps.
+    """One chatbot, one existing Gateway contract, with no Docker mutations.
 
-    Ports are loopback-only values for the generated Compose override.  Caller
-    supplies host-observed ports so planning cannot silently collide with an
-    existing customer endpoint.  A changed stable identity needs a new plan
-    and re-verification rather than inheriting an old application's boundary.
+    A plan does not reserve a host port, verify identity or certify protection.
+    The installer must independently recheck deployment state before approval.
     """
-    if type(port_start) is not int or type(port_end) is not int or not 1024 <= port_start <= port_end <= 65535:
-        raise SelectionPlanError("Invalid Gateway port allocation range")
     listed = list(discovered)
     inventory = {entry.stable_id: entry for entry in listed}
-    wanted = list(selected_ids)
-    if not wanted or len(wanted) != len(set(wanted)):
-        raise SelectionPlanError("Select one or more distinct discovered applications")
-    if len(inventory) != len(listed):
+    if len(listed) != len(inventory):
         raise SelectionPlanError("Ambiguous duplicate discovered application identity")
-    selected: list[DiscoveredApplication] = []
-    for stable_id in wanted:
-        app = inventory.get(stable_id)
-        if app is None:
-            raise SelectionPlanError("Selected application is no longer present in this host inventory")
-        if app.state != "SUPPORTED":
-            raise SelectionPlanError("Only applications with the verified adapter contract can be planned")
-        if not app.compose_project or not app.service:
-            raise SelectionPlanError("Selected application lacks a durable Compose project/service identity")
-        selected.append(app)
-    target_services = [(item.compose_project, item.service) for item in selected]
-    if len(target_services) != len(set(target_services)):
-        raise SelectionPlanError("Multiple selected runtime identities target the same Compose service; review the deployment")
-    used = set()
-    for occupied_port in occupied_ports:
-        if type(occupied_port) is not int or not 1 <= occupied_port <= 65535:
+    wanted = list(selected_ids)
+    if len(wanted) != 1:
+        raise SelectionPlanError("Select exactly one discovered chatbot")
+    app = inventory.get(wanted[0])
+    if app is None:
+        raise SelectionPlanError("Selected chatbot is no longer present in this host inventory")
+    if app.state != "SUPPORTED":
+        raise SelectionPlanError("Only a chatbot with the declared adapter contract can be planned")
+    if not app.compose_project or not app.service:
+        raise SelectionPlanError("Selected chatbot lacks a Compose project or service identity")
+    for port in occupied_ports:
+        if type(port) is not int or not 1 <= port <= 65535:
             raise SelectionPlanError("Host port inventory is invalid")
-        used.add(occupied_port)
-    result: list[PlannedApplication] = []
-    for app in sorted(selected, key=lambda item: item.stable_id):
-        port: int | None = None
-        for candidate in range(port_start, port_end + 1):
-            if candidate not in used:
-                port = candidate
-                break
-        if port is None:
-            raise SelectionPlanError("No approved loopback Gateway port is available; do not reuse an occupied port")
-        used.add(port)
-        project = app.compose_project
-        service = app.service
-        if project is None or service is None:  # guarded above; preserve type and fail closed.
-            raise SelectionPlanError("Selected application lacks a durable Compose project/service identity")
-        result.append(PlannedApplication(
-            stable_id=app.stable_id,
-            compose_project=project,
-            rag_service=service,
-            gateway_service=_gateway_service(app),
-            listen_port=port,
-        ))
-    return result
+        if port == DEFAULT_GATEWAY_PORT:
+            raise SelectionPlanError("Default Gateway port 8090 is already published; review the existing installation")
+    return [PlannedApplication(
+        stable_id=app.stable_id,
+        compose_project=app.compose_project,
+        rag_service=app.service,
+        gateway_service=DEFAULT_GATEWAY_SERVICE,
+        listen_port=DEFAULT_GATEWAY_PORT,
+    )]

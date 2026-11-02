@@ -11,6 +11,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 from .installer import REQUIRED_LABELS, _ALLOWED_ENV, _ALLOWED_NAME, _labels
@@ -178,3 +179,75 @@ def published_host_ports(rows: Iterable[dict[str, object]]) -> set[int]:
             if 1 <= port <= 65535:
                 result.add(port)
     return result
+
+
+def compose_for_selected(
+    selected: DiscoveredApplication,
+    rows: Iterable[dict[str, object]],
+    *,
+    explicit_compose: Path | None = None,
+) -> Path:
+    """Resolve the one chosen running Compose service to its original project.
+
+    This is customer-host-local read-only Docker inspection. The selected
+    Docker container and Compose labels must still match the discovered
+    identity; never guess a project directory from the service display name.
+    """
+    if (selected.state != "SUPPORTED" or not selected.compose_project
+            or not selected.service):
+        raise DiscoveryError("SELECTED_RAG_NOT_SUPPORTED")
+    matches = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        labels = _labels_from_row(row)
+        if (labels.get("com.docker.compose.project") == selected.compose_project
+                and labels.get("com.docker.compose.service") == selected.service
+                and _stable_id(selected.compose_project, selected.service,
+                               _text(row.get("Image") or row.get("image"))) == selected.stable_id):
+            matches.append(row)
+    if len(matches) != 1:
+        raise DiscoveryError("SELECTED_RAG_RUNTIME_AMBIGUOUS")
+    identifier = matches[0].get("ID")
+    if not isinstance(identifier, str) or not re.fullmatch(r"[0-9a-f]{12,64}", identifier):
+        raise DiscoveryError("SELECTED_RAG_CONTAINER_ID_MISSING")
+    try:
+        inspected = subprocess.run(
+            ["docker", "inspect", "--type=container", identifier],
+            check=True, capture_output=True, text=True, timeout=15,
+        )
+        objects = json.loads(inspected.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise DiscoveryError("SELECTED_RAG_INSPECTION_FAILED") from exc
+    if not isinstance(objects, list) or len(objects) != 1 or not isinstance(objects[0], dict):
+        raise DiscoveryError("SELECTED_RAG_INSPECTION_INVALID")
+    container = objects[0]
+    labels = (container.get("Config") or {}).get("Labels") or {}
+    if (not isinstance(labels, dict) or
+            not isinstance(container.get("Id"), str) or
+            not container["Id"].startswith(identifier) or
+            labels.get("com.docker.compose.project") != selected.compose_project or
+            labels.get("com.docker.compose.service") != selected.service or
+            (container.get("State") or {}).get("Status") != "running" or
+            any(labels.get(key) != value for key, value in REQUIRED_LABELS.items()) or
+            not isinstance(labels.get("com.accessproof.gateway.route_env"), str) or
+            _ALLOWED_ENV.fullmatch(labels["com.accessproof.gateway.route_env"]) is None):
+        raise DiscoveryError("SELECTED_RAG_CHANGED_SINCE_DISCOVERY")
+
+    paths = labels.get("com.docker.compose.project.config_files", "")
+    options = [Path(item) for item in paths.split(",") if item] if isinstance(paths, str) else []
+    if not options or any(not candidate.is_absolute() for candidate in options):
+        raise DiscoveryError("SELECTED_RAG_COMPOSE_PATH_MISSING")
+    if explicit_compose is None:
+        if len(options) != 1:
+            raise DiscoveryError("SELECTED_RAG_MULTIPLE_COMPOSE_FILES_REQUIRE_REVIEW")
+        chosen = options[0]
+    else:
+        chosen = explicit_compose.expanduser()
+        if chosen.is_symlink() or not chosen.is_file() or chosen.resolve() not in {
+            option.resolve() for option in options if not option.is_symlink()
+        }:
+            raise DiscoveryError("SELECTED_RAG_COMPOSE_MISMATCH")
+    if chosen.is_symlink() or not chosen.is_file():
+        raise DiscoveryError("SELECTED_RAG_COMPOSE_FILE_UNSAFE")
+    return chosen.resolve()

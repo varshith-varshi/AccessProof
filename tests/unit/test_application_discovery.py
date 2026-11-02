@@ -123,3 +123,79 @@ def test_oversized_docker_inventory_fails_instead_of_silently_truncating(monkeyp
     monkeypatch.setattr(application_discovery.subprocess, "run", lambda *args, **kwargs: Completed())
     with pytest.raises(DiscoveryError, match="TRUNCATED"):
         application_discovery.docker_inventory()
+
+
+def test_selected_rag_resolves_exact_running_compose_file_read_only(monkeypatch, tmp_path):
+    from apps.gateway.accessproof_gateway.application_discovery import compose_for_selected
+
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("services: {}\n")
+    row = _row("finance-rag", "finance", "finance-rag", labels={
+        "com.accessproof.gateway.contract": "accessproof.gateway/v1",
+        "com.accessproof.gateway.enforces": "attested-retrieval-and-buffered-output",
+        "com.accessproof.gateway.route_env": "ACCESSPROOF_CHAT_URL",
+    })
+    row["ID"] = "a" * 12
+    selected = discover([row])[0]
+
+    class Completed:
+        stdout = __import__("json").dumps([{
+            "Id": "a" * 64, "State": {"Status": "running"},
+            "Config": {"Labels": row["Labels"] | {
+                "com.docker.compose.project.config_files": str(compose),
+            }},
+        }])
+    monkeypatch.setattr(application_discovery.subprocess, "run", lambda *args, **kwargs: Completed())
+    assert compose_for_selected(selected, [row]) == compose
+    assert compose.read_text() == "services: {}\n"
+
+
+def test_selected_rag_refuses_ambiguous_multiple_compose_files(monkeypatch, tmp_path):
+    from apps.gateway.accessproof_gateway.application_discovery import compose_for_selected
+    first = tmp_path / "compose.yml"
+    second = tmp_path / "compose.override.yml"
+    first.write_text("services: {}\n")
+    second.write_text("services: {}\n")
+    row = _row("finance-rag", "finance", "finance-rag", labels={
+        "com.accessproof.gateway.contract": "accessproof.gateway/v1",
+        "com.accessproof.gateway.enforces": "attested-retrieval-and-buffered-output",
+        "com.accessproof.gateway.route_env": "ACCESSPROOF_CHAT_URL",
+    })
+    row["ID"] = "b" * 12
+    selected = discover([row])[0]
+
+    class Completed:
+        stdout = __import__("json").dumps([{
+            "Id": "b" * 64, "State": {"Status": "running"},
+            "Config": {"Labels": row["Labels"] | {
+                "com.docker.compose.project.config_files": f"{first},{second}",
+            }},
+        }])
+    monkeypatch.setattr(application_discovery.subprocess, "run", lambda *args, **kwargs: Completed())
+    with pytest.raises(DiscoveryError, match="MULTIPLE_COMPOSE"):
+        compose_for_selected(selected, [row])
+    assert compose_for_selected(selected, [row], explicit_compose=first) == first
+
+
+def test_selected_rag_rejects_changed_container_identity(monkeypatch, tmp_path):
+    from apps.gateway.accessproof_gateway.application_discovery import compose_for_selected
+    compose = tmp_path / "compose.yml"
+    compose.write_text("services: {}\n")
+    row = _row("finance-rag", "finance", "finance-rag", labels={
+        "com.accessproof.gateway.contract": "accessproof.gateway/v1",
+        "com.accessproof.gateway.enforces": "attested-retrieval-and-buffered-output",
+        "com.accessproof.gateway.route_env": "ACCESSPROOF_CHAT_URL",
+    })
+    row["ID"] = "c" * 12
+    selected = discover([row])[0]
+
+    class Completed:
+        stdout = __import__("json").dumps([{
+            "Id": "d" * 64, "State": {"Status": "running"},
+            "Config": {"Labels": row["Labels"] | {
+                "com.docker.compose.project.config_files": str(compose),
+            }},
+        }])
+    monkeypatch.setattr(application_discovery.subprocess, "run", lambda *args, **kwargs: Completed())
+    with pytest.raises(DiscoveryError, match="CHANGED"):
+        compose_for_selected(selected, [row])
