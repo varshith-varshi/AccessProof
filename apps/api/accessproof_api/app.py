@@ -3894,6 +3894,46 @@ def issue_customer_gateway_pairing(
     return pairing
 
 
+def _durable_gateway_installation_status(
+    db: OrmSession, row: AIApplication, transient: dict[str, Any],
+) -> dict[str, Any]:
+    """Recover an *old installation record* without inventing Gateway liveness.
+
+    The authenticated pairing claim already stores a durable verification run,
+    scoped to this exact tenant/application/Guard/source. The Redis pairing
+    receipt expires after 24 hours and is not a reliable installation history.
+    Never use a stale run as evidence for production Protect or live reachability.
+    """
+    if transient.get("state") not in {"not_started", "pairing_expired"}:
+        return transient
+    if not row.guard_id or not row.source_id:
+        return transient
+    set_tenant_context(db, row.organization_id)
+    run = db.scalar(select(VerificationRun).where(
+        VerificationRun.organization_id == row.organization_id,
+        VerificationRun.application_row_id == row.id,
+        VerificationRun.guard_id == row.guard_id,
+        VerificationRun.source_id == row.source_id,
+        VerificationRun.superseded_at.is_(None),
+        VerificationRun.state != "SUPERSEDED",
+    ).order_by(VerificationRun.created_at.desc()).limit(1))
+    if run is None:
+        return transient
+    return {
+        "state": "installation_reported_historical",
+        "received_at": run.created_at.isoformat(),
+        "verification_run_state": run.state,
+        "route_sha256": run.route_sha256,
+        "deployment_sha256": run.deployment_sha256,
+        "live_gateway_verified": False,
+        "production_certification": False,
+        "message": (
+            "Previously authenticated installation on record. This does not "
+            "prove that the Gateway is running or currently protecting traffic."
+        ),
+    }
+
+
 @app.get("/api/v1/current/ai-applications/{application_id}/gateway-pairing")
 def get_customer_gateway_pairing(
     application_id: str,
@@ -3908,6 +3948,7 @@ def get_customer_gateway_pairing(
         raise HTTPException(404, "AI application not found")
     try:
         status = gateway_pairing.status(org_id=row.organization_id, app_row_id=row.id)
+        status = _durable_gateway_installation_status(db, row, status)
     except Exception as exc:
         raise HTTPException(503, "GATEWAY_PAIRING_TEMPORARILY_UNAVAILABLE") from exc
     if status.get("state") == "installation_reported_unverified":

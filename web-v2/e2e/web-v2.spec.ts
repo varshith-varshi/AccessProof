@@ -705,6 +705,47 @@ test("Missing temporary Gateway receipt is not presented as a stopped container"
     .toHaveAttribute("href", "/onboarding?application=finance-rag");
 });
 
+test("Durable installation history survives missing temporary Redis pairing receipt", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  const app = { id: "application-one", application_id: "finance-rag", name: "Finance RAG", mode: "protect_pending",
+    guard_id: "guard-one", source_id: "sharepoint-one", adapter_type: "accessproof-gateway",
+    adapter_contract_version: "accessproof.rag/v1", readiness: [] };
+  await page.route("**/api/v1/current/protection/overview", route => route.fulfill({
+    json: protectionOverviewJson([{ application_id: "finance-rag", effective_state: "NOT_VERIFIED" }]),
+  }));
+  await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson() }));
+  await page.route("**/api/v1/current/ai-applications", route => route.fulfill({ json: [app] }));
+  await page.route("**/api/v1/guards", route => route.fulfill({ json: [
+    { id: "guard-one", name: "Guard", health: "online", active_policy_version: 8 },
+  ] }));
+  await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/gateway-pairing", route => route.fulfill({
+    json: { state: "installation_reported_historical", live_gateway_verified: false,
+      received_at: "2026-11-01T18:45:14Z", production_certification: false },
+  }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/verification-run", route => route.fulfill({
+    json: { run_id: "run", state: "PENDING",
+      guard: { connectivity: "CONNECTED", security_readiness: "DEGRADED", heartbeat_age_seconds: 1.2 } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/finance-rag/protection/status", route => route.fulfill({
+    json: { route_certificate: { certified: false, status: "MISSING" },
+      checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+        reason: "Microsoft SharePoint effective rights not certified." }] },
+  }));
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
+  await expect(review.getByText("Previously installed", { exact: true })).toBeVisible();
+  await expect(review.getByText(/Durable installation record found/)).toBeVisible();
+  await expect(review.getByText(/Historical installation needs fresh verification/)).toBeVisible();
+  await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
+  await expect(review.getByText("Not certified", { exact: true })).toBeVisible();
+  await expect(review.getByText("Microsoft SharePoint effective rights not certified.")).toBeVisible();
+  await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
+  await expect(review.getByRole("link", { name: "Get Started" }))
+    .toHaveAttribute("href", "/onboarding?application=finance-rag");
+});
+
 test("Route certificate UI consumes the actual backend route_certificate field", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
   await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson() }));

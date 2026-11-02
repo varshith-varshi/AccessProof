@@ -66,6 +66,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   const installationState = review?.pairing.state;
   const installationLabel = installationState === "installation_reported_unverified"
     ? "Installation reported"
+    : installationState === "installation_reported_historical" ? "Previously installed"
     : installationState === "awaiting_customer_install" ? "Awaiting installer"
     : installationState === "pairing_expired" ? "Pairing expired"
     : "No installation report";
@@ -116,8 +117,10 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         <b>Gateway installation record</b>
         <strong>{!review ? "Checking…" : installationLabel}</strong>
         <small>{gatewayPaired
-          ? "Last installer receipt received. Live Gateway connectivity still requires customer-host verification."
-          : "A missing or expired pairing receipt does not mean your Gateway stopped running."}</small>
+          ? "Recent installer receipt recorded. Live Gateway connectivity still requires customer-host verification."
+          : installationState === "installation_reported_historical"
+            ? "Durable installation record found. Current Gateway liveness and route readiness are NOT verified."
+            : "A missing or expired pairing receipt does not mean your Gateway stopped running."}</small>
       </div>
       <div className="onboard-fact">
         <b>Gateway route certificate</b>
@@ -140,8 +143,12 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         binding. We cannot confirm live Gateway availability from a one-time pairing receipt.</p>
       {!guardReady && <p><strong>Guard is not ready.</strong> Check the customer-host Guard health and source ACL synchronization.
         Source permission failures must be resolved rather than bypassed.</p>}
-      {!gatewayPaired && <p><strong>Installation receipt missing.</strong> If you already installed the Gateway,
-        generate a fresh pairing file under <Link href={`/onboarding?application=${id}`}>Get Started</Link> and
+      {!gatewayPaired && <p><strong>{installationState === "installation_reported_historical"
+        ? "Historical installation needs fresh verification." : "Installation receipt missing."}</strong>
+        {installationState === "installation_reported_historical"
+          ? " Your existing installer was recorded previously, but a historical report cannot prove it is connected now. "
+          : " If you already installed the Gateway, "}
+        Generate a fresh pairing file under <Link href={`/onboarding?application=${id}`}>Get Started</Link> and
         re-run the installer in the existing RAG Compose project to re-report that installation.
         Do not reinstall another Gateway just to refresh the dashboard.</p>}
       {firstSourceIssue && <p><strong>Source authorization blocker:</strong> {firstSourceIssue.reason
