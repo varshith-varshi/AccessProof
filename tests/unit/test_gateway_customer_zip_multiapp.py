@@ -111,3 +111,15 @@ def test_legacy_staged_receipt_without_new_gateway_service_field(tmp_path: Path)
     data.pop("gateway_service")
     receipt.write_text(json.dumps(data))
     assert verify_existing_staged_installation(spec, compose, output)["state"] == "INSTALLED_UNVERIFIED"
+
+
+def test_zipmain_does_not_execute_symlinked_installer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    module = _module()
+    original = tmp_path / "original.zip"
+    original.write_bytes(b"not a trusted zip")
+    symlink = tmp_path / "installer.zip"
+    symlink.symlink_to(original)
+    monkeypatch.setattr(sys, "argv", [str(symlink), "--discover"])
+    with pytest.raises(SystemExit) as exc:
+        module.verified_connector_from_bundle()
+    assert exc.value.code == 2

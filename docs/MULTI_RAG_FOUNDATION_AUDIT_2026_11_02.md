@@ -83,3 +83,26 @@ must be rechecked when an authorized installation is performed.
 Do not deploy this partial foundation to production or label it complete.
 Complete authenticated enrollment, durable inventory, approval and real
 installation tests separately before production launch.
+
+## Final audit additions
+
+- Optional cache-security tests require `pymemcache>=4,<5`. The initial
+  security/contract/load suite had 470 passes and 2 failures solely because
+  this optional dependency was missing from this worktree's virtualenv.
+  Installing the already-declared `cache-connectors` dependency resolved
+  those failures: the affected cache test module passed all 24 tests. The
+  package is now included in the project's `dev` extra for reproducible
+  full security test installations. No cache enforcement was loosened.
+- A previously ineffective symlink check on the ZIP entrypoint was repaired:
+  callers cannot bypass the path check by resolving the link before asking
+  whether it is a symlink. Added a dedicated regression test.
+- Final reviewed local installer:
+  `/tmp/accessproof-multirag-audit/accessproof-gateway-connector-multirag-reviewed.zip`.
+  SHA-256 `330b9690a9207dd18520cb93c8d04205de42c49f0b19a61c8236e94cf8501333`
+  (97,937,735 bytes). Real `--discover` and selected `--plan` both completed
+  successfully with this ZIP and without a customer pairing key.
+- One class of remaining test environment error is from globally installed
+  ROS `launch_testing_ros_pytest_entrypoint` hooks leaking into the Python
+  test virtualenv. The reliable isolated invocation is:
+  `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -p pytest_asyncio.plugin ...`.
+  The override is isolated to the test process and does not affect runtime.

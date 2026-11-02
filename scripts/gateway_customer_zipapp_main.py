@@ -144,9 +144,12 @@ def run_doctor(*, gateway_container: str | None = None) -> int:
 
 def verified_connector_from_bundle() -> Path:
     """Safely extract and verify the official ZIP before executing any mode."""
-    bundle = Path(sys.argv[0]).expanduser().resolve()
-    if not bundle.is_file() or bundle.is_symlink():
-        fail("The downloaded installer ZIP could not be found.")
+    supplied_bundle = Path(sys.argv[0]).expanduser()
+    # Resolve only after rejecting symbolic links: Path.resolve() removes the
+    # symlink, so checking is_symlink() on the resolved target was ineffective.
+    if supplied_bundle.is_symlink() or not supplied_bundle.is_file():
+        fail("The downloaded installer ZIP could not be found or is a symlink.")
+    bundle = supplied_bundle.resolve(strict=True)
     with bundle.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
     # Cache extracted runtime per immutable archive hash; do not overwrite an
