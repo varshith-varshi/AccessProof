@@ -1,0 +1,102 @@
+{
+  "schema": "accessproof.release_manifest/v1",
+  "release_candidate": "r20 (release id derives from the shipped commit: r20-cert-presence-<commit[:12]>)",
+  "status": "NOT_DEPLOYED \u2014 DEPLOYMENT_BLOCKED (no valid AWS credentials or network path from the build environment)",
+  "base_production_release": {
+    "source": "feature/real-customer-journey-r13 @ 6014a18a5df11f3cb20ec21a9e14935d4687f617 (r19)",
+    "reported_images": {
+      "api": "accessproof/api:durable-gateway-history-r19-20261103",
+      "web": "accessproof/web-v2:durable-gateway-history-r19-20261103",
+      "worker": "accessproof/worker:verification-r11-20261101"
+    },
+    "reported_db_revision": "p8c1e2f3a4b5",
+    "verified_live": false
+  },
+  "rehearsed_commit": "e4bc14cad04bb82b876b8e312dd71fd948d7f46d",
+  "rehearsed_artifact_sha256": "ac76072051c39434b846e019ea0a412a2f0e1f8b853edab06bf19fdc857b7b4b",
+  "components": {
+    "api": "rebuild",
+    "worker": "rebuild (evaluates activation checklist from app.py; r11 is stale)",
+    "web": "rebuild (Gateway live connection card)",
+    "db": "migrate p8c1e2f3a4b5 -> q1a2b3c4d5e6 -> r2b3c4d5e6f7 (additive)",
+    "redis": "unchanged",
+    "nginx": "unchanged",
+    "guard_customer_hosted": "NOT updated: D-03 needs a new Guard package (0.1.5) and customer reinstall",
+    "gateway_customer_hosted": "NOT updated: D-02 heartbeats need customers to re-run the new installer"
+  },
+  "tests": {
+    "python": {
+      "contract": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0,
+        "blocked": 0
+      },
+      "integration": {
+        "passed": 160,
+        "failed": 0,
+        "skipped": 4,
+        "blocked": 0
+      },
+      "load": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "blocked": 0
+      },
+      "security": {
+        "passed": 472,
+        "failed": 0,
+        "skipped": 0,
+        "blocked": 0
+      },
+      "unit": {
+        "passed": 670,
+        "failed": 0,
+        "skipped": 0,
+        "blocked": 0
+      }
+    },
+    "python_tested_commit": "94a93e7 tree (identical application code to e4bc14c; delta is deploy/ only)",
+    "ruff_changed_files": "PASS",
+    "ruff_repo_wide": "29 pre-existing findings in scripts/create_architecture_pdf.py (28) and tests/unit/test_multitenant_entra_registration.py (1); none in release code",
+    "mypy_strict_changed_modules": "PASS",
+    "web": {
+      "eslint": "PASS",
+      "tsc": "PASS",
+      "next_build": "PASS",
+      "playwright": {
+        "passed": 59,
+        "failed": 2,
+        "skipped": 5,
+        "failures": "pre-existing: /favicon.ico 404 on public flow (desktop+mobile); web-v2/public is empty in r19 and r20"
+      }
+    },
+    "postgres17_migration": {
+      "upgrade_from_p8c1": "PASS",
+      "rls_non_superuser_presence": "PASS",
+      "downgrade_to_p8c1_and_r19_check_schema": "PASS",
+      "reupgrade": "PASS"
+    },
+    "docker": {
+      "api_build": "PASS",
+      "worker_build": "PASS",
+      "web_build": "PASS",
+      "api_production_mode_start_and_ready": "PASS",
+      "worker_start": "PASS",
+      "web_login_200": "PASS",
+      "note": "Local builds used a BuildKit secret for the sandbox proxy CA (not persisted in layers); EC2 builds use the unmodified Dockerfiles."
+    },
+    "deploy_rehearsal": {
+      "deploy": "PASS",
+      "manual_rollback": "PASS",
+      "automatic_rollback_on_failed_health_gate": "PASS",
+      "secrets_in_logs": "none",
+      "db_redis_recreated": false
+    }
+  },
+  "new_findings": {
+    "D-05": "Production Compose connects as POSTGRES_USER (superuser with BYPASSRLS): forced RLS policies are not enforced if production matches the repo Compose. Requires an approved non-superuser application role. Not changed.",
+    "favicon": "P4: /favicon.ico 404 on the public website (pre-existing)."
+  }
+}

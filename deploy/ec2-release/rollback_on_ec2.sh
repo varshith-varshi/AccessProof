@@ -30,7 +30,7 @@ for i in $(seq 1 80); do
   [[ "$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q api)")" == healthy ]] && break; sleep 3
 done
 compose up -d --no-deps --force-recreate worker web
-curl -fsS --max-time 15 https://api.accessproof.in/health/ready
-curl -fsS --max-time 15 -o /dev/null https://app.accessproof.in/login && echo "web ok"
+[[ "${PUBLIC_CHECKS:-1}" == 1 ]] && curl -fsS --max-time 15 https://api.accessproof.in/health/ready
+[[ "${PUBLIC_CHECKS:-1}" == 1 ]] && curl -fsS --max-time 15 -o /dev/null https://app.accessproof.in/login && echo "web ok"
 compose ps --format '{{.Service}} {{.Image}} {{.Status}}'
 echo "Rolled back to: $(grep -E '^previous_(api|web|worker)_image=' "$REL/rollback/previous-state.txt" | tr '\n' ' ')"
