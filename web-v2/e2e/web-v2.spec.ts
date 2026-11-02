@@ -169,7 +169,7 @@ test("mobile navigation exposes product routes", async ({ context, page }, testI
   await expect(page.getByRole("link", { name: "Blocked requests" })).toBeVisible();
 });
 
-test("AI applications open manual RAG testing without triggering Protect preflight", async ({ context, page }) => {
+test("AI applications check Guard and Gateway before protection activation", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
   await page.route("**/api/v1/current/dashboard", route => route.fulfill({
     json: dashboardJson({ ai_applications: 1, guards_online: 1, guards_total: 1, permission_sources: 1 })
@@ -212,11 +212,16 @@ test("AI applications open manual RAG testing without triggering Protect preflig
   await page.goto("/applications");
   await expect(page.getByText("RAG E2E")).toBeVisible();
   await expect(page.getByLabel("Authorized retrieval request ID")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Enable Protection" })).toHaveCount(0);
   await expect(page.getByText("9 checks pending")).toHaveCount(0);
   await expect(page.getByText("1 checks pending")).toHaveCount(0);
-  await expect(page.getByText("PROTECTION SECURITY CHECKS")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Manual RAG Test" })).toHaveAttribute("href", "/onboarding?application=rag-e2e#manual-rag-tests");
+  await expect(page.getByRole("link", { name: "Manual RAG Test" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
+  await expect(review).toBeVisible();
+  await expect(review.getByText("Guard connection")).toBeVisible();
+  await expect(review.getByText("Gateway installation")).toBeVisible();
+  await expect(review.getByText("Gateway protected route")).toBeVisible();
+  await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
   expect(submitted).toBe(0);
 });
 
@@ -597,4 +602,50 @@ test("Microsoft multitenant consent requires selected-site grant before Protect"
   await expect(page.getByText(/Microsoft administrator consent was accepted, but AccessProof cannot yet read the selected SharePoint site/i)).toBeVisible();
   await expect(page.getByText(/Shadow only: independent Microsoft effective-access certification is required for Protect/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Validate" })).toBeVisible();
+});
+
+
+test("Guard and paired Gateway can request activation without claiming Protect on failure", async ({ context, page }) => {
+  await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  const row = { id: "app-1", application_id: "rag-e2e", name: "RAG E2E", mode: "shadow",
+    guard_id: "guard-1", source_id: "source-1", adapter_type: "accessproof-gateway",
+    adapter_contract_version: "accessproof.rag/v1", readiness: [] };
+  await page.route("**/api/v1/current/dashboard", route => route.fulfill({ json: dashboardJson() }));
+  await page.route("**/api/v1/current/protection/overview", route => route.fulfill({
+    json: protectionOverviewJson([{ application_id: "rag-e2e", effective_state: "PROTECT_PENDING" }]),
+  }));
+  await page.route("**/api/v1/current/ai-applications", route => route.fulfill({ json: [row] }));
+  await page.route("**/api/v1/guards", route => route.fulfill({ json: [{
+    id: "guard-1", name: "Guard", health: "online", active_policy_version: 8,
+  }] }));
+  await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/gateway-pairing", route => route.fulfill({
+    json: { state: "installation_reported_unverified" },
+  }));
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/verification-run", route => route.fulfill({
+    json: { state: "PENDING", run_id: "run-test",
+      guard: { connectivity: "CONNECTED", security_readiness: "READY", heartbeat_age_seconds: 0.4 } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/status", route => route.fulfill({
+    json: { route_certification: { certified: false, status: "NOT_CERTIFIED" } },
+  }));
+  let requests = 0;
+  await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/enable", route => {
+    requests++;
+    return route.fulfill({ status: 202, json: {
+      application_id: "rag-e2e", state: "action_required",
+      reason_code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
+      message: "Effective source permissions require certification.",
+      last_checked_at: null, run_id: "run-test", guard_acknowledged: false, checks: [],
+    } });
+  });
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
+  await expect(review.getByText("Paired", { exact: true })).toBeVisible();
+  await expect(review.getByText("Not verified active")).toBeVisible();
+  await review.getByRole("button", { name: "Enable Protection" }).click();
+  await expect(review.getByText("Protection not active yet")).toBeVisible();
+  await expect(review.getByText("Effective source permissions require certification.")).toBeVisible();
+  expect(requests).toBe(1);
 });

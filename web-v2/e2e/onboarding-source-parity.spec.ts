@@ -73,9 +73,10 @@ test("customer journey needs no RAG URL and hides unusable challenge actions", a
   await page.goto("/onboarding?application=synthetic-sharepoint-rag");
   await expect(page.getByRole("heading", { name: "Connect SharePoint" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connect your RAG", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Manually test your RAG" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Live RAG test instructions" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Observed live Guard decisions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Protection status" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Live RAG test instructions" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Observed live Guard decisions" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Manual RAG validation" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "RAG application URL" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open my RAG" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Generate live Gateway challenge" })).toHaveCount(0);
@@ -86,14 +87,14 @@ test("customer journey needs no RAG URL and hides unusable challenge actions", a
   expect(unsafeCalls).toEqual([]);
 });
 
-test("observing real RAG requests updates backend decision counters without enabling Protect", async ({ page }) => {
-  await mockSetup(page);
+test("observing verified active RAG requests updates backend counters without enabling Protect", async ({ page }) => {
+  await mockSetup(page, { verified: true });
   let layer1 = 2;
   let layer2 = 1;
   await page.route("**/api/v1/current/protection/overview", route => route.fulfill({
     json: { applications: [{
       application_id: app.application_id,
-      effective_state: "NOT_VERIFIED",
+      effective_state: "PROTECTED_VERIFIED",
       decision_telemetry: {
         telemetry: "OBSERVED",
         layer1: { allow: layer1, block: 3 },
@@ -112,7 +113,7 @@ test("observing real RAG requests updates backend decision counters without enab
   layer2 = 2;
   await page.getByRole("button", { name: "Refresh observed decisions" }).click();
   await expect(page.getByText("1 allowed · 0 blocked").first()).toBeVisible();
-  await expect(page.getByText("Not active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verified", { exact: true })).toBeVisible();
   expect(unsafeCalls).toBe(0);
 });
 
@@ -183,28 +184,22 @@ test("chatbot picker waits for private Docker host to report inventory", async (
 });
 
 
-test("manual RAG validation works with unready Guard and never activates Protect", async ({ page }) => {
+test("RAG testing is separate from website until protection is truly verified", async ({ page }) => {
   await mockSetup(page);
-  let protectCalls = 0;
-  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => {
-    protectCalls++;
-    return route.fulfill({ status: 403 });
-  });
-  await page.goto("/onboarding?application=synthetic-sharepoint-rag#manual-rag-tests");
-  const manual = page.getByRole("region", { name: "Manual RAG validation" });
-  await expect(manual).toBeVisible();
-  await expect(manual.getByText("Manual RAG validation — ready to test")).toBeVisible();
-  await expect(manual.getByText(/No automatic certification checklist must pass before you begin/)).toBeVisible();
-  await expect(manual.getByLabel("Result: Alice: authorized access")).toBeVisible();
-  await expect(manual.getByLabel("Result: Bob: unauthorized access")).toBeVisible();
-  await manual.getByLabel("Result: Alice: authorized access").selectOption("expected");
-  await manual.getByLabel("Result: Bob: unauthorized access").selectOption("unexpected");
-  await expect(manual.getByText(/2 manually observed · 1 unexpected/)).toBeVisible();
-  await page.reload();
-  await expect(manual.getByLabel("Result: Alice: authorized access")).toHaveValue("expected");
-  await expect(manual.getByLabel("Result: Bob: unauthorized access")).toHaveValue("unexpected");
-  await manual.getByRole("button", { name: "Reset local test notes" }).click();
-  await expect(manual.getByLabel("Result: Alice: authorized access")).toHaveValue("not-tested");
+  await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+  await expect(page.getByRole("heading", { name: "Protection status" })).toBeVisible();
+  await expect(page.getByText(/Verify that the Guard and Gateway are connected/)).toBeVisible();
+  await expect(page.getByRole("link", { name: /Check connections and enable protection/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Manual RAG validation" })).toHaveCount(0);
+  await expect(page.getByText("Manual RAG validation — ready to test")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Observed live Guard decisions" })).toHaveCount(0);
   await expect(page.getByText("Not active", { exact: true })).toBeVisible();
-  expect(protectCalls).toBe(0);
+});
+
+test("post-activation observation is available only for backend-verified Protect", async ({ page }) => {
+  await mockSetup(page, { verified: true });
+  await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+  await expect(page.getByRole("region", { name: "Live RAG test instructions" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Observed live Guard decisions" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Manual RAG validation" })).toHaveCount(0);
 });
