@@ -47,3 +47,33 @@
 
 Website-only image; no API schema, worker, Guard, Gateway or authorization
 policy changes. Preserve the previous r11 frontend image and .env for rollback.
+
+## Production verification — November 2, 2026
+
+- **Deployed image:** `accessproof/web-v2:customer-rag-r12-20261102`.
+- **Deployment host:** AWS EC2 `i-0c11427d4d9c1b438` in `eu-north-1`;
+  AWS Systems Manager SendCommand used; no SSH/firewall changes.
+- **Rollout:** website only, via Docker Compose `--no-deps --force-recreate web`.
+  Existing r11 API and worker images were not changed or restarted.
+- **Image checksum:** Docker image identifier
+  `sha256:eae48d5e4e43c689b7c57d07063432b1b6a8b6b7881013d5acb126e196d4e94d`.
+- **Source checksum:** onboard page
+  `f61c62c511042b0144344616418553f6510f56bbb4e4db3a69746b8b3c3db527`;
+  onboarding stylesheet
+  `41ced5434ca57dd98b41f98c505c03f60f0beb56aecb6c149a670c9762689110`.
+- **Release and rollback:** `/home/ubuntu/accessproof-releases/customer-rag-r12-20261102/`;
+  previous r11 frontend image retained, previous .env stored at
+  `rollback/.env.before-r12` (restricted permissions).
+- **Verified:** live frontend container healthy, Next.js compiled bundle contains
+  “Test protection in your RAG”; public login HTTP 200 and API readiness HTTP 200.
+- **Protect remains blocked:** live source verdict `protect_pending`,
+  `certificate_verified=false`, `safe_to_enable_protect=false`.
+  Nine security prerequisites still independently require evidence.
+- **Capacity:** reclaimed 649.6 MB by pruning only old, unused Docker build
+  cache. Live and r11 rollback images retained. Host now approximately
+  94% used with 1.2 GB free. Expand the EBS root disk before major new
+  production builds.
+- **Tests:** ESLint/typecheck/production build passed;
+  complete Playwright suite 47 passed / 5 skipped.
+- **Scope:** Removing the confusing 23-check UI is **not** removing security
+  checks from the backend or treating manual RAG answers as certification.
