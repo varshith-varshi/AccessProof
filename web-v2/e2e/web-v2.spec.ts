@@ -169,7 +169,7 @@ test("mobile navigation exposes product routes", async ({ context, page }, testI
   await expect(page.getByRole("link", { name: "Blocked requests" })).toBeVisible();
 });
 
-test("one-click security preflight reports action required without manual audit IDs", async ({ context, page }) => {
+test("AI applications open manual RAG testing without triggering Protect preflight", async ({ context, page }) => {
   await context.addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
   await page.route("**/api/v1/current/dashboard", route => route.fulfill({
     json: dashboardJson({ ai_applications: 1, guards_online: 1, guards_total: 1, permission_sources: 1 })
@@ -212,11 +212,12 @@ test("one-click security preflight reports action required without manual audit 
   await page.goto("/applications");
   await expect(page.getByText("RAG E2E")).toBeVisible();
   await expect(page.getByLabel("Authorized retrieval request ID")).toHaveCount(0);
-  await page.getByRole("button", { name: "Enable Protection" }).click();
-  await expect(page.getByRole("heading", { name: "Action required" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Connect the trusted" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry checks" })).toBeVisible();
-  expect(submitted).toBe(1);
+  await expect(page.getByRole("button", { name: "Enable Protection" })).toHaveCount(0);
+  await expect(page.getByText("9 checks pending")).toHaveCount(0);
+  await expect(page.getByText("1 checks pending")).toHaveCount(0);
+  await expect(page.getByText("PROTECTION SECURITY CHECKS")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Manual RAG Test" })).toHaveAttribute("href", "/onboarding?application=rag-e2e#manual-rag-tests");
+  expect(submitted).toBe(0);
 });
 
 test("retired RAG SDK applications remain read-only in Gateway V1", async ({ context, page }) => {

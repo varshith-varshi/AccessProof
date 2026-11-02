@@ -73,7 +73,7 @@ test("customer journey needs no RAG URL and hides unusable challenge actions", a
   await page.goto("/onboarding?application=synthetic-sharepoint-rag");
   await expect(page.getByRole("heading", { name: "Connect SharePoint" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connect your RAG", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Test protection in your RAG" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Manually test your RAG" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Live RAG test instructions" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Observed live Guard decisions" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "RAG application URL" })).toHaveCount(0);
@@ -180,4 +180,31 @@ test("chatbot picker waits for private Docker host to report inventory", async (
   await expect(picker.getByText(/Run the downloaded installer on the Docker host/)).toBeVisible();
   await expect(picker.getByRole("button", { name: "Confirm this one chatbot" })).toHaveCount(0);
   await expect(page.getByText(/valid 15 minutes/)).toBeVisible();
+});
+
+
+test("manual RAG validation works with unready Guard and never activates Protect", async ({ page }) => {
+  await mockSetup(page);
+  let protectCalls = 0;
+  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => {
+    protectCalls++;
+    return route.fulfill({ status: 403 });
+  });
+  await page.goto("/onboarding?application=synthetic-sharepoint-rag#manual-rag-tests");
+  const manual = page.getByRole("region", { name: "Manual RAG validation" });
+  await expect(manual).toBeVisible();
+  await expect(manual.getByText("Manual RAG validation — ready to test")).toBeVisible();
+  await expect(manual.getByText(/No automatic certification checklist must pass before you begin/)).toBeVisible();
+  await expect(manual.getByLabel("Result: Alice: authorized access")).toBeVisible();
+  await expect(manual.getByLabel("Result: Bob: unauthorized access")).toBeVisible();
+  await manual.getByLabel("Result: Alice: authorized access").selectOption("expected");
+  await manual.getByLabel("Result: Bob: unauthorized access").selectOption("unexpected");
+  await expect(manual.getByText(/2 manually observed · 1 unexpected/)).toBeVisible();
+  await page.reload();
+  await expect(manual.getByLabel("Result: Alice: authorized access")).toHaveValue("expected");
+  await expect(manual.getByLabel("Result: Bob: unauthorized access")).toHaveValue("unexpected");
+  await manual.getByRole("button", { name: "Reset local test notes" }).click();
+  await expect(manual.getByLabel("Result: Alice: authorized access")).toHaveValue("not-tested");
+  await expect(page.getByText("Not active", { exact: true })).toBeVisible();
+  expect(protectCalls).toBe(0);
 });

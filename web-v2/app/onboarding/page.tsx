@@ -7,6 +7,7 @@ import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 import "./onboarding.css";
 import { GatewayDiscoveryPicker } from "./gateway-discovery-picker";
+import { ManualRagValidation } from "./manual-rag-validation";
 
 type Pairing = {
   state: string; expires_at?: string | null;
@@ -211,7 +212,7 @@ export default function Onboarding() {
   };
 
   return <ProtectedPage><div className="onboard-page">
-    <PageHeader eyebrow="GET STARTED" title="Connect your RAG. Test real protection." description="Authorize SharePoint, connect a compatible Docker RAG, verify real access decisions, then review cutover." action={<button type="button" className="button compact secondary" onClick={() => void refresh()}>Refresh</button>}/>
+    <PageHeader eyebrow="GET STARTED" title="Connect your RAG. Validate manually." description="Connect SharePoint and your existing chatbot, then test with real employee identities. Manual testing does not require production certification." action={<button type="button" className="button compact secondary" onClick={() => void refresh()}>Refresh</button>}/>
     <section className="onboard-hero">
       <div><span className="onboard-overline">◈ ACCESSPROOF SETUP</span><h2>Connect. Test.<br/><em>Protect your RAG.</em></h2>
         <p>Use the RAG application you already have. AccessProof watches verified Guard decisions without asking for a RAG URL or exposing private ports.</p>
@@ -260,16 +261,17 @@ export default function Onboarding() {
       </section>
       <section className="onboard-card" data-testid="live-rag-test-card">
         <header><span>03</span><Pill ok={!!protectedVerified} label={protectedVerified ? "Protected & verified" : "Test protection"}/></header>
-        <h3>Test protection in your RAG</h3>
-        <p>Open your existing RAG normally and send approved test questions. AccessProof monitors Guard decisions; you do not enter the RAG address here.</p>
+        <h3>Manually test your RAG</h3>
+        <p>Start manual tests now using approved synthetic documents. You do not need to pass the production certification checks first. AccessProof can also display observed Guard decisions.</p>
         <div className="onboard-workflow-metrics onboard-live-status" role="status">
           <div><small>Guard connection</small><strong className={connected ? "positive" : "caution"}>{connected ? "Connected" : "Offline / checking"}</strong></div>
           <div><small>Security readiness</small><strong>{guardReadiness.toLowerCase()}</strong></div>
           <div><small>Production protection</small><strong className={protectedVerified ? "positive" : "caution"}>{protectedVerified ? "Verified" : "Not active"}</strong></div>
         </div>
         {!reported && <div className="onboard-next-action" role="status"><b>First, connect your Gateway</b><p>The test view becomes useful after the local installer pairs this application. Your RAG is not exposed or modified from the cloud.</p></div>}
+        {reported && app && <ManualRagValidation key={app.application_id} applicationId={app.application_id} guardReady={guardReadiness === "READY"} />}
         {reported && <section className="onboard-live-guide" aria-label="Live RAG test instructions">
-          <b>1. Use your normal RAG application</b>
+          <b>Use your normal RAG application</b>
           <p>On a customer-controlled device, open the RAG your employees already use. No separate test URL or new public endpoint is required.</p>
           <p>Sign in as an approved employee, ask about a document they can access, then repeat with a different employee who must be denied. Use test documents and your existing Microsoft SSO; do not paste tokens or passwords into AccessProof.</p>
           <p>If a legitimate request is blocked while Guard shows <strong>degraded</strong>, investigate source authorization and Guard readiness. Never force-allow it to make the test appear successful.</p>
@@ -279,7 +281,7 @@ export default function Onboarding() {
           </div>
         </section>}
         {reported && <section className="onboard-live-results" aria-label="Observed live Guard decisions">
-          <b>2. Observe real Guard decisions</b>
+          <b>Observe real Guard decisions</b>
           <p>Start observing before sending approved test questions in your RAG. AccessProof checks the backend decision counters every 5 seconds; no RAG address is required.</p>
           <button className="button" type="button" disabled={busy} onClick={startObservation}>
             {observing ? "Restart observation" : "Start observing test requests"}
@@ -296,7 +298,7 @@ export default function Onboarding() {
           <Link href="/protection">Review independent protection monitoring →</Link>
         </section>}
         {reported && <section className="onboard-live-guide" aria-label="Customer security testing status">
-          <b>3. Independent security verification</b>
+          <b>Production certification — separate from manual testing</b>
           <p>Manual questions help you observe behavior, but they do not certify Layer 1, Layer 2, cache, provenance, or revocation. AccessProof must match actual Guard/Gateway audit evidence for the installed route.</p>
           <div className="onboard-fact"><b>{protectedVerified ? "Production protection verified" : guardReadiness === "READY" ? "Guard ready; route verification still required" : "Source or Guard verification still pending"}</b>
             <small>{protectedVerified ? "The control plane reports verified protection." : "Use protection monitoring to resolve the remaining security prerequisites. No unverified challenge is offered as a one-click pass."}</small></div>
