@@ -1,7 +1,8 @@
 """Rebuild the customer installer with the verified runtime unchanged.
 
-Replaces ONLY Python entrypoint and customer pairing implementation, preserving
-the bundled, SHA-256-pinned Gateway container runtime. Never bundles credentials.
+Replaces reviewed Python entrypoint, connector, discovery, planner and matching
+Gateway modules while preserving the SHA-256-pinned container runtime.
+Never bundles credentials or replaces a customer deployment.
 """
 from __future__ import annotations
 
@@ -15,7 +16,12 @@ from pathlib import Path
 
 ENTRYPOINT = "__main__.py"
 CONNECTOR = "accessproof-gateway-connector/apps/gateway/accessproof_gateway/customer_connect.py"
-DISCOVERY = "accessproof-gateway-connector/apps/gateway/accessproof_gateway/application_discovery.py"
+GATEWAY_MODULES = (
+    "application_discovery.py",
+    "selection_planner.py",
+    "installer.py",
+    "existing_gateway.py",
+)
 RUNTIME = "accessproof-gateway-connector/accessproof-gateway-runtime.tar.gz"
 
 
@@ -33,7 +39,11 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
     replacements = {
         ENTRYPOINT: (repo / "scripts/gateway_customer_zipapp_main.py").read_bytes(),
         CONNECTOR: (repo / "apps/gateway/accessproof_gateway/customer_connect.py").read_bytes(),
-        DISCOVERY: (repo / "apps/gateway/accessproof_gateway/application_discovery.py").read_bytes(),
+        **{
+            "accessproof-gateway-connector/apps/gateway/accessproof_gateway/" + name:
+            (repo / "apps/gateway/accessproof_gateway" / name).read_bytes()
+            for name in GATEWAY_MODULES
+        },
     }
     target_zip.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=target_zip.parent) as tmp:
@@ -54,11 +64,12 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
                     else:
                         with old.open(item.filename) as source:
                             shutil.copyfileobj(source, output, 1024 * 1024)
-            if DISCOVERY not in names:
-                updated.writestr(DISCOVERY, replacements[DISCOVERY])
+            for filename, body in replacements.items():
+                if filename not in names:
+                    updated.writestr(filename, body)
         with zipfile.ZipFile(pending) as verified:
             assert verified.testzip() is None
-            assert set(verified.namelist()) == set(names) | {DISCOVERY}
+            assert set(verified.namelist()) == set(names) | set(replacements)
             assert sha256(verified, RUNTIME) == runtime_digest
             for filename, expected in replacements.items():
                 if verified.read(filename) != expected:

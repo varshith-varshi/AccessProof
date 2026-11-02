@@ -324,8 +324,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
     try:
+        if args.select and not args.plan:
+            raise ConnectError("--select requires --plan; selection never installs or pairs automatically.")
         if args.discover or args.plan:
-            if any((args.approve_install, args.adopt_existing, args.challenge_file, args.pairing_file)):
+            if (any((args.approve_install, args.adopt_existing, args.challenge_file,
+                     args.pairing_file, args.auto_detect, args.guard_credentials, args.compose, args.gateway_container,
+                     args.rag_service, args.guard_url, args.model_url, args.ingestion_signing_key))
+                    or (args.discover and args.select)):
                 raise ConnectError("--discover/--plan are read-only and cannot be combined with installation, pairing, or verification options.")
             if args.discover and args.plan:
                 raise ConnectError("Choose --discover to list applications or --plan with one or more --select IDs.")

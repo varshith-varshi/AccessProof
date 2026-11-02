@@ -54,10 +54,13 @@ def plan_selection(
     """
     if type(port_start) is not int or type(port_end) is not int or not 1024 <= port_start <= port_end <= 65535:
         raise SelectionPlanError("Invalid Gateway port allocation range")
-    inventory = {entry.stable_id: entry for entry in discovered}
+    listed = list(discovered)
+    inventory = {entry.stable_id: entry for entry in listed}
     wanted = list(selected_ids)
     if not wanted or len(wanted) != len(set(wanted)):
         raise SelectionPlanError("Select one or more distinct discovered applications")
+    if len(inventory) != len(listed):
+        raise SelectionPlanError("Ambiguous duplicate discovered application identity")
     selected: list[DiscoveredApplication] = []
     for stable_id in wanted:
         app = inventory.get(stable_id)
@@ -68,6 +71,9 @@ def plan_selection(
         if not app.compose_project or not app.service:
             raise SelectionPlanError("Selected application lacks a durable Compose project/service identity")
         selected.append(app)
+    target_services = [(item.compose_project, item.service) for item in selected]
+    if len(target_services) != len(set(target_services)):
+        raise SelectionPlanError("Multiple selected runtime identities target the same Compose service; review the deployment")
     used = set()
     for occupied_port in occupied_ports:
         if type(occupied_port) is not int or not 1 <= occupied_port <= 65535:

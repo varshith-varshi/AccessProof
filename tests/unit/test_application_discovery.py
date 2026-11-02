@@ -86,3 +86,40 @@ def test_published_port_inventory_is_bounded_and_does_not_guess_unparseable_data
         {"Ports": "127.0.0.1:18090->8090/tcp, 0.0.0.0:5432->5432/tcp"},
         {"Ports": "not a docker port"},
     ]) == {18090, 5432}
+
+
+def test_invalid_route_variable_never_counts_as_supported() -> None:
+    rows = [_row("finance-rag", "finance", "finance-rag", labels={
+        "com.accessproof.gateway.contract": "accessproof.gateway/v1",
+        "com.accessproof.gateway.enforces": "attested-retrieval-and-buffered-output",
+        "com.accessproof.gateway.route_env": "BAD-NAME",
+    })]
+    assert discover(rows)[0].state == "REQUIRES_INTEGRATION"
+
+
+def test_rag_in_storage_is_not_a_chatbot() -> None:
+    result = discover([_row("storage", "company", "storage")])
+    assert result[0].state == "NON_AI_SERVICE"
+
+
+def test_unidentified_service_with_forged_contract_is_not_supported() -> None:
+    row = _row("mystery", "finance", "finance-rag", labels={
+        "com.accessproof.gateway.contract": "accessproof.gateway/v1",
+        "com.accessproof.gateway.enforces": "attested-retrieval-and-buffered-output",
+        "com.accessproof.gateway.route_env": "VALID_CHAT_URL",
+    })
+    row["Labels"].pop("com.docker.compose.service")
+    assert discover([row])[0].state == "AMBIGUOUS"
+
+
+def test_malformed_row_does_not_suppress_following_valid_rag() -> None:
+    found = discover([{"Names": "unknown"}, None, _row("finance-rag", "finance", "finance-rag")])
+    assert any(item.service == "finance-rag" for item in found)
+
+
+def test_oversized_docker_inventory_fails_instead_of_silently_truncating(monkeypatch) -> None:
+    class Completed:
+        stdout = ('{"Names":"unknown","Image":"rag:1"}\n') * (application_discovery.MAX_CONTAINERS + 1)
+    monkeypatch.setattr(application_discovery.subprocess, "run", lambda *args, **kwargs: Completed())
+    with pytest.raises(DiscoveryError, match="TRUNCATED"):
+        application_discovery.docker_inventory()

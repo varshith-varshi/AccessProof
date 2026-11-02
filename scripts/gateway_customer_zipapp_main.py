@@ -142,11 +142,62 @@ def run_doctor(*, gateway_container: str | None = None) -> int:
     return 0 if ready else 2
 
 
+def verified_connector_from_bundle() -> Path:
+    """Safely extract and verify the official ZIP before executing any mode."""
+    bundle = Path(sys.argv[0]).expanduser().resolve()
+    if not bundle.is_file() or bundle.is_symlink():
+        fail("The downloaded installer ZIP could not be found.")
+    with bundle.open("rb") as source:
+        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    # Cache extracted runtime per immutable archive hash; do not overwrite an
+    # existing customer's Gateway configuration or alter their RAG project.
+    root = Path.home() / ".local" / "share" / "accessproof"
+    if root.is_symlink():
+        fail("Unsafe setup directory symlink.")
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    dest = root / ("gateway-connector-" + digest[:20])
+    if dest.is_symlink():
+        fail("Unsafe existing installer directory symlink.")
+    if not dest.exists():
+        temp = Path(tempfile.mkdtemp(prefix=".gateway-", dir=root))
+        try:
+            with zipfile.ZipFile(bundle) as archive:
+                items = archive.infolist()
+                if len(items) > 500 or sum(i.file_size for i in items) > 500 * 1024 * 1024:
+                    fail("Installer archive exceeds safe extraction limits.")
+                for item in items:
+                    name = PurePosixPath(item.filename)
+                    if (name.is_absolute() or ".." in name.parts or not name.parts
+                            or (name.parts[0] != "accessproof-gateway-connector"
+                                and item.filename != "__main__.py")
+                            or stat.S_ISLNK(item.external_attr >> 16)):
+                        fail("Installer archive contains an unsafe path.")
+                archive.extractall(temp)
+            extracted = temp / "accessproof-gateway-connector"
+            if not (extracted / "connect.sh").is_file():
+                fail("The ZIP does not contain the official Gateway connector.")
+            extracted.rename(dest)
+        finally:
+            shutil.rmtree(temp, ignore_errors=True)
+    # Revalidate every packaged file even when the same archive was installed
+    # previously. Unverified local caches are never executable code.
+    verify_cached_payload(bundle, dest)
+    connector = dest / "connect.sh"
+    if not connector.is_file() or connector.is_symlink():
+        fail("The cached installer is incomplete or unsafe.")
+    return connector
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Connect your approved Docker RAG to AccessProof in one command"
     )
     parser.add_argument("--check", action="store_true", help="Preview without pairing or installing")
+    parser.add_argument("--discover", action="store_true", help="Read-only discovery of local Docker RAG applications")
+    parser.add_argument("--plan", action="store_true", help="Read-only plan for explicitly selected application IDs")
+    parser.add_argument("--select", action="append", default=[], metavar="DISCOVERED_ID",
+                        help="Select a discovered application for --plan; may be repeated")
     parser.add_argument("--doctor", action="store_true", help="Check local Guard/Gateway readiness without downloading any pairing or challenge")
     parser.add_argument("--no-auto-verify", action="store_true",
                         help="Skip automatic local post-install preflight (troubleshooting only; never certifies Protect)")
@@ -158,6 +209,24 @@ def main() -> None:
     args = parser.parse_args()
     if sys.version_info < (3, 11):
         fail("Python 3.11+ is required.")
+    if args.discover or args.plan or args.select:
+        if ((args.discover and args.plan) or (args.select and not args.plan)
+                or (args.discover and args.select) or (args.plan and not args.select)):
+            fail("Use --discover or --plan --select DISCOVERED_ID, with one or more selections.")
+        if (args.check or args.doctor or args.challenge_file is not None
+                or args.guard_credentials is not None or args.compose is not None
+                or args.gateway_container is not None or args.no_auto_verify
+                or "--pairing-file" in sys.argv[1:]):
+            fail("Discovery and planning are read-only; do not combine them with installation or credentials.")
+        if shutil.which("docker") is None:
+            fail("Docker CLI is required for local discovery.")
+        connector = verified_connector_from_bundle()
+        command = ["bash", str(connector), "--plan" if args.plan else "--discover"]
+        for selected in args.select:
+            command.extend(("--select", selected))
+        environment = os.environ.copy()
+        environment["ACCESSPROOF_RAG_WORKDIR"] = str(Path.cwd())
+        raise SystemExit(subprocess.call(command, env=environment))
     if args.doctor:
         if args.check or args.challenge_file:
             fail("Choose --doctor OR --check/--challenge-file, not both.")
@@ -228,48 +297,7 @@ def main() -> None:
     )
     if compose_check.returncode != 0:
         fail("Docker Compose v2 is required.")
-    bundle = Path(sys.argv[0]).expanduser().resolve()
-    if not bundle.is_file() or bundle.is_symlink():
-        fail("The downloaded installer ZIP could not be found.")
-    with bundle.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
-    # Cache extracted runtime per immutable archive hash; do not overwrite an
-    # existing customer's Gateway configuration or alter their RAG project.
-    root = Path.home() / ".local" / "share" / "accessproof"
-    if root.is_symlink():
-        fail("Unsafe setup directory symlink.")
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    root.chmod(0o700)
-    dest = root / ("gateway-connector-" + digest[:20])
-    if dest.is_symlink():
-        fail("Unsafe existing installer directory symlink.")
-    if not dest.exists():
-        temp = Path(tempfile.mkdtemp(prefix=".gateway-", dir=root))
-        try:
-            with zipfile.ZipFile(bundle) as archive:
-                items = archive.infolist()
-                if len(items) > 500 or sum(i.file_size for i in items) > 500 * 1024 * 1024:
-                    fail("Installer archive exceeds safe extraction limits.")
-                for item in items:
-                    name = PurePosixPath(item.filename)
-                    if (name.is_absolute() or ".." in name.parts or not name.parts
-                            or (name.parts[0] != "accessproof-gateway-connector"
-                                and item.filename != "__main__.py")
-                            or stat.S_ISLNK(item.external_attr >> 16)):
-                        fail("Installer archive contains an unsafe path.")
-                archive.extractall(temp)
-            extracted = temp / "accessproof-gateway-connector"
-            if not (extracted / "connect.sh").is_file():
-                fail("The ZIP does not contain the official Gateway connector.")
-            extracted.rename(dest)
-        finally:
-            shutil.rmtree(temp, ignore_errors=True)
-    # Revalidate every packaged file even when the same archive was installed
-    # previously. Unverified local caches are never executable code.
-    verify_cached_payload(bundle, dest)
-    connector = dest / "connect.sh"
-    if not connector.is_file() or connector.is_symlink():
-        fail("The cached installer is incomplete or unsafe.")
+    connector = verified_connector_from_bundle()
     command = [
         "bash", str(connector),
         "--pairing-file", str(pairing),

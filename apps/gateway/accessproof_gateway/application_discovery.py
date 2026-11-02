@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Iterable
 
-from .installer import REQUIRED_LABELS, _labels
+from .installer import REQUIRED_LABELS, _ALLOWED_ENV, _ALLOWED_NAME, _labels
 
 MAX_CONTAINERS = 500
 MAX_TEXT = 255
@@ -76,8 +76,10 @@ def discover(rows: Iterable[dict[str, object]]) -> list[DiscoveredApplication]:
     result: list[DiscoveredApplication] = []
     seen: set[str] = set()
     for index, row in enumerate(rows):
-        if index >= MAX_CONTAINERS or not isinstance(row, dict):
-            break
+        if index >= MAX_CONTAINERS:
+            raise DiscoveryError("DOCKER_DISCOVERY_TRUNCATED")
+        if not isinstance(row, dict):
+            continue
         labels = _labels_from_row(row)
         project = _text(labels.get("com.docker.compose.project"))
         service = _text(labels.get("com.docker.compose.service"))
@@ -95,11 +97,16 @@ def discover(rows: Iterable[dict[str, object]]) -> list[DiscoveredApplication]:
         seen.add(key)
         contract_ok = all(labels.get(key) == value for key, value in REQUIRED_LABELS.items())
         route_env = labels.get("com.accessproof.gateway.route_env")
-        looks_service = bool(project and service)
-        if contract_ok and route_env:
+        looks_service = bool(project and service and _ALLOWED_NAME.fullmatch(service))
+        route_valid = isinstance(route_env, str) and _ALLOWED_ENV.fullmatch(route_env) is not None
+        # Labels are a declaration of compatibility, never independent
+        # authorization evidence or proof that Guard protection is active.
+        candidate_name = (service or name).lower()
+        rag_like = re.search(r"(?:^|[-_.])(rag|chat|chatbot|assistant|llm)(?:$|[-_.])", candidate_name) is not None
+        if looks_service and contract_ok and route_valid:
             state, reason = "SUPPORTED", "Declared AccessProof Gateway integration contract."
-        elif looks_service and any(token in (service or name).lower() for token in ("rag", "chat", "assistant", "llm")):
-            state, reason = "REQUIRES_INTEGRATION", "RAG-like service lacks the verified AccessProof adapter contract."
+        elif looks_service and (rag_like or contract_ok or bool(route_env)):
+            state, reason = "REQUIRES_INTEGRATION", "RAG candidate needs a valid verified AccessProof adapter contract."
         elif looks_service:
             state, reason = "NON_AI_SERVICE", "No supported AI integration contract was observed."
         else:
@@ -131,7 +138,10 @@ def docker_inventory() -> list[dict[str, object]]:
     except (OSError, subprocess.SubprocessError) as exc:
         raise DiscoveryError("DOCKER_DISCOVERY_UNAVAILABLE") from exc
     rows: list[dict[str, object]] = []
-    for line in completed.stdout.splitlines()[:MAX_CONTAINERS]:
+    lines = completed.stdout.splitlines()
+    if len(lines) > MAX_CONTAINERS:
+        raise DiscoveryError("DOCKER_DISCOVERY_TRUNCATED")
+    for line in lines:
         if not line.strip():
             continue
         try:

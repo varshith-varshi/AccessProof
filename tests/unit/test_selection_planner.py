@@ -54,3 +54,24 @@ def test_connector_plan_requires_explicit_selection_and_changes_nothing(monkeypa
     output = capsys.readouterr().out
     assert '"gateway_service"' in output
     assert '"listen_port": 18091' in output
+
+
+def test_reject_ambiguous_duplicate_discovery_identities() -> None:
+    a = _app("same-id", "finance", "rag")
+    b = _app("same-id", "hr", "rag")
+    with pytest.raises(SelectionPlanError, match="duplicate"):
+        plan_selection([a, b], ["same-id"])
+
+
+def test_reject_two_runtime_versions_of_one_compose_service() -> None:
+    a = _app("old-image-id", "finance", "rag")
+    b = _app("new-image-id", "finance", "rag")
+    with pytest.raises(SelectionPlanError, match="same Compose service"):
+        plan_selection([a, b], [a.stable_id, b.stable_id])
+
+
+def test_select_without_plan_never_falls_back_to_pairing(monkeypatch, capsys) -> None:
+    from apps.gateway.accessproof_gateway import customer_connect
+    monkeypatch.setattr(customer_connect, "docker_inventory", lambda: (_ for _ in ()).throw(AssertionError("unexpected Docker discovery")))
+    assert customer_connect.main(["--select", "host-app-any"]) == 1
+    assert "requires --plan" in capsys.readouterr().err

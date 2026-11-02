@@ -359,7 +359,7 @@ def verify_existing_staged_installation(
             or receipt.get("application_id") != spec.application_id
             or receipt.get("tenant_id") != spec.tenant_id
             or receipt.get("rag_service") != spec.rag_service
-            or receipt.get("gateway_service") != spec.gateway_service
+            or receipt.get("gateway_service", "accessproof-gateway") != spec.gateway_service
             or receipt.get("deployment_sha256") != expected_deployment
             or receipt.get("route_sha256") != expected_route
             or env.get("ACCESSPROOF_GATEWAY_TENANT_ID") != spec.tenant_id
