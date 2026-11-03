@@ -317,3 +317,39 @@ def test_identity_resolution_endpoint_is_truthful(lab):
         assert after["guests_not_bound"] == 1 and after["manual_mapping_required_for_members"] is False
         page = client.get("/api/v1/current/identity-mappings", headers=owner, params={"limit": 1}).json()
         assert len(page) == 1
+
+
+def test_large_identity_envelope_is_gzipped_and_intact(lab):
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    many = [DirectoryUser(f"0d6a6d2e-0000-4000-8000-{i:012x}", f"u{i}", None, "active", "member") for i in range(1000)]
+    with TestClient(api_module.app) as client:
+        account = client.post("/api/v1/auth/signup", json={"email": "idgz@example.com",
+                              "password": "correct horse battery staple", "organization_name": "Gzip Lab"}).json()
+        org_id = account["organization_id"]
+        owner = {"Authorization": f"Bearer {account['session_token']}", "X-Organization-ID": org_id}
+        with SessionLocal() as s2:
+            project = s2.scalar(select(Project).where(Project.organization_id == org_id)) or Project(organization_id=org_id, name="p")
+            s2.add(project)
+            s2.flush()
+            src = SourceConnection(organization_id=org_id, project_id=project.id, provider="sharepoint",
+                                   name="SP", boundary="root", status="connected")
+            s2.add(src)
+            s2.commit()
+            _sync(s2, src, users=many)
+            source_id = src.id
+        guard_id = client.post("/api/v1/guards", headers=owner, json={"name": "g"}).json()["id"]
+        client.post("/api/v1/current/ai-applications", headers=owner, json={
+            "application_id": "sp-rag", "name": "SP RAG", "guard_id": guard_id,
+            "source_id": source_id, "adapter_type": "accessproof-gateway"})
+        token = client.post(f"/api/v1/guards/{guard_id}/enrollments", headers=owner, json={}).json()["enrollment_token"]
+        cred = client.post("/api/v1/guards/exchange", json={"enrollment_token": token, "version": "1.0.0"}).json()["guard_credential"]
+        machine = {"Authorization": f"Bearer {cred}"}
+        zipped = client.get(f"/api/v1/guards/{guard_id}/policies", headers={**machine, "Accept-Encoding": "gzip"})
+        plain = client.get(f"/api/v1/guards/{guard_id}/policies", headers={**machine, "Accept-Encoding": "identity"})
+        # A normal (non-policy) API route is never compressed by this middleware.
+        other = client.get("/api/v1/current/identity-resolution", headers={**owner, "Accept-Encoding": "gzip"})
+    assert zipped.headers.get("content-encoding") == "gzip"
+    assert plain.headers.get("content-encoding") is None
+    assert len(zipped.json()["identity_mappings"]) == 1000 == len(plain.json()["identity_mappings"])
+    assert other.headers.get("content-encoding") is None

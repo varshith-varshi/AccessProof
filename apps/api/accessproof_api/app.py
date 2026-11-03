@@ -24,6 +24,8 @@ from apps.api.accessproof_api.route_certification import (
 from typing import Any, TypedDict
 
 import json
+import re
+import gzip
 import asyncio
 from dataclasses import asdict
 import hashlib
@@ -1319,6 +1321,28 @@ def _production_google_drive_permission_ids_ready(db: OrmSession, organization_i
         GuardGroup.drive_permission_id.is_(None),
     ).limit(1))
     return unresolved_user is None and unresolved_group is None
+
+
+_GUARD_POLICY_PATH = re.compile(r"^/api/v1/guards/[0-9a-fA-F-]{1,64}/policies$")
+
+
+@app.middleware("http")
+async def _gzip_guard_policy_sync(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Compress ONLY the machine-to-machine Guard policy envelope (identity
+    sets can reach tens of MB for large directories). Never applied globally:
+    this response echoes no caller input or credential (no BREACH oracle)."""
+    response = await call_next(request)
+    if (request.method != "GET" or response.status_code != 200
+            or not _GUARD_POLICY_PATH.match(request.url.path)
+            or "gzip" not in request.headers.get("accept-encoding", "").lower()
+            or response.headers.get("content-encoding")):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])  # type: ignore[attr-defined]
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    if len(body) < 64 * 1024:
+        return Response(content=body, status_code=response.status_code, headers=headers)
+    headers.update({"content-encoding": "gzip", "vary": "Accept-Encoding"})
+    return Response(content=gzip.compress(body, compresslevel=6), status_code=response.status_code, headers=headers)
 
 
 @app.get("/api/v1/guards/{guard_id}/policies")

@@ -115,3 +115,4 @@ def test_restart_does_not_trust_a_stale_identity_version(tmp_path, monkeypatch):
     real = cache_module.time.time
     monkeypatch.setattr(cache_module.time, "time", lambda: real() + 10_000)
     assert PolicyCache(path).reusable_identity_version() is None
+

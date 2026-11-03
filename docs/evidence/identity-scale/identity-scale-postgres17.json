@@ -1,0 +1,254 @@
+{
+ "schema": "accessproof.identity_scale_bench/v1",
+ "database": "postgresql (disposable)",
+ "results": [
+  {
+   "identities": 100,
+   "initial_sync": {
+    "seconds": 0.042,
+    "select_statements": 8,
+    "write_statements": 4,
+    "resolution": {
+     "source_id": "600cc4af-e989-4062-8c69-c162678524d7",
+     "tenant_id": "6479e7ca-b256-4ebc-a408-871b9046547c",
+     "created": 98,
+     "reverified": 0,
+     "suspended": 0,
+     "unchanged": 0,
+     "conflicts": 0,
+     "skipped_ineligible": 2,
+     "skipped_admin_owned": 0
+    }
+   },
+   "unchanged_resync": {
+    "seconds": 0.014,
+    "select_statements": 8,
+    "write_statements": 3,
+    "created": 0
+   },
+   "one_percent_disabled": {
+    "seconds": 0.018,
+    "select_statements": 9,
+    "write_statements": 6,
+    "suspended": 1
+   },
+   "identity_version_ms": {
+    "p50": 0.89,
+    "max": 3.91
+   },
+   "full_identity_envelope": {
+    "mappings": 97,
+    "build_seconds": 0.003,
+    "json_bytes": 29973
+   },
+   "verified_bindings": 97,
+   "duplicate_bindings": 0,
+   "guard_install_seconds": 0.001,
+   "guard_resolve_us": {
+    "samples": 97,
+    "p50": 2.6,
+    "p95": 3.4,
+    "p99": 40.4
+   },
+   "guard_unknown_identity": {
+    "result": null,
+    "us": 18.9
+   },
+   "concurrent_reconcile": {
+    "worker_errors": [
+     "IntegrityError"
+    ],
+    "retry_needed": false,
+    "duplicates": 0,
+    "verified_after": 97
+   },
+   "peak_rss_mb": 97.8
+  },
+  {
+   "identities": 1000,
+   "initial_sync": {
+    "seconds": 0.27,
+    "select_statements": 8,
+    "write_statements": 4,
+    "resolution": {
+     "source_id": "f3e3a4eb-6efb-48c6-802d-b96a7547dbeb",
+     "tenant_id": "6479e7ca-b256-4ebc-a408-871b9046547c",
+     "created": 980,
+     "reverified": 0,
+     "suspended": 0,
+     "unchanged": 0,
+     "conflicts": 0,
+     "skipped_ineligible": 20,
+     "skipped_admin_owned": 0
+    }
+   },
+   "unchanged_resync": {
+    "seconds": 0.086,
+    "select_statements": 8,
+    "write_statements": 3,
+    "created": 0
+   },
+   "one_percent_disabled": {
+    "seconds": 0.112,
+    "select_statements": 18,
+    "write_statements": 24,
+    "suspended": 10
+   },
+   "identity_version_ms": {
+    "p50": 1.08,
+    "max": 3.06
+   },
+   "full_identity_envelope": {
+    "mappings": 970,
+    "build_seconds": 0.005,
+    "json_bytes": 299730
+   },
+   "verified_bindings": 970,
+   "duplicate_bindings": 0,
+   "guard_install_seconds": 0.004,
+   "guard_resolve_us": {
+    "samples": 970,
+    "p50": 2.8,
+    "p95": 3.1,
+    "p99": 4.4
+   },
+   "guard_unknown_identity": {
+    "result": null,
+    "us": 23.5
+   },
+   "concurrent_reconcile": {
+    "worker_errors": [
+     "IntegrityError"
+    ],
+    "retry_needed": false,
+    "duplicates": 0,
+    "verified_after": 970
+   },
+   "peak_rss_mb": 137.9
+  },
+  {
+   "identities": 10000,
+   "initial_sync": {
+    "seconds": 2.403,
+    "select_statements": 8,
+    "write_statements": 22,
+    "resolution": {
+     "source_id": "1a20c9a3-dea6-47c0-8fcd-09678344c229",
+     "tenant_id": "6479e7ca-b256-4ebc-a408-871b9046547c",
+     "created": 9800,
+     "reverified": 0,
+     "suspended": 0,
+     "unchanged": 0,
+     "conflicts": 0,
+     "skipped_ineligible": 200,
+     "skipped_admin_owned": 0
+    }
+   },
+   "unchanged_resync": {
+    "seconds": 0.806,
+    "select_statements": 8,
+    "write_statements": 3,
+    "created": 0
+   },
+   "one_percent_disabled": {
+    "seconds": 1.014,
+    "select_statements": 108,
+    "write_statements": 198,
+    "suspended": 100
+   },
+   "identity_version_ms": {
+    "p50": 4.75,
+    "max": 10.16
+   },
+   "full_identity_envelope": {
+    "mappings": 9700,
+    "build_seconds": 0.041,
+    "json_bytes": 2997300
+   },
+   "verified_bindings": 9700,
+   "duplicate_bindings": 0,
+   "guard_install_seconds": 0.031,
+   "guard_resolve_us": {
+    "samples": 2425,
+    "p50": 3.6,
+    "p95": 5.6,
+    "p99": 7.8
+   },
+   "guard_unknown_identity": {
+    "result": null,
+    "us": 32.7
+   },
+   "concurrent_reconcile": {
+    "worker_errors": [
+     "IntegrityError"
+    ],
+    "retry_needed": false,
+    "duplicates": 0,
+    "verified_after": 9700
+   },
+   "peak_rss_mb": 273.0
+  },
+  {
+   "identities": 100000,
+   "initial_sync": {
+    "seconds": 27.414,
+    "select_statements": 8,
+    "write_statements": 200,
+    "resolution": {
+     "source_id": "7377cb44-82ea-48be-a67d-32cea2f358b0",
+     "tenant_id": "6479e7ca-b256-4ebc-a408-871b9046547c",
+     "created": 98000,
+     "reverified": 0,
+     "suspended": 0,
+     "unchanged": 0,
+     "conflicts": 0,
+     "skipped_ineligible": 2000,
+     "skipped_admin_owned": 0
+    }
+   },
+   "unchanged_resync": {
+    "seconds": 9.769,
+    "select_statements": 8,
+    "write_statements": 3,
+    "created": 0
+   },
+   "one_percent_disabled": {
+    "seconds": 11.216,
+    "select_statements": 1008,
+    "write_statements": 1974,
+    "suspended": 1000
+   },
+   "identity_version_ms": {
+    "p50": 33.89,
+    "max": 71.73
+   },
+   "full_identity_envelope": {
+    "mappings": 97000,
+    "build_seconds": 0.603,
+    "json_bytes": 29973000
+   },
+   "verified_bindings": 97000,
+   "duplicate_bindings": 0,
+   "guard_install_seconds": 0.492,
+   "guard_resolve_us": {
+    "samples": 2021,
+    "p50": 6.2,
+    "p95": 8.7,
+    "p99": 10.6
+   },
+   "guard_unknown_identity": {
+    "result": null,
+    "us": 27.1
+   },
+   "concurrent_reconcile": {
+    "worker_errors": [
+     "IntegrityError"
+    ],
+    "retry_needed": false,
+    "duplicates": 0,
+    "verified_after": 97000
+   },
+   "peak_rss_mb": 1620.2
+  }
+ ]
+}
