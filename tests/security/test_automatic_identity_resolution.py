@@ -289,3 +289,31 @@ def test_policy_endpoint_omits_unchanged_identity_set_and_old_guards_get_full(la
         changed = client.get(url, headers=machine, params={"identity_version": first["identity_version"]}).json()
         assert changed["identity_version"] != first["identity_version"]
         assert {m["subject"] for m in changed["identity_mappings"]} == {BOB}
+
+
+def test_identity_resolution_endpoint_is_truthful(lab):
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(api_module.app) as client:
+        account = client.post("/api/v1/auth/signup", json={"email": "idview@example.com",
+                              "password": "correct horse battery staple", "organization_name": "View Lab"}).json()
+        org_id = account["organization_id"]
+        owner = {"Authorization": f"Bearer {account['session_token']}", "X-Organization-ID": org_id}
+        with SessionLocal() as s2:
+            project = s2.scalar(select(Project).where(Project.organization_id == org_id)) or Project(organization_id=org_id, name="p")
+            s2.add(project)
+            s2.flush()
+            src = SourceConnection(organization_id=org_id, project_id=project.id, provider="sharepoint",
+                                   name="SP", boundary="root", status="connected")
+            s2.add(src)
+            s2.commit()
+            source_id = src.id
+        before = client.get("/api/v1/current/identity-resolution", headers=owner).json()
+        assert before["sources"][0]["state"] == "DIRECTORY_NOT_SYNCHRONIZED"
+        with SessionLocal() as s3:
+            _sync(s3, s3.get(SourceConnection, source_id))
+        after = client.get("/api/v1/current/identity-resolution", headers=owner).json()
+        assert after["sources"][0]["state"] == "ACTIVE" and after["sources"][0]["automatic_verified"] == 2
+        assert after["guests_not_bound"] == 1 and after["manual_mapping_required_for_members"] is False
+        page = client.get("/api/v1/current/identity-mappings", headers=owner, params={"limit": 1}).json()
+        assert len(page) == 1

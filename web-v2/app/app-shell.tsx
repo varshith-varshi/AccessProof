@@ -36,7 +36,7 @@ const groups: ReadonlyArray<readonly [string, ReadonlyArray<NavItem>]> = [
   ]],
   ["Directory", [
     ["Employees", "/employees", Users],
-    ["Identity mappings", "/identity-mappings", Link2],
+    ["Identity resolution", "/identity-mappings", Link2],
     ["Permission events", "/permission-events", Activity],
   ]],
   ["Reports", [

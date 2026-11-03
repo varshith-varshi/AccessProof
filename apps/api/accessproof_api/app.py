@@ -1576,17 +1576,76 @@ def _identity_mapping_payload(row: GuardIdentityMapping, subject: GuardSubject) 
 
 @app.get("/api/v1/current/identity-mappings")
 def list_current_identity_mappings(
+    status: str | None = None, method: str | None = None,
+    limit: int = 200, offset: int = 0,
     actor: Actor = Depends(require(Permission.RESULT_READ)), db: OrmSession = Depends(get_db)
 ) -> list[dict[str, Any]]:
+    # Automatic resolution can produce one row per employee: always paginate.
+    limit, offset = max(1, min(limit, 1000)), max(0, offset)
+    query = (
+        select(GuardIdentityMapping, GuardSubject)
+        .join(GuardSubject, GuardSubject.id == GuardIdentityMapping.source_subject_id)
+        .where(GuardIdentityMapping.organization_id == actor.membership.organization_id)
+    )
+    if status:
+        query = query.where(GuardIdentityMapping.status == status.upper())
+    if method:
+        query = query.where(GuardIdentityMapping.method == method)
     return [
         _identity_mapping_payload(row, subject)
         for row, subject in db.execute(
-            select(GuardIdentityMapping, GuardSubject)
-            .join(GuardSubject, GuardSubject.id == GuardIdentityMapping.source_subject_id)
-            .where(GuardIdentityMapping.organization_id == actor.membership.organization_id)
-            .order_by(GuardIdentityMapping.updated_at.desc(), GuardIdentityMapping.id.desc())
+            query.order_by(GuardIdentityMapping.updated_at.desc(), GuardIdentityMapping.id.desc())
+            .limit(limit).offset(offset)
         )
     ]
+
+
+@app.get("/api/v1/current/identity-resolution")
+def current_identity_resolution(
+    actor: Actor = Depends(require(Permission.RESULT_READ)), db: OrmSession = Depends(get_db)
+) -> dict[str, Any]:
+    """Automatic identity resolution status (counts only, no personal data).
+
+    Never reports resolution as complete when the directory is unsynchronized,
+    stale or failing, or when a Microsoft source has no authoritative tenant.
+    """
+    from apps.api.accessproof_api.identity_resolution import MICROSOFT_PROVIDERS, resolution_summary
+    org_id = actor.membership.organization_id
+    summary = resolution_summary(db, org_id)
+    max_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400")))
+    now = datetime.now(timezone.utc)
+    sources = []
+    for source in db.scalars(select(SourceConnection).where(SourceConnection.organization_id == org_id)):
+        if source.provider.lower() not in MICROSOFT_PROVIDERS:
+            continue
+        cursor = db.scalar(select(ProviderSyncCursorModel).where(
+            ProviderSyncCursorModel.organization_id == org_id, ProviderSyncCursorModel.source_id == source.id,
+            ProviderSyncCursorModel.sync_kind == "directory"))
+        seen = cursor.last_success_at if cursor else None
+        if seen is not None and seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        age = (now - seen).total_seconds() if seen else None
+        automatic = int(db.scalar(select(func.count(GuardIdentityMapping.id)).where(
+            GuardIdentityMapping.organization_id == org_id, GuardIdentityMapping.source_id == source.id,
+            GuardIdentityMapping.method == "directory_verified", GuardIdentityMapping.status == "VERIFIED")) or 0)
+        if cursor is None or seen is None:
+            state = "DIRECTORY_NOT_SYNCHRONIZED"
+        elif cursor.last_error_code:
+            state = f"DIRECTORY_UNAVAILABLE:{cursor.last_error_code}"
+        elif age is None or age > max_age:
+            state = "DIRECTORY_STALE"
+        elif automatic == 0:
+            state = "NO_RESOLVED_IDENTITIES"
+        else:
+            state = "ACTIVE"
+        sources.append({"source_id": source.id, "name": source.name, "state": state,
+                        "automatic_verified": automatic,
+                        "directory_last_success_at": seen.isoformat() if seen else None,
+                        "directory_age_seconds": int(age) if age is not None else None})
+    return {"mode": "automatic_directory_verified", "sources": sources, **summary,
+            "manual_mapping_required_for_members": False,
+            "notes": ["Guests, disabled and unclassifiable accounts are never bound automatically.",
+                      "A binding grants no document access; current ACL evidence is always required."]}
 
 
 @app.post("/api/v1/current/identity-mappings", status_code=201)
