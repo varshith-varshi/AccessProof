@@ -1347,9 +1347,12 @@ def guard_policies(
     }
     now = datetime.now(timezone.utc)
 
-    def source_acl_healthy(source_id: str | None) -> bool:
+    def source_acl_healthy(source_id: str | None, *, waive_microsoft_certificate: bool = False) -> bool:
         # Both document grants and group/employee membership must be fresh.
         # A valid ACL read with an expired directory snapshot is not safe.
+        # waive_microsoft_certificate is used ONLY to decide whether a
+        # protect_pending app may enter the certification window (D-19); the
+        # returned health for every binding is always computed without it.
         if source_id is None:
             return False
         bound_source = db.scalar(select(SourceConnection).where(
@@ -1383,7 +1386,8 @@ def guard_policies(
             except Exception:
                 # Corrupted/undecryptable source secrets cannot certify access.
                 return False
-            if not effective_source_certified(db, bound_source, certificate_credentials):
+            if (not waive_microsoft_certificate
+                    and not effective_source_certified(db, bound_source, certificate_credentials)):
                 return False
         for kind, threshold in (("acl", max_acl_age), ("directory", max_directory_age)):
             cursor = source_cursors.get((source_id, kind))
@@ -1436,10 +1440,23 @@ def guard_policies(
             [row.source_id] if row.source_id is not None else []
         )))
         health = {source_id: source_acl_healthy(source_id) for source_id in source_ids}
+        # D-19 certification window: a protect_pending (never activated),
+        # single-source Microsoft app whose ONLY missing requirement is the
+        # independent certificate may serve real, mapping-bound Guard decisions
+        # so the certifier can observe the live route. Health stays false, so
+        # the Guard and Gateway are never reported ready, older Guards that do
+        # not understand the flag keep failing closed, and activation still
+        # requires the certificate and every gate.
+        certification_window = bool(
+            row.mode == "protect_pending" and len(source_ids) == 1
+            and not health[source_ids[0]]
+            and source_acl_healthy(source_ids[0], waive_microsoft_certificate=True)
+        )
         bound_applications.append({
             "application_id": row.application_id, "source_id": row.source_id,
             "source_ids": source_ids, "source_health": health,
             "source_acl_healthy": all(health.values()),
+            "certification_window": certification_window,
             "mode": "protect" if row.mode == "protect_pending" else row.mode,
         })
     # A revision is issued only when stable authorization state changes. It

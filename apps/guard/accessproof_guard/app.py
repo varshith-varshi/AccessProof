@@ -569,6 +569,8 @@ def health(application_id: str | None = None) -> dict[str, object]:
         "policy_fresh": fresh if configured else None,
         "audit_buffer_ready": audit_buffer_ready,
         "identity_ready": identity_ready,
+        "certification_window": (cache.certification_window(application_id) if application_id is not None
+                                 else any(cache.certification_window(a) for a in cache.application_modes())),
         "control_plane_configured": configured,
         "sync_error": _sync_error,
     }
@@ -592,7 +594,9 @@ def _application_mode(application_id: str) -> tuple[str, str | None]:
             age = cache.sync_age_seconds()
             if age is None or age > max_policy_age_seconds:
                 raise HTTPException(503, "POLICY_SYNC_STALE")
-            if not cache.source_acl_healthy(application_id):
+            if not cache.source_acl_healthy(application_id) and not cache.certification_window(application_id):
+                # D-19: inside a control-plane certification window the Guard
+                # makes real, mapping-bound decisions; /health stays not ready.
                 raise HTTPException(503, "SOURCE_ACL_STALE")
             if cache.authorization_revisions_received() and cache.authorization_revision(application_id) is None:
                 raise HTTPException(503, "AUTHORIZATION_REVISION_MISSING")

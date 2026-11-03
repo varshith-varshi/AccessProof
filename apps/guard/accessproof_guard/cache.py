@@ -42,9 +42,12 @@ class PolicyCache:
         binding_columns = {str(row[1]) for row in self.db.execute("PRAGMA table_info(bound_applications)")}
         if "source_acl_healthy" not in binding_columns:
             self.db.execute("ALTER TABLE bound_applications ADD COLUMN source_acl_healthy INTEGER NOT NULL DEFAULT 0")
-        # A process restart invalidates previously recorded source health.
-        # Re-enable Protect only after fresh authenticated control-plane sync.
-        self.db.execute("UPDATE bound_applications SET source_acl_healthy=0 WHERE mode='protect'")
+        if "certification_window" not in binding_columns:
+            self.db.execute("ALTER TABLE bound_applications ADD COLUMN certification_window INTEGER NOT NULL DEFAULT 0")
+        # A process restart invalidates previously recorded source health and
+        # any certification window. Both return only after fresh authenticated
+        # control-plane sync.
+        self.db.execute("UPDATE bound_applications SET source_acl_healthy=0, certification_window=0 WHERE mode='protect'")
         self.db.execute("UPDATE bound_application_sources SET source_acl_healthy=0")
         self.db.execute("CREATE TABLE IF NOT EXISTS request_contexts (decision_id TEXT PRIMARY KEY, application_id TEXT NOT NULL, subject_id TEXT NOT NULL, request_id TEXT NOT NULL DEFAULT '', resources_json TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT, revision_hash TEXT NOT NULL DEFAULT '')")
         self.db.execute("CREATE TABLE IF NOT EXISTS authorization_revisions (application_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, revision_hash TEXT NOT NULL, generated_at TEXT NOT NULL, installed_at TEXT NOT NULL)")
@@ -232,7 +235,7 @@ class PolicyCache:
         Legacy source_id envelopes are accepted unchanged. Multi-source inputs
         explicitly carry source_ids and source_health; missing health denies.
         """
-        validated: list[tuple[str, str, str, int]] = []
+        validated: list[tuple[str, str, str, int, int]] = []
         all_sources: list[tuple[str, str, int]] = []
         seen_apps: set[str] = set()
         for item in applications:
@@ -264,7 +267,12 @@ class PolicyCache:
             healthy = all(health_map[src] for src in sources)
             if health != healthy:
                 raise ValueError("INVALID_APPLICATION_SOURCE_HEALTH")
-            validated.append((application_id, primary, str(mode), int(healthy)))
+            # D-19: a certification window is meaningful only for a single-source
+            # Protect binding whose health is false. Anything else is malformed.
+            window = item.get("certification_window", False)
+            if not isinstance(window, bool) or (window and (mode != "protect" or healthy or len(sources) != 1)):
+                raise ValueError("INVALID_CERTIFICATION_WINDOW")
+            validated.append((application_id, primary, str(mode), int(healthy), int(window)))
             all_sources.extend(
                 (application_id, src, int(health_map[src])) for src in sources
             )
@@ -274,7 +282,8 @@ class PolicyCache:
                 self.db.execute("DELETE FROM bound_applications")
                 self.db.executemany(
                     "INSERT INTO bound_applications "
-                    "(application_id, source_id, mode, source_acl_healthy) VALUES (?, ?, ?, ?)",
+                    "(application_id, source_id, mode, source_acl_healthy, certification_window) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     validated,
                 )
                 self.db.executemany(
@@ -553,6 +562,15 @@ class PolicyCache:
                 "AND source_acl_healthy=0 LIMIT 1"
             ).fetchone()
         return row is None
+
+    def certification_window(self, application_id: str) -> bool:
+        """True only while the control plane grants this app a D-19 window."""
+        with self._lock:
+            row = self.db.execute(
+                "SELECT certification_window FROM bound_applications WHERE application_id=? AND mode='protect'",
+                (application_id,),
+            ).fetchone()
+        return row is not None and bool(row[0])
 
     def source_acl_healthy(self, application_id: str) -> bool:
         with self._lock:
