@@ -2,7 +2,15 @@
 # Operator workstation: ship a git-committed AccessProof release to EC2 via
 # private S3 + AWS Systems Manager, then run deploy_on_ec2.sh there.
 #
-#   bash deploy/ec2-release/ship_via_ssm.sh <git-commit>
+#   bash deploy/ec2-release/ship_via_ssm.sh <git-commit> <expected-db-revision> <release-label>
+#
+#   e.g. bash deploy/ec2-release/ship_via_ssm.sh 87e6a83 u5e6f7a8b9c0 r23-rt-fixes
+#
+# <expected-db-revision> is the Alembic revision production is at NOW (read it
+# with a read-only SSM check first). It is passed explicitly into the remote
+# command; deploy_on_ec2.sh refuses to run on any other revision.
+# The release id is "<release-label>-<commit12>" and must not already exist on
+# the host.
 #
 # Requires valid AWS credentials for account 102076848988. Makes NO IAM,
 # security-group or instance changes: the instance downloads the artifact
@@ -10,9 +18,22 @@
 # uses SSE-S3, and is deleted at the end.
 set -Eeuo pipefail
 umask 077
-COMMIT=$(git rev-parse --verify "${1:?git commit}^{commit}")
-ACCOUNT=102076848988; REGION=eu-north-1; INSTANCE=i-0c11427d4d9c1b438
-RELEASE_ID="r22-least-privilege-${COMMIT:0:12}"
+COMMIT=$(git rev-parse --verify "${1:?usage: ship_via_ssm.sh <git-commit> <expected-db-revision> <release-label>}^{commit}")
+EXPECTED_DB_REVISION="${2:?expected DB revision (the Alembic revision production is at now)}"
+LABEL="${3:?release label, e.g. r23-rt-fixes}"
+[[ "$EXPECTED_DB_REVISION" =~ ^[0-9a-z]{12}$ ]] || { echo "bad expected DB revision"; exit 2; }
+[[ "$LABEL" =~ ^[a-z0-9][a-z0-9-]{1,40}$ ]] || { echo "bad release label"; exit 2; }
+ACCOUNT=102076848988; REGION=eu-north-1; PRODUCTION_INSTANCE=i-0c11427d4d9c1b438
+INSTANCE=$PRODUCTION_INSTANCE; PAYLOAD_MODE=()
+# Rehearsal: the identical path against a staging instance. Public checks are
+# disabled there (they would probe production's URLs and pass misleadingly).
+if [[ -n "${ACCESSPROOF_REHEARSAL_INSTANCE:-}" ]]; then
+  [[ "$ACCESSPROOF_REHEARSAL_INSTANCE" =~ ^i-[0-9a-f]{8,17}$ ]] || { echo "bad rehearsal instance id"; exit 2; }
+  [[ "$ACCESSPROOF_REHEARSAL_INSTANCE" != "$PRODUCTION_INSTANCE" ]] || { echo "rehearsal instance must not be production"; exit 2; }
+  INSTANCE=$ACCESSPROOF_REHEARSAL_INSTANCE; PAYLOAD_MODE=(--rehearsal-no-public-checks)
+  echo "*** REHEARSAL against $INSTANCE (not production); public checks disabled ***"
+fi
+RELEASE_ID="${LABEL}-${COMMIT:0:12}"
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$ACCOUNT" ]] \
@@ -21,6 +42,11 @@ WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 aws ssm describe-instance-information --region "$REGION" \
   --filters "Key=InstanceIds,Values=$INSTANCE" --query 'InstanceInformationList[0].PingStatus' --output text \
   | grep -qx Online || { echo "instance not SSM-online"; exit 2; }
+# Never overlap another operator or agent: refuse while any SSM command is
+# still running on the instance. (The host scripts also take a flock.)
+busy=$(aws ssm list-commands --region "$REGION" --instance-id "$INSTANCE" \
+  --query "Commands[?Status=='InProgress' || Status=='Pending'].[CommandId,Comment]" --output text)
+[[ -z "$busy" ]] || { echo "SSM commands still running on $INSTANCE; refusing:"; echo "$busy"; exit 2; }
 
 ART="$WORK/accessproof-$RELEASE_ID.tar"
 git archive --format=tar --add-virtual-file=RELEASE_COMMIT:"$COMMIT" -o "$ART" "$COMMIT"
@@ -44,11 +70,16 @@ aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-confi
 aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
 aws s3 cp "$ART" "s3://$BUCKET/artifact.tar" --region "$REGION" >/dev/null
-aws s3 cp deploy/ec2-release/deploy_on_ec2.sh "s3://$BUCKET/deploy_on_ec2.sh" --region "$REGION" >/dev/null
-aws s3 cp deploy/ec2-release/rollback_on_ec2.sh "s3://$BUCKET/rollback_on_ec2.sh" --region "$REGION" >/dev/null
-aws s3 cp deploy/ec2-release/enable_least_privilege_db.sh "s3://$BUCKET/enable_least_privilege_db.sh" --region "$REGION" >/dev/null
-aws s3 cp deploy/ec2-release/patch_compose_db_roles.py "s3://$BUCKET/patch_compose_db_roles.py" --region "$REGION" >/dev/null
-aws s3 cp deploy/ec2-release/run_security_gates.sh "s3://$BUCKET/run_security_gates.sh" --region "$REGION" >/dev/null
+# Host scripts come from the SAME pinned commit as the artifact, never from
+# the working tree, so what runs on the host is traceable to $COMMIT.
+for f in deploy_on_ec2.sh rollback_on_ec2.sh enable_least_privilege_db.sh \
+         patch_compose_db_roles.py run_security_gates.sh ssm_payload.py; do
+  git show "$COMMIT:deploy/ec2-release/$f" > "$WORK/$f"
+done
+for f in deploy_on_ec2.sh rollback_on_ec2.sh enable_least_privilege_db.sh \
+         patch_compose_db_roles.py run_security_gates.sh; do
+  aws s3 cp "$WORK/$f" "s3://$BUCKET/$f" --region "$REGION" >/dev/null
+done
 U_ART=$(aws s3 presign "s3://$BUCKET/artifact.tar" --expires-in 900 --region "$REGION")
 U_DEP=$(aws s3 presign "s3://$BUCKET/deploy_on_ec2.sh" --expires-in 900 --region "$REGION")
 U_RB=$(aws s3 presign "s3://$BUCKET/rollback_on_ec2.sh" --expires-in 900 --region "$REGION")
@@ -56,26 +87,10 @@ U_DB=$(aws s3 presign "s3://$BUCKET/enable_least_privilege_db.sh" --expires-in 9
 U_PC=$(aws s3 presign "s3://$BUCKET/patch_compose_db_roles.py" --expires-in 900 --region "$REGION")
 U_GT=$(aws s3 presign "s3://$BUCKET/run_security_gates.sh" --expires-in 900 --region "$REGION")
 
-# Commands are passed as JSON so presigned URLs are never word-split.
-PARAMS=$(python3 - "$RELEASE_ID" "$SHA" "$U_ART" "$U_DEP" "$U_RB" "$U_DB" "$U_PC" "$U_GT" <<'PY'
-import json, sys
-rid, sha, art, dep, rb, dbr, pc, gt = sys.argv[1:]
-d = f"/home/ubuntu/accessproof-releases/{rid}"
-print(json.dumps({"executionTimeout": ["3600"], "commands": [
-    "set -euo pipefail",
-    f"install -d -m 700 /home/ubuntu/accessproof-releases {d}",
-    f"curl -fsS -o {d}/artifact.tar '{art}'",
-    f"curl -fsS -o {d}/deploy_on_ec2.sh '{dep}'",
-    f"curl -fsS -o {d}/rollback_on_ec2.sh '{rb}'",
-    # Staged for a separately approved run; never executed by this command.
-    f"curl -fsS -o {d}/enable_least_privilege_db.sh '{dbr}'",
-    f"curl -fsS -o {d}/patch_compose_db_roles.py '{pc}'",
-    f"curl -fsS -o {d}/run_security_gates.sh '{gt}'",
-    f"echo '{sha}  {d}/artifact.tar' | sha256sum -c -",
-    f"bash {d}/deploy_on_ec2.sh {rid} {d}/artifact.tar {sha}",
-]}))
-PY
-)
+# Commands are passed as JSON so presigned URLs are never word-split. The
+# wrapper runs under /bin/sh; see ssm_payload.py.
+PARAMS=$(python3 "$WORK/ssm_payload.py" "${PAYLOAD_MODE[@]}" "$RELEASE_ID" "$SHA" "$EXPECTED_DB_REVISION" \
+  "$U_ART" "$U_DEP" "$U_RB" "$U_DB" "$U_PC" "$U_GT")
 CMD_ID=$(aws ssm send-command --region "$REGION" --instance-ids "$INSTANCE" \
   --document-name AWS-RunShellScript --comment "AccessProof $RELEASE_ID" \
   --parameters "$PARAMS" --query Command.CommandId --output text)

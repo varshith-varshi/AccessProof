@@ -4,12 +4,18 @@
 #   sudo bash rollback_on_ec2.sh <release-id>
 #
 # Restores the pre-release .env (image references), downgrades ONLY this
-# release's two additive migrations (refuses if Ed25519 source certificates
+# release's migrations (back to previous_db_revision) (refuses if Ed25519 source certificates
 # exist, since the downgrade would delete them), and recreates api/worker/web.
 # Never touches db/redis/nginx volumes and never restores a database dump.
 set -Eeuo pipefail
 umask 077
 RELEASE_ID="${1:?release id}"
+# One release operation at a time on this host (deploy, rollback, DB-role
+# switch), whoever starts it: operator, SSM, or an agent.
+install -d -m 700 /home/ubuntu/accessproof-releases
+exec 9>>/home/ubuntu/accessproof-releases/.release.lock
+flock -n 9 || { echo "another release operation holds the host release lock: $(cat /home/ubuntu/accessproof-releases/.release.lock.holder 2>/dev/null)" >&2; exit 75; }
+printf '%s pid=%s %s %s\n' "$(date -u +%FT%TZ)" "$$" "$(basename "$0")" "$RELEASE_ID" > /home/ubuntu/accessproof-releases/.release.lock.holder
 APP_DIR=/home/ubuntu/accessproof
 COMPOSE_FILE="$APP_DIR/docker-compose.ec2.yml"
 REL="/home/ubuntu/accessproof-releases/$RELEASE_ID"

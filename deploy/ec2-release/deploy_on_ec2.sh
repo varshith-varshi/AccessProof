@@ -14,8 +14,10 @@ RELEASE_ID="${1:?release id}"; ARTIFACT="${2:?artifact}"; EXPECTED_SHA="${3:?sha
 APP_DIR=/home/ubuntu/accessproof
 COMPOSE_FILE="$APP_DIR/docker-compose.ec2.yml"
 REL="/home/ubuntu/accessproof-releases/$RELEASE_ID"
-# The revision production must be at before this release (r21 = r2b3c4d5e6f7).
-EXPECTED_DB_REVISION="${EXPECTED_DB_REVISION:-r2b3c4d5e6f7}"
+# The revision production must be at before this release. REQUIRED, no default:
+# a stale default (r2b3c4d5e6f7) once outlived the r22 deploy. ship_via_ssm.sh
+# passes it explicitly on the remote command line.
+EXPECTED_DB_REVISION="${EXPECTED_DB_REVISION:?EXPECTED_DB_REVISION must be set to the current production Alembic revision}"
 TARGET_DB_REVISION=""   # derived from the new API image's Alembic head
 API_IMAGE="accessproof/api:$RELEASE_ID"
 WORKER_IMAGE="accessproof/worker:$RELEASE_ID"
@@ -25,6 +27,13 @@ PUBLIC_CHECKS="${PUBLIC_CHECKS:-1}"                  # 0 only for an offline reh
 REUSE_EXISTING_IMAGES="${REUSE_EXISTING_IMAGES:-0}"  # 1 only for an offline rehearsal
 
 [[ "$RELEASE_ID" =~ ^[a-z0-9][a-z0-9.-]{5,80}$ ]] || { echo "bad release id"; exit 2; }
+[[ "$EXPECTED_DB_REVISION" =~ ^[0-9a-z]{12}$ ]] || { echo "bad EXPECTED_DB_REVISION"; exit 2; }
+# One release operation at a time on this host (deploy, rollback, DB-role
+# switch), whoever starts it: operator, SSM, or an agent.
+install -d -m 700 /home/ubuntu/accessproof-releases
+exec 9>>/home/ubuntu/accessproof-releases/.release.lock
+flock -n 9 || { echo "another release operation holds the host release lock: $(cat /home/ubuntu/accessproof-releases/.release.lock.holder 2>/dev/null)" >&2; exit 75; }
+printf '%s pid=%s %s %s\n' "$(date -u +%FT%TZ)" "$$" "$(basename "$0")" "$RELEASE_ID" > /home/ubuntu/accessproof-releases/.release.lock.holder
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$REL/deployment-logs/deploy.log"; }
 compose() { docker compose --project-directory "$APP_DIR" -f "$COMPOSE_FILE" "$@"; }
 env_value() { grep -E "^$1=" "$APP_DIR/.env" | tail -1 | cut -d= -f2-; }   # only for image refs
