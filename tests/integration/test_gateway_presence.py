@@ -230,3 +230,27 @@ def test_d04_undecryptable_microsoft_credentials_fail_closed_without_crashing(wo
             codes = {c["code"]: c["ok"] for c in api_module._automatic_activation_checklist(db, row)}
             assert codes["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"] is False
             assert not all(codes.values())
+
+
+def test_installer_output_allowlist_matches_runtime_policy():
+    """R-2 follow-up: the installer can configure citation hosts; same rule as runtime."""
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from apps.gateway.accessproof_gateway.installer import InstallationSpec, private_environment
+    from packages.rag_core.output_safety import OutputLinkPolicy
+    raw = Ed25519PrivateKey.generate().public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    base = {"tenant_id": "t", "application_id": "a", "rag_service": "rag",
+            "guard_url": "http://guard:8080", "model_url": "http://model:8000/v1/chat/completions",
+            "trusted_public_keys": {"k": base64.urlsafe_b64encode(raw).decode().rstrip("=")}}
+    spec = InstallationSpec.parse({**base, "output_allowed_hosts": ["Contoso.SharePoint.com.", ".docs.contoso.com"]})
+    env = private_environment(spec, {})
+    value = next(l for l in env.splitlines() if l.startswith("ACCESSPROOF_GATEWAY_OUTPUT_ALLOWED_HOSTS=")).split("=", 1)[1]
+    assert value == ".docs.contoso.com,contoso.sharepoint.com"
+    assert OutputLinkPolicy.from_csv(value).allows("https://contoso.sharepoint.com/sites/x")
+    for bad in (["https://evil.example"], ["*.evil.example"], ["evil.example/path"], ["localhost"]):
+        with pytest.raises(Exception):
+            InstallationSpec.parse({**base, "output_allowed_hosts": bad})

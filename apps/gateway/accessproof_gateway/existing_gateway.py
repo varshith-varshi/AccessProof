@@ -112,14 +112,14 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         project = labels.get("com.docker.compose.project")
         if not project:
             raise ExistingGatewayError("GATEWAY_COMPOSE_PROJECT_MISSING")
-        matches.append((item, env, project, mapped[0]["HostPort"], gateway_service))
+        matches.append((item, env, project, mapped[0]["HostPort"], gateway_service, labels))
     if not matches:
         if container_name:
             raise ExistingGatewayError("GATEWAY_NOT_FOUND_FOR_PAIRING_APPLICATION")
         return None
     if len(matches) != 1:
         raise ExistingGatewayError("MULTIPLE_GATEWAYS_REQUIRE_EXPLICIT_SELECTION")
-    gateway, env, project, port, gateway_service = matches[0]
+    gateway, env, project, port, gateway_service, gateway_labels = matches[0]
 
     peers = _container_ids(_docker_listing())
     rag_candidates = []
@@ -173,4 +173,29 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         "existing_gateway_verified_locally": True,
         "customer_rag_traffic_changed": False,
         "production_certification": False,
+        # Local-only; the caller strips this before contacting the server.
+        "_local_installation": local_installation(gateway_labels, gateway_service),
     }
+
+
+def local_installation(labels: dict[str, object], gateway_service: str) -> dict[str, str] | None:
+    """Locate the AccessProof installation directory that started this Gateway.
+
+    Only a genuine staged installation qualifies: Compose config files must be
+    the customer's Compose file plus one ``gateway.override.json`` whose
+    directory also holds ``installation.json``. Anything else returns None.
+    """
+    raw = labels.get("com.docker.compose.project.config_files")
+    if not isinstance(raw, str) or not raw:
+        return None
+    files = [Path(item) for item in raw.split(",") if item]
+    overrides = [f for f in files if f.name == "gateway.override.json"]
+    others = [f for f in files if f.name != "gateway.override.json"]
+    if len(overrides) != 1 or len(others) != 1:
+        return None
+    override = overrides[0]
+    if (not override.is_absolute() or not override.is_file() or override.is_symlink()
+            or not (override.parent / "installation.json").is_file()):
+        return None
+    return {"customer_compose": str(others[0]), "override": str(override),
+            "gateway_service": gateway_service, "installation_dir": str(override.parent)}

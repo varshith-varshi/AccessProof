@@ -139,3 +139,21 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {  co
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
+
+// Where to return after sign-up -> email verification -> sign-in (e.g. an
+// invitation link). Only same-site paths are accepted; cleared once used.
+const POST_AUTH_KEY = "accessproof_post_auth_next";
+export function safeNextPath(value: string | null | undefined): string | null {
+  return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : null;
+}
+export function rememberPostAuthNext(value: string | null | undefined) {
+  const next = safeNextPath(value);
+  try { if (next) window.localStorage.setItem(POST_AUTH_KEY, next); } catch { /* storage unavailable */ }
+}
+export function recallPostAuthNext(consume = false): string | null {
+  try {
+    const next = safeNextPath(window.localStorage.getItem(POST_AUTH_KEY));
+    if (consume) window.localStorage.removeItem(POST_AUTH_KEY);
+    return next;
+  } catch { return null; }
+}

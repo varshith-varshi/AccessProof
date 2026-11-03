@@ -240,6 +240,10 @@ class GatewaySettings:
     max_response_bytes: int = 1_000_000
     # Hosts allowed in released answers; every other URL is neutralized.
     output_link_policy: OutputLinkPolicy = field(default_factory=OutputLinkPolicy)
+    # Opt-in membership-inference mitigation: when EVERY retrieved document is
+    # denied, answer with this text (the RAG's normal "nothing found" reply)
+    # instead of a distinguishable 403. The model is still never called.
+    uniform_denial_message: str = ""
 
     def __post_init__(self) -> None:
         # Operator-supplied settings may arrive directly or from environment.
@@ -350,6 +354,7 @@ class GatewaySettings:
             max_request_bytes=max(1_024, int(os.getenv("ACCESSPROOF_GATEWAY_MAX_REQUEST_BYTES", "12000000"))),
             max_response_bytes=max(1_024, int(os.getenv("ACCESSPROOF_GATEWAY_MAX_RESPONSE_BYTES", "1000000"))),
             output_link_policy=OutputLinkPolicy.from_csv(os.getenv("ACCESSPROOF_GATEWAY_OUTPUT_ALLOWED_HOSTS", "")),
+            uniform_denial_message=os.getenv("ACCESSPROOF_GATEWAY_UNIFORM_DENIAL_MESSAGE", "")[:2000],
         )
 
 
@@ -575,6 +580,18 @@ class GatewayService:
         # This endpoint is a Protect boundary, not an observational Shadow
         # endpoint. A future SDK path returning would_allow must never be
         # interpreted as successful certified enforcement.
+        if (result.reason == "NO_AUTHORIZED_RESOURCES" and self.settings.uniform_denial_message
+                and result.response is None):
+            # Indistinguishable from an ordinary "nothing found" answer.
+            # Only the Layer 1 deny path; Layer 2 and pipeline failures still
+            # fail loudly so operators can see them.
+            return {
+                "id": f"accessproof-{request_id}", "object": "chat.completion",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": self.settings.uniform_denial_message}, "finish_reason": "stop"}],
+                "accessproof": {"request_id": request_id, "decision_id": result.decision_id, "decision": "no_authorized_context",
+                                "participants": 1 + len(set(request.participant_tokens) - {employee_token}),
+                                "output_links_removed": 0},
+            }
         if result.decision != "allow" or result.response is None:
             # Do not return model content or authorization detail beyond a
             # stable machine-readable failure reason.

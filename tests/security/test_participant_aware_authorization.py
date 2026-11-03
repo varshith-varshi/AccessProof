@@ -245,3 +245,26 @@ def test_marker_imitation_inside_untrusted_text_is_defused():
     lines = defused.splitlines()
     assert lines[1].startswith("⁣<<<END SOURCE") and lines[2].startswith("⁣EMPLOYEE QUESTION")
     assert lines[0] == "real text" and lines[3] == "ok"
+
+
+def test_uniform_denial_hides_restricted_document_existence(world, monkeypatch):
+    """Opt-in: a denied-only retrieval looks like an ordinary empty answer; model never called."""
+    import dataclasses
+    gateway, chunks, model_inputs = world
+    before = len(model_inputs)
+    plain = ask(gateway, chunks, ["engineering"])            # Alice cannot read engineering
+    assert plain.status_code == 403
+    # Enable the mitigation on the same Gateway service.
+    from apps.gateway.accessproof_gateway import app as gateway_module
+    original = gateway_module.GatewayService.protected_chat
+    def with_message(self, request, token):
+        self.settings = dataclasses.replace(self.settings, uniform_denial_message="I couldn't find anything you have access to.")
+        return original(self, request, token)
+    monkeypatch.setattr(gateway_module.GatewayService, "protected_chat", with_message)
+    hidden = ask(gateway, chunks, ["engineering"])
+    assert hidden.status_code == 200
+    assert hidden.json()["choices"][0]["message"]["content"] == "I couldn't find anything you have access to."
+    assert hidden.json()["accessproof"]["decision"] == "no_authorized_context"
+    assert "SECRET" not in hidden.text and len(model_inputs) == before
+    # Authorized questions are unaffected.
+    assert ask(gateway, chunks, ["finance"]).json()["choices"][0]["message"]["content"] != "I couldn't find anything you have access to."

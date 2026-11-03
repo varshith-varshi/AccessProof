@@ -181,3 +181,7 @@ input,select{width:100%;height:42px;padding:0 11px;border:1px solid var(--line-s
 .doc-body ul{padding-left:20px}
 @media(max-width:980px){.feature-grid,.pricing-grid{grid-template-columns:1fr 1fr}.marketing-footer{grid-template-columns:1fr 1fr}.doc-layout{grid-template-columns:1fr}.doc-toc{position:static}}
 @media(max-width:720px){.feature-grid,.pricing-grid{grid-template-columns:1fr}.hide-small{display:none}.nav-actions{gap:8px}.example-docs li{grid-template-columns:18px 1fr}.example-docs em{grid-column:2}.integrations b{min-width:100%}.marketing-footer{grid-template-columns:1fr 1fr;padding:40px 20px}.page-hero{padding:60px 20px 20px}.doc-layout{padding:10px 20px 60px}}
+.danger-zone{border-top-color:#efcfcf}
+.danger-zone h3{color:var(--red)}
+.reset-scope{display:grid;gap:6px;margin:0;padding-left:18px;color:var(--ink-soft);line-height:1.6}
+.button-row{display:flex;align-items:center;gap:14px}

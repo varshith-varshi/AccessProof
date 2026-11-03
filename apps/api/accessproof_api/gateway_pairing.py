@@ -313,3 +313,13 @@ def receive(
         "production_certification": False,
         "message": "Installation reported; independent Guard route challenge still required.",
     }
+
+
+def clear(*, org_id: str, app_row_id: str) -> None:
+    """Forget pending pairing/discovery state for an archived application.
+
+    Outstanding one-use tokens become unusable because the status digest they
+    must match no longer exists.
+    """
+    with _client() as redis:
+        redis.delete(_status_key(org_id, app_row_id), _discovery_key(org_id, app_row_id))

@@ -61,7 +61,62 @@ function WorkspaceSection() {
       <div><dt>Your role</dt><dd>{account?.role ?? "—"}</dd></div>
       <div><dt>Workspace ID</dt><dd><code>{account?.active_organization_id ?? "—"}</code></dd></div>
     </dl>
+    <ResetOnboarding/>
   </section>;
+}
+
+type ResetPreview = {
+  organization_name: string; will_archive_ai_applications: string[]; will_revoke_guards: number;
+  will_revoke_pending_guard_enrollments: number; will_disconnect_sources: number; kept: string[];
+  scope_digest: string; confirm_text: string;
+};
+
+function ResetOnboarding() {
+  const { account } = useAccount();
+  const [preview, setPreview] = useState<ResetPreview | null>(null);
+  const [typed, setTyped] = useState(""), [code, setCode] = useState("");
+  const [pending, setPending] = useState(false);
+  const [note, setNote] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  if (account?.role !== "OWNER") return null;
+  async function review() {
+    setPending(true); setNote(null);
+    try { setPreview(await api<ResetPreview>("/api/v1/organization/onboarding-reset/preview")); setTyped(""); }
+    catch (cause) { setNote({ tone: "error", text: message(cause, "Could not load what would be reset.") }); }
+    finally { setPending(false); }
+  }
+  async function reset(event: FormEvent) {
+    event.preventDefault(); if (!preview) return; setPending(true); setNote(null);
+    try {
+      await api("/api/v1/organization/onboarding-reset", { method: "POST", body: JSON.stringify({
+        scope_digest: preview.scope_digest, confirm_text: typed, ...(account?.user.mfa_enabled ? { totp_code: code } : {}),
+      }) });
+      setPreview(null);
+      setNote({ tone: "ok", text: "Onboarding was reset. Open Get Started to connect a source again." });
+    } catch (cause) {
+      setNote({ tone: "error", text: cause instanceof ApiError && cause.status === 409
+        ? "Something changed since you reviewed this. Review the reset again." : message(cause, "Reset failed; nothing was changed.") });
+    } finally { setPending(false); }
+  }
+  return <div className="settings-block danger-zone" aria-labelledby="reset-heading">
+    <h3 id="reset-heading">Start onboarding again</h3>
+    <p className="muted">Revoke every Guard and Gateway, disconnect permission sources and remove AI applications from protection so you can set up from scratch. Your account, team and all history are kept.</p>
+    {!preview && <PendingButton className="button compact secondary" type="button" pending={pending} onClick={review}>Review what will be reset</PendingButton>}
+    {preview && <form className="form" onSubmit={reset}>
+      <ul className="reset-scope">
+        <li><b>{preview.will_archive_ai_applications.length}</b> AI application(s) removed from protection{preview.will_archive_ai_applications.length ? `: ${preview.will_archive_ai_applications.join(", ")}` : ""}</li>
+        <li><b>{preview.will_revoke_guards}</b> Guard(s) revoked, <b>{preview.will_revoke_pending_guard_enrollments}</b> pending enrollment(s) cancelled</li>
+        <li><b>{preview.will_disconnect_sources}</b> permission source(s) disconnected and their credentials deleted</li>
+        <li>Kept: {preview.kept.join("; ")}</li>
+      </ul>
+      <label>Type <code>{preview.confirm_text}</code> to confirm<input value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" required/></label>
+      {account?.user.mfa_enabled && <label>Two-factor code<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} required/></label>}
+      <div className="button-row">
+        <PendingButton className="button compact danger" pending={pending} disabled={typed !== preview.confirm_text}>Reset onboarding</PendingButton>
+        <button type="button" className="text-button" onClick={() => setPreview(null)}>Cancel</button>
+      </div>
+    </form>}
+    {note && <Notice tone={note.tone}>{note.text}</Notice>}
+  </div>;
 }
 
 function PasswordForm() {

@@ -72,6 +72,9 @@ def _public_keys(value: Any) -> dict[str, str]:
     return keys
 
 
+_OUTPUT_HOST = re.compile(r"\.?[a-z0-9-]+(\.[a-z0-9-]+)+")
+
+
 @dataclass(frozen=True)
 class InstallationSpec:
     tenant_id: str
@@ -86,6 +89,8 @@ class InstallationSpec:
     model_provider: str = "openai-compatible"
     listen_port: int = 8090
     gateway_service: str = "accessproof-gateway"
+    # Hosts allowed in released answers (e.g. the company's SharePoint), R-2.
+    output_allowed_hosts: tuple[str, ...] = ()
 
     @classmethod
     def parse(cls, value: dict[str, Any]) -> "InstallationSpec":
@@ -94,6 +99,7 @@ class InstallationSpec:
         expected = {
             "tenant_id", "application_id", "rag_service", "guard_url", "model_url",
             "trusted_public_keys", "gateway_image", "model_name", "model_token_env", "model_provider", "listen_port", "gateway_service",
+            "output_allowed_hosts",
         }
         if set(value) - expected:
             raise InstallationError("Unknown installation specification field")
@@ -132,6 +138,14 @@ class InstallationSpec:
                 or not _ALLOWED_NAME.fullmatch(gateway_service)
                 or not gateway_service.startswith("accessproof-gateway")):
             raise InstallationError("Invalid Gateway Compose service name")
+        raw_hosts = value.get("output_allowed_hosts", [])
+        if not isinstance(raw_hosts, list) or len(raw_hosts) > 20 or not all(isinstance(h, str) for h in raw_hosts):
+            raise InstallationError("output_allowed_hosts must be a list of host names")
+        hosts = tuple(sorted({h.strip().lower().rstrip(".") for h in raw_hosts if h.strip()}))
+        # Same rule as packages.rag_core.output_safety.OutputLinkPolicy (kept
+        # local so the customer installer has no runtime-package dependency).
+        if any(not _OUTPUT_HOST.fullmatch(h) for h in hosts):
+            raise InstallationError("output_allowed_hosts must contain host names only")
         return cls(
             tenant_id=tenant, application_id=app, rag_service=service,
             guard_url=_url(value["guard_url"], "guard_url"),
@@ -139,7 +153,7 @@ class InstallationSpec:
             trusted_public_keys=_public_keys(value["trusted_public_keys"]),
             gateway_image=image, model_name=model_name,
             model_token_env=model_token_env, model_provider=provider, listen_port=port,
-            gateway_service=gateway_service,
+            gateway_service=gateway_service, output_allowed_hosts=hosts,
         )
 
 
@@ -285,6 +299,7 @@ def private_environment(spec: InstallationSpec, environ: dict[str, str]) -> str:
         "ACCESSPROOF_GATEWAY_ATTESTATION_PUBLIC_KEYS_JSON": json.dumps(spec.trusted_public_keys, separators=(",", ":")),
         "ACCESSPROOF_GATEWAY_MODEL_NAME": spec.model_name,
         "ACCESSPROOF_GATEWAY_MODEL_PROVIDER": spec.model_provider,
+        "ACCESSPROOF_GATEWAY_OUTPUT_ALLOWED_HOSTS": ",".join(spec.output_allowed_hosts),
     }
     if spec.model_token_env:
         token = environ.get(spec.model_token_env)

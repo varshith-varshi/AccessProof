@@ -102,6 +102,7 @@ def create_spec(
     gateway_image: str,
     model_provider: str,
     model_name: str,
+    output_allowed_hosts: list[str] | None = None,
 ) -> dict[str, object]:
     # Server uses the application_id from the issued, short-lived pairing, not
     # an operator-edited manifest field. Source private key never leaves host.
@@ -115,6 +116,7 @@ def create_spec(
         "model_name": model_name,
         "trusted_public_keys": {key_id: public_key_from_private(signing_key)},
         "gateway_image": gateway_image,
+        "output_allowed_hosts": list(output_allowed_hosts or []),
     }
 
 
@@ -422,6 +424,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--gateway-image", default="accessproof-gateway:customer-v3-20261031-r1")
     p.add_argument("--model-provider", default="openai-compatible")
     p.add_argument("--model-name", default="")
+    p.add_argument(
+        "--output-allowed-hosts", default="",
+        help="Comma-separated hosts allowed in answers, e.g. contoso.sharepoint.com,.docs.contoso.com. "
+             "All other links and images are removed from answers.",
+    )
     p.add_argument("--approve-install", action="store_true")
     p.add_argument(
         "--challenge-file",
@@ -508,14 +515,19 @@ def main(argv: list[str] | None = None) -> int:
                     print("Matching existing Gateway verified. No installation or pairing requested.")
                     print("Rerun with --approve-install to report this existing installation.")
                     return 0
+                local = existing.pop("_local_installation", None)
                 claim = report_claim(pairing, existing)
                 print("Existing Gateway paired:", claim["state"])
-                print("No Docker containers or RAG routes changed.")
-                # Adoption never restarts containers, so this older Gateway
-                # cannot receive its heartbeat credential here (D-02).
-                print("Live Gateway status will show DISCONNECTED until this Gateway is "
-                      "re-installed with the current installer, which enables "
-                      "authenticated heartbeats.")
+                # Re-pairing rotates the heartbeat credential (D-02). Deliver it
+                # to the Gateway's own installation and recreate ONLY the Gateway.
+                if isinstance(local, dict) and enable_gateway_presence(
+                        claim, local, Path(local["installation_dir"])):
+                    print("RAG routes and all other containers were not changed.")
+                else:
+                    print("No Docker containers or RAG routes changed.")
+                    print("Live Gateway status will show DISCONNECTED until this Gateway is "
+                          "re-installed with the current installer, which enables "
+                          "authenticated heartbeats.")
                 for message in summarize_automatic_verification(claim):
                     print(message)
                 return 0
@@ -584,6 +596,7 @@ def main(argv: list[str] | None = None) -> int:
             gateway_image=args.gateway_image,
             model_provider=args.model_provider,
             model_name=args.model_name,
+            output_allowed_hosts=[h.strip() for h in args.output_allowed_hosts.split(",") if h.strip()],
         )
         # A transient mode-0600 spec replaces manually editing JSON files.
         from tempfile import TemporaryDirectory

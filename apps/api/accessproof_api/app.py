@@ -3290,16 +3290,32 @@ def create_current_ai_application(
         if source is None or source.organization_id != org_id:
             raise HTTPException(404, "Permission source not found")
     primary = payload.source_id or (sources[0] if sources else None)
-    row = AIApplication(
-        organization_id=org_id,
-        application_id=payload.application_id,
-        name=payload.name,
-        guard_id=payload.guard_id,
-        source_id=primary,
-        adapter_type=payload.adapter_type,
-        adapter_contract_version=payload.adapter_contract_version,
-    )
-    db.add(row)
+    archived = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == org_id,
+        AIApplication.application_id == payload.application_id,
+        AIApplication.archived_at.is_not(None),
+    ))
+    if archived is not None:
+        # Re-registering an archived application restores it (same ID keeps its
+        # audit history linked) with fresh bindings and no inherited Protect.
+        row = archived
+        row.archived_at = None
+        row.name, row.guard_id, row.source_id = payload.name, payload.guard_id, primary
+        row.mode = "shadow"
+        row.adapter_type = payload.adapter_type
+        row.adapter_contract_version = payload.adapter_contract_version
+        _audit(db, actor, org_id, "AI_APPLICATION_RESTORED", "ai_application", row.id, {})
+    else:
+        row = AIApplication(
+            organization_id=org_id,
+            application_id=payload.application_id,
+            name=payload.name,
+            guard_id=payload.guard_id,
+            source_id=primary,
+            adapter_type=payload.adapter_type,
+            adapter_contract_version=payload.adapter_contract_version,
+        )
+        db.add(row)
     try:
         db.flush()
         for source_id in sources:
@@ -3321,6 +3337,61 @@ def create_current_ai_application(
     }
 
 
+def _archive_application(db: OrmSession, actor: Actor | None, row: AIApplication, reason: str) -> None:
+    """Unbind an application so its traffic fails closed, keeping all history."""
+    now = datetime.now(timezone.utc)
+    gateway_presence.revoke(db, row)
+    for run in db.scalars(select(VerificationRun).where(
+        VerificationRun.organization_id == row.organization_id,
+        VerificationRun.application_row_id == row.id,
+        VerificationRun.superseded_at.is_(None),
+    )):
+        run.superseded_at = now
+        run.state = "SUPERSEDED"
+    db.execute(delete(AIApplicationSourceBinding).where(
+        AIApplicationSourceBinding.organization_id == row.organization_id,
+        AIApplicationSourceBinding.application_row_id == row.id,
+    ))
+    row.guard_id = None
+    row.source_id = None
+    row.mode = "shadow"
+    row.archived_at = now
+    try:
+        gateway_pairing.clear(org_id=row.organization_id, app_row_id=row.id)
+    except Exception:
+        pass  # Redis pairing keys also expire on their own; never block archival
+    _audit(db, actor, row.organization_id, "AI_APPLICATION_ARCHIVED", "ai_application", row.id,
+           {"reason": reason, "application_id": row.application_id})
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/archive")
+def archive_current_ai_application(
+    application_id: str,
+    body: dict[str, Any],
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Remove an AI application from protection without deleting its evidence.
+
+    The caller must repeat the application ID to confirm. Its Guard binding,
+    Gateway credential and pending verification are revoked; its chatbot
+    traffic through the Gateway is denied from the next Guard policy sync.
+    """
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+        AIApplication.archived_at.is_(None),
+    ))
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    if set(body) != {"confirm_application_id"} or body["confirm_application_id"] != application_id:
+        raise HTTPException(422, "CONFIRM_APPLICATION_ID_REQUIRED")
+    _archive_application(db, actor, row, "admin_archive")
+    db.commit()
+    return {"application_id": application_id, "archived": True,
+            "message": "Application removed. Its history is kept; traffic through its Gateway is now denied."}
+
+
 @app.get("/api/v1/current/ai-applications")
 def list_current_ai_applications(
     actor: Actor = Depends(require(Permission.RESULT_READ)),
@@ -3328,6 +3399,7 @@ def list_current_ai_applications(
 ) -> list[dict[str, Any]]:
     rows = db.scalars(select(AIApplication).where(
         AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.archived_at.is_(None),
     ).order_by(AIApplication.created_at.desc())).all()
     source_rows = db.execute(select(
         AIApplicationSourceBinding.application_row_id,
@@ -3538,6 +3610,7 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
     now = datetime.now(timezone.utc)
     rows = list(db.scalars(select(AIApplication).where(
         AIApplication.organization_id == organization_id,
+        AIApplication.archived_at.is_(None),
     ).order_by(AIApplication.created_at.desc()).limit(200)).all())
     application_ids = [row.application_id for row in rows]
     decision_counts, latest_decisions = _decision_telemetry(db, organization_id, application_ids, now)
@@ -5918,6 +5991,97 @@ def current_account(
             key=lambda item: item["name"].lower(),
         ),
     }
+
+
+def _onboarding_reset_scope(db: OrmSession, org_id: str) -> dict[str, list[str]]:
+    scope = {
+        "ai_applications": sorted(db.scalars(select(AIApplication.application_id).where(
+            AIApplication.organization_id == org_id, AIApplication.archived_at.is_(None)))),
+        "guards": sorted(db.scalars(select(GuardRegistration.id).where(
+            GuardRegistration.organization_id == org_id, GuardRegistration.revoked_at.is_(None)))),
+        "guard_enrollments": sorted(db.scalars(select(GuardEnrollment.id).where(
+            GuardEnrollment.organization_id == org_id, GuardEnrollment.used_at.is_(None),
+            GuardEnrollment.revoked_at.is_(None)))),
+        "sources": sorted(db.scalars(select(SourceConnection.id).where(
+            SourceConnection.organization_id == org_id, SourceConnection.status != "disconnected"))),
+    }
+    return scope
+
+
+def _scope_digest(org_id: str, scope: dict[str, list[str]]) -> str:
+    return hashlib.sha256(json.dumps({"organization_id": org_id, **scope}, sort_keys=True).encode()).hexdigest()
+
+
+@app.get("/api/v1/organization/onboarding-reset/preview")
+def preview_onboarding_reset(
+    actor: Actor = Depends(require(Permission.ORG_DELETE)), db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Owner-only: show exactly what a fresh-start reset would change (O-04)."""
+    org = db.get(Organization, actor.membership.organization_id)
+    if org is None:
+        raise HTTPException(404, "Organization not found")
+    scope = _onboarding_reset_scope(db, org.id)
+    return {
+        "organization_name": org.name,
+        "will_archive_ai_applications": scope["ai_applications"],
+        "will_revoke_guards": len(scope["guards"]),
+        "will_revoke_pending_guard_enrollments": len(scope["guard_enrollments"]),
+        "will_disconnect_sources": len(scope["sources"]),
+        "kept": ["your account, password and two-factor settings", "workspace and members",
+                 "audit history and Guard decision records", "reports and verification evidence"],
+        "scope_digest": _scope_digest(org.id, scope),
+        "confirm_text": f"RESET {org.name}",
+    }
+
+
+@app.post("/api/v1/organization/onboarding-reset")
+def execute_onboarding_reset(
+    body: dict[str, Any],
+    actor: Actor = Depends(require(Permission.ORG_DELETE)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Owner-only fresh start. Revokes and disconnects; never deletes history."""
+    org = db.get(Organization, actor.membership.organization_id)
+    if org is None:
+        raise HTTPException(404, "Organization not found")
+    if not set(body) <= {"scope_digest", "confirm_text", "totp_code"} or not {"scope_digest", "confirm_text"} <= set(body):
+        raise HTTPException(422, "SCOPE_DIGEST_AND_CONFIRM_TEXT_REQUIRED")
+    scope = _onboarding_reset_scope(db, org.id)
+    if not secrets.compare_digest(str(body["scope_digest"]), _scope_digest(org.id, scope)):
+        # Something changed since the owner reviewed the preview.
+        raise HTTPException(409, "RESET_SCOPE_CHANGED_REVIEW_AGAIN")
+    if body["confirm_text"] != f"RESET {org.name}":
+        raise HTTPException(422, "CONFIRM_TEXT_MISMATCH")
+    mfa = db.scalar(select(MfaMethod).where(MfaMethod.user_id == actor.user.id, MfaMethod.enabled.is_(True)))
+    if mfa is not None and not verify_totp(_secret_box.decrypt(mfa.encrypted_secret), str(body.get("totp_code") or "")):
+        raise HTTPException(401, "MFA_CODE_REQUIRED")
+    now = datetime.now(timezone.utc)
+    for row in db.scalars(select(AIApplication).where(
+            AIApplication.organization_id == org.id, AIApplication.archived_at.is_(None))):
+        _archive_application(db, actor, row, "onboarding_reset")
+    for guard in db.scalars(select(GuardRegistration).where(
+            GuardRegistration.organization_id == org.id, GuardRegistration.revoked_at.is_(None))):
+        guard.revoked_at = now
+        guard.credential_hash = None
+        guard.health = "revoked"
+    for enrollment in db.scalars(select(GuardEnrollment).where(
+            GuardEnrollment.organization_id == org.id, GuardEnrollment.used_at.is_(None),
+            GuardEnrollment.revoked_at.is_(None))):
+        enrollment.revoked_at = now
+    for source in db.scalars(select(SourceConnection).where(
+            SourceConnection.organization_id == org.id, SourceConnection.status != "disconnected")):
+        source.encrypted_credentials = None
+        source.status = "disconnected"
+        source.capabilities_json = "{}"
+        source.provider_identity_json = "{}"
+        source.granted_scopes_json = "[]"
+        source.missing_scopes_json = "[]"
+        source.last_error = None
+    _audit(db, actor, org.id, "ONBOARDING_RESET", "organization", org.id,
+           {key: len(value) for key, value in scope.items()})
+    db.commit()
+    return {"reset": True, **{key: len(value) for key, value in scope.items()},
+            "next_step": "Open Get Started to connect a source again."}
 
 
 @app.post("/api/v1/organization/enable-mutations")

@@ -1056,6 +1056,9 @@ class AIApplication(Base):
     application_id: Mapped[str] = mapped_column(String(255), index=True)
     name: Mapped[str] = mapped_column(String(200))
     mode: Mapped[str] = mapped_column(String(20), default="shadow")
+    # Archived applications keep their audit/evidence history but have no
+    # Guard/source binding, so any remaining traffic fails closed.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     guard_id: Mapped[str | None] = mapped_column(ForeignKey("guard_registrations.id", ondelete="SET NULL"), nullable=True, index=True)
     source_id: Mapped[str | None] = mapped_column(ForeignKey("source_connections.id", ondelete="SET NULL"), nullable=True, index=True)
     adapter_type: Mapped[str] = mapped_column(String(50), default="generic-python", server_default="generic-python")

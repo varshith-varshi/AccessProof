@@ -106,3 +106,55 @@ test("landing page offers self-serve signup and a security page", async ({ page 
   await expect(page.getByRole("heading", { name: "How AccessProof protects your data" })).toBeVisible();
   await expect(page.getByText("has not yet completed a third-party security audit", { exact: false })).toBeVisible();
 });
+
+test("new invitees keep their invitation through sign-up and email verification", async ({ page }) => {
+  const invite = "/accept-invitation?token=abc123";
+  await page.route("**/api/v1/auth/signup", route => route.fulfill({ status: 201, json: { organization_id: "org-new", email_verification_required: true } }));
+  await page.goto(`/register?next=${encodeURIComponent(invite)}`);
+  await page.getByLabel("Organization name").fill("Dana personal");
+  await page.getByLabel("Work email").fill("dana@northwind.example");
+  await page.locator("input[autocomplete=new-password]").nth(0).fill("Correct-Horse-Battery-9");
+  await page.locator("input[autocomplete=new-password]").nth(1).fill("Correct-Horse-Battery-9");
+  await page.locator("form button").first().click();
+  await expect(page).toHaveURL(/\/verify\?pending=1/);
+  await expect(page.getByRole("link", { name: "Continue to sign in" })).toHaveAttribute("href", `/login?next=${encodeURIComponent(invite)}`);
+  // The emailed verification link opens without ?next; the destination is remembered.
+  await page.route("**/api/v1/auth/verify-email", route => route.fulfill({ json: { verified: true } }));
+  await page.goto("/verify?token=emailed-token");
+  await expect(page.getByRole("link", { name: "Continue to sign in" })).toHaveAttribute("href", `/login?next=${encodeURIComponent(invite)}`);
+  // An open-redirect attempt is never remembered.
+  await page.goto(`/register?next=${encodeURIComponent("//evil.example")}`);
+  await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+});
+
+test("owner can review and confirm an onboarding reset", async ({ page }) => {
+  await signedIn(page);
+  await page.route("**/api/v1/organization/onboarding-reset/preview", route => route.fulfill({ json: {
+    organization_name: "Northwind Labs", will_archive_ai_applications: ["hr-bot"], will_revoke_guards: 1,
+    will_revoke_pending_guard_enrollments: 0, will_disconnect_sources: 1,
+    kept: ["your account, password and two-factor settings", "audit history and Guard decision records"],
+    scope_digest: "d".repeat(64), confirm_text: "RESET Northwind Labs",
+  } }));
+  let sent: Record<string, string> = {};
+  await page.route("**/api/v1/organization/onboarding-reset", async route => {
+    sent = JSON.parse(route.request().postData() ?? "{}");
+    await route.fulfill({ json: { reset: true } });
+  });
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Review what will be reset" }).click();
+  await expect(page.getByText("hr-bot")).toBeVisible();
+  const confirm = page.getByRole("button", { name: "Reset onboarding" });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel(/Type RESET Northwind Labs/).fill("RESET Northwind Labs");
+  await confirm.click();
+  await expect(page.getByText("Onboarding was reset.")).toBeVisible();
+  expect(sent).toEqual({ scope_digest: "d".repeat(64), confirm_text: "RESET Northwind Labs" });
+});
+
+test("non-owners never see the onboarding reset", async ({ page }) => {
+  await page.context().addCookies([{ name: "accessproof_session", value: "test-session", domain: "127.0.0.1", path: "/" }]);
+  await page.route("**/api/v1/auth/me", route => route.fulfill({ json: { ...me, role: "ADMIN" } }));
+  await page.goto("/settings");
+  await expect(page.getByLabel("Workspace name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review what will be reset" })).toHaveCount(0);
+});
