@@ -497,6 +497,10 @@ async def protected_chat(
     # instead of misreporting infrastructure failure as user permission denial.
     if result.reason in {"GUARD_REQUEST_FAILED", "PROTECTION_PIPELINE_FAILED"}:
         raise HTTPException(503, "ACCESSPROOF_GUARD_UNAVAILABLE_OR_INVALID")
+    if result.reason == "IDENTITY_REJECTED":
+        # D-20: the Guard rejected the employee identity itself (e.g. wrong
+        # tenant or signature). Not an outage, and not an ordinary "no access".
+        raise HTTPException(401, "EMPLOYEE_IDENTITY_REJECTED")
     if result.response is None:
         return {"answer": "I do not have access to that information.",
                 "citations": [], "retrieved_documents": [], "tool_outputs": [],

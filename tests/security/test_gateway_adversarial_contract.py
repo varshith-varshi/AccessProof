@@ -53,15 +53,19 @@ def test_protect_layer1_must_not_accept_would_allow_at_layer2():
     assert answer.response is None
 
 
-@pytest.mark.parametrize("code", [401, 403, 429, 500, 503])
-def test_guard_post_generation_http_error_is_an_explicit_safe_block(code):
+@pytest.mark.parametrize(("code", "reason"), [
+    (401, "IDENTITY_REJECTED"), (403, "GUARD_POLICY_DENIED"),
+    (429, "GUARD_REQUEST_FAILED"), (500, "GUARD_REQUEST_FAILED"), (503, "GUARD_REQUEST_FAILED"),
+])
+def test_guard_post_generation_http_error_is_an_explicit_safe_block(code, reason):
     rag, calls = _harness(status=code)
     answer = rag.run(employee_token="synthetic", application_id="app",
                      retrieved=[PUBLIC], generate=lambda _: CANARY, source_trace=lambda: [PUBLIC])
     assert len(calls) == 2
     assert answer.decision == "block"
     assert answer.response is None
-    assert answer.reason == "GUARD_REQUEST_FAILED"
+    # D-20: still blocked, but identity/policy refusals are not reported as outages.
+    assert answer.reason == reason
 
 
 def test_invalid_guard_json_fails_closed():

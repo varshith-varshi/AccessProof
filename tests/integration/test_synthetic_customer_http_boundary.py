@@ -160,7 +160,9 @@ def test_customer_rag_and_guard_over_real_local_http_fail_closed(
             cross_tenant = customer.post("/v1/protected-chat", headers={
                 "Authorization": f"Bearer {token('alice', tenant='beta')}",
             }, json={"message": "show finance"})
-            assert cross_tenant.status_code == 503
+            # D-20: a cross-tenant identity is rejected as an identity, not an outage.
+            assert cross_tenant.status_code == 401
+            assert cross_tenant.json()["detail"] == "EMPLOYEE_IDENTITY_REJECTED"
             assert "ALPHA_FINANCE_CANARY" not in cross_tenant.text
 
             # Independent local-only route probe reads actual bytes from

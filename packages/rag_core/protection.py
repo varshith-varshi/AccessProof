@@ -430,6 +430,16 @@ class ProtectedRAG:
                 retrieved=input_snapshot, generate=generate, request_id=request_id,
                 source_trace=source_trace,
             )
+        except httpx.HTTPStatusError as exc:
+            # D-20: still an explicit block, but report WHY. A rejected
+            # identity or a Guard policy refusal is not a Guard outage, and
+            # must not be indistinguishable from one in responses or evidence.
+            status = exc.response.status_code if exc.response is not None else 0
+            if status == 401:
+                return ProtectedResponse("block", None, "IDENTITY_REJECTED")
+            if status == 403:
+                return ProtectedResponse("block", None, "GUARD_POLICY_DENIED")
+            return ProtectedResponse("block", None, "GUARD_REQUEST_FAILED")
         except httpx.HTTPError:
             return ProtectedResponse("block", None, "GUARD_REQUEST_FAILED")
         except Exception:

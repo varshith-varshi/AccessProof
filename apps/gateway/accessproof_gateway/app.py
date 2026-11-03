@@ -676,7 +676,9 @@ class GatewayService:
         if result.decision != "allow" or result.response is None:
             # Do not return model content or authorization detail beyond a
             # stable machine-readable failure reason.
-            status = 403 if result.reason in {"NO_AUTHORIZED_RESOURCES", "LAYER2_ACCESS_REVOKED"} else 503
+            status = (401 if result.reason == "IDENTITY_REJECTED"
+                      else 403 if result.reason in {"NO_AUTHORIZED_RESOURCES", "LAYER2_ACCESS_REVOKED", "GUARD_POLICY_DENIED"}
+                      else 503)
             raise HTTPException(status, {"code": result.reason, "request_id": request_id})
         # Deterministic XPIA exfiltration guard on the already-authorized answer.
         answer, links_removed = sanitize_answer(result.response, self.settings.output_link_policy)
