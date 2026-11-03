@@ -1,0 +1,42 @@
+{
+  "schema": "accessproof.security_findings/v1",
+  "assessment_date": "2026-11-03",
+  "scope_note": "Level 1 (source) and Level 2 (isolated local) only. Level 3 (live production / real Microsoft tenant) was BLOCKED: AWS STS rejects the session credentials (InvalidClientTokenId); api.accessproof.in, app.accessproof.in and graph.microsoft.com are denied by the session network policy.",
+  "status_values": {
+    "FIXED_LOCAL": "fix committed and verified by tests in the isolated environment; NOT deployed",
+    "FIXED_REHEARSAL": "fix committed and additionally verified through the real release scripts on a production-shaped stand-in; NOT deployed",
+    "NOT_A_VULNERABILITY": "attack attempted; control held",
+    "OPEN": "confirmed, not fixed",
+    "BLOCKED": "cannot be tested from this environment"
+  },
+  "findings": [
+    {"id": "P0-01", "severity": "P0", "title": "Runtime DB role was the PostgreSQL superuser; RLS bypassed", "component": "database/deploy", "status": "FIXED_REHEARSAL", "deployed": false,
+     "reproduction": "API connected as superuser+owner; 19/58 tenant tables had no policy; none forced", "fix": "3 NOSUPERUSER NOBYPASSRLS roles; FORCE RLS on 58 tables; switch script", "regression_tests": ["tests/security/test_postgres_tenant_isolation.py", "full suite on PostgreSQL as accessproof_app"], "commit": "e69ee00..654db0e"},
+    {"id": "D-12", "severity": "P1", "title": "After least-privilege switch every later migration would run without DDL rights", "component": "deploy", "status": "FIXED_REHEARSAL", "deployed": false,
+     "reproduction": "accessproof_app: 'must be owner of table organizations'", "fix": "owner_alembic in deploy/rollback", "regression_tests": ["rehearsal r23"], "commit": "3679321"},
+    {"id": "D-13", "severity": "P1", "title": "Re-running switch rotated passwords; failure restore locked API out while reporting success", "component": "deploy", "status": "FIXED_REHEARSAL", "deployed": false,
+     "reproduction": "forced post-switch failure -> password authentication failed for accessproof_app; log said RESTORE complete", "fix": "reuse .env passwords; honest restore; RECOVERY=1", "regression_tests": ["rehearsal forced-failure x2"], "commit": "654db0e"},
+    {"id": "RT-01", "severity": "P2", "title": "Post-login open redirect via control characters in next=", "component": "web-v2/lib/api.ts", "status": "FIXED_LOCAL", "deployed": false,
+     "reproduction": "Chromium: /login?next=%2F%09%2Fevil.example%2Fphish -> http://evil.example/phish after sign-in", "fix": "reject control chars/whitespace/backslash; require same-origin resolution", "regression_tests": ["web-v2/e2e/post-auth-redirect.spec.ts (fails on old build, passes on fix)"], "commit": "7cb845e"},
+    {"id": "RT-02", "severity": "P2", "title": "Unknown-kid tokens forced one IdP JWKS fetch per request (amplification / throttling)", "component": "apps/guard identity", "status": "FIXED_LOCAL", "deployed": false,
+     "reproduction": "50 unknown-kid tokens -> 50 JWKS fetches", "fix": "30 s floor on forced refresh; rotation still honoured", "regression_tests": ["tests/security/test_entra_identity_negative_matrix.py", "tests/unit/test_guard_oidc.py"], "commit": "7cb845e"},
+    {"id": "RT-03", "severity": "P3", "title": "TOTP code replay opened a second session", "component": "apps/api auth", "status": "FIXED_LOCAL", "deployed": false,
+     "reproduction": "same code accepted twice at /auth/login", "fix": "last_totp_step with row lock (migration v6f7a8b9c0d1)", "regression_tests": ["tests/security/test_account_attack_matrix.py"], "commit": "see git log"},
+    {"id": "RT-04", "severity": "P1", "title": "Known-vulnerable dependencies (starlette Host/path URL reconstruction, cryptography bundled OpenSSL, opentelemetry tracestate ReDoS, certifi compromised CA, pillow, dnspython)", "component": "supply chain", "status": "FIXED_LOCAL", "deployed": false,
+     "reproduction": "pip-audit: 60 advisories in 6 packages", "fix": "fastapi 0.162 / starlette 1.10 / cryptography 50.0.2 / certifi 2026.10.23 / pillow 13 / dnspython 2.9.1 / opentelemetry 1.45.2; pip-audit clean", "regression_tests": ["full suite SQLite + PostgreSQL"], "commit": "see git log"},
+    {"id": "RT-05", "severity": "P3", "title": "16 moderate npm advisories in dev-only tooling", "component": "web-v2 devDependencies", "status": "OPEN", "deployed": false,
+     "reproduction": "npm audit (production deps: 0)", "fix": "not shipped to users; upgrade with tooling refresh", "regression_tests": [], "commit": null}
+  ],
+  "attacks_that_held": [
+    {"id": "H-01", "area": "Tenant isolation", "attack": "1,088 cross-tenant requests: every parameterized route x every victim object id (type-confused)", "result": "no 2xx, victim data intact", "test": "tests/security/test_cross_tenant_route_sweep.py"},
+    {"id": "H-02", "area": "Entra identity", "attack": "expired, wrong tenant/audience/issuer, v1 issuer, Graph token, forged signature, unknown kid, nbf, missing exp/oid, alg=none, HS256 key confusion", "result": "all rejected with specific codes; only oid/sub accepted as subject", "test": "tests/security/test_entra_identity_negative_matrix.py"},
+    {"id": "H-03", "area": "Accounts", "attack": "reset-token reuse, invitation reuse / wrong email, VIEWER/AUDITOR/ENGINEER escalation, ADMIN ownership seizure, API key after downgrade, cookie CSRF", "result": "all refused", "test": "tests/security/test_account_attack_matrix.py"},
+    {"id": "H-04", "area": "Rate limiting", "attack": "X-Forwarded-For spoofing through nginx to uvicorn 0.35", "result": "right-most untrusted hop used; spoofed entries ignored", "test": "manual probe (ProxyHeadersMiddleware)"},
+    {"id": "H-05", "area": "SSRF", "attack": "webhook/OIDC URLs to private, loopback, link-local, CGNAT, DNS rebinding, redirects", "result": "HTTPS + is_global + IP pinning at save and at delivery; no redirects", "test": "code review + existing tests"},
+    {"id": "H-06", "area": "Gateway heartbeat", "attack": "replay, cross-tenant installation id, binding change, archived app", "result": "monotonic sequence, tenant-scoped lookup, rebinding forces re-pair, archive revokes credential", "test": "tests/integration/test_gateway_presence.py + review"},
+    {"id": "H-07", "area": "Shared conversations", "attack": "forged participant token passing roster comparison", "result": "Guard verifies every token before any decision", "test": "tests/security/test_participant_aware_authorization.py"},
+    {"id": "H-08", "area": "Knowledge poisoning", "attack": "authorized document instructs override + forges fences; compromised retriever supplies restricted chunk", "result": "restricted content never reaches the model; forged fences defused", "test": "test_poisoned_authorized_document_cannot_pull_unauthorized_content_into_the_model"},
+    {"id": "H-09", "area": "Answer cache", "attack": "reuse across employee / after revocation / forged dependency digest", "result": "every hit re-runs Layer 1+2 for current employee with revision binding", "test": "existing cache tests"},
+    {"id": "H-10", "area": "Client redirects", "attack": "consent redirect destination", "result": "pinned to login.microsoftonline.com / accounts.google.com over https", "test": "review"}
+  ]
+}

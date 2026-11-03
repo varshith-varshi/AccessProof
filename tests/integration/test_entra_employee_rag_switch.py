@@ -259,7 +259,7 @@ def test_entra_alice_bob_signed_sessions_real_guard_and_revocation(monkeypatch, 
         def forward(request):
             response = guard_client.request(
                 request.method, request.url.path, content=request.content,
-                headers={"Authorization": request.headers.get("Authorization", "")},
+                headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
             )
             return httpx.Response(response.status_code, content=response.content)
 

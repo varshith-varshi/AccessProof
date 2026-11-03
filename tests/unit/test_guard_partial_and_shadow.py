@@ -34,7 +34,7 @@ def _sdk(client: TestClient):
     def handler(request: httpx.Request) -> httpx.Response:
         upstream = client.request(
             request.method, request.url.path,
-            headers={"Authorization": request.headers["Authorization"]},
+            headers={"Authorization": request.headers["Authorization"], "Content-Type": request.headers.get("Content-Type", "")},
             content=request.content,
         )
         return httpx.Response(upstream.status_code, content=upstream.content)

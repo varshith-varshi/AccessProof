@@ -63,7 +63,7 @@ def test_signed_multisource_cache_hit_rechecked_for_current_employee(tmp_path, m
             response = guard_client.request(
                 request.method, request.url.path,
                 content=request.content,
-                headers={"Authorization": request.headers.get("Authorization", "")},
+                headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
             )
             return httpx.Response(response.status_code, content=response.content)
 
@@ -106,7 +106,7 @@ def test_mixed_cache_manifest_requires_current_application_revision(tmp_path, mo
         def handler(request: httpx.Request) -> httpx.Response:
             response = guard_client.request(
                 request.method, request.url.path, content=request.content,
-                headers={"Authorization": request.headers.get("Authorization", "")},
+                headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
             )
             return httpx.Response(response.status_code, content=response.content)
 

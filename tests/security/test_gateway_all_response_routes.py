@@ -56,7 +56,7 @@ def _gateway(tmp_path, monkeypatch, *, outage=False, revoke_on_generation=False)
             with TestClient(guard_client.app) as probe:
                 result = probe.request(
                     request.method, request.url.path, content=request.content,
-                    headers={"Authorization": request.headers.get("Authorization", "")},
+                    headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
                 )
                 return httpx.Response(result.status_code, content=result.content)
         assert request.url.path == "/v1/chat/completions"

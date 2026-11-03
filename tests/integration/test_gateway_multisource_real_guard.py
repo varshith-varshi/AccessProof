@@ -87,7 +87,7 @@ def test_single_app_uses_two_sources_with_real_guard_and_blocks_inflight_revoke(
                 seen["v2_calls"].append(request.url.path)
                 result = guard_client.request(
                     request.method, request.url.path, content=request.content,
-                    headers={"Authorization": request.headers.get("Authorization", "")},
+                    headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
                 )
                 return httpx.Response(result.status_code, content=result.content)
             assert request.url.path == "/v1/chat/completions"

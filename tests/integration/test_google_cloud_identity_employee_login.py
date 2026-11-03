@@ -222,7 +222,7 @@ def test_signed_google_employee_cookie_real_guard_and_revocation(
         def forward(request: httpx.Request) -> httpx.Response:
             resp = guard_client.request(
                 request.method, request.url.path, content=request.content,
-                headers={"Authorization": request.headers.get("Authorization", "")},
+                headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
             )
             return httpx.Response(resp.status_code, content=resp.content)
 

@@ -95,8 +95,11 @@ def test_protected_drive_fails_closed_when_guard_unavailable(monkeypatch):
 
 def test_legacy_simulator_remains_independently_identified(monkeypatch):
     module = _demo(monkeypatch)
-    assert "/v1/chat" in [route.path for route in module.app.routes]
-    assert "/v1/protected-chat" in [route.path for route in module.app.routes]
+    # Public schema, not app.routes: FastAPI >= 0.13x nests included routers
+    # in private _IncludedRouter objects without a .path attribute.
+    paths = module.app.openapi()["paths"]
+    assert "/v1/chat" in paths
+    assert "/v1/protected-chat" in paths
 
 
 def test_legacy_route_is_disabled_by_default(monkeypatch):
@@ -173,7 +176,7 @@ def test_real_guard_enforcement_revocation_and_bob_denial(monkeypatch, tmp_path)
                 request.method,
                 request.url.path,
                 content=request.content,
-                headers={"Authorization": request.headers.get("Authorization", "")},
+                headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
             )
             return httpx.Response(response.status_code, content=response.content)
 

@@ -66,7 +66,7 @@ def test_real_ollama_provider_never_sees_denied_documents(
                 observed["guard_calls"].append(request.url.path)
                 outcome = guard_client.request(
                     request.method, request.url.path, content=request.content,
-                    headers={"Authorization": request.headers.get("Authorization", "")},
+                    headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
                 )
                 return httpx.Response(outcome.status_code, content=outcome.content)
             assert request.url.path == "/v1/chat/completions"

@@ -68,7 +68,7 @@ def _sdk(client):
         operations.append((request.url.path, request.content))
         result = client.request(
             request.method, request.url.path, content=request.content,
-            headers={"Authorization": request.headers["Authorization"]},
+            headers={"Authorization": request.headers["Authorization"], "Content-Type": request.headers.get("Content-Type", "")},
         )
         return httpx.Response(result.status_code, content=result.content)
 

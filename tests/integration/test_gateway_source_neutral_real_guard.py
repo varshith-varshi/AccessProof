@@ -61,7 +61,7 @@ def test_same_gateway_code_enforces_each_real_guard_app_source_binding(tmp_path,
             if request.url.path.startswith("/guard/"):
                 response = guard_client.request(
                     request.method, request.url.path, content=request.content,
-                    headers={"Authorization": request.headers.get("Authorization", "")},
+                    headers={"Authorization": request.headers.get("Authorization", ""), "Content-Type": request.headers.get("Content-Type", "")},
                 )
                 return httpx.Response(response.status_code, content=response.content)
             assert request.url.path == "/v1/chat/completions"
