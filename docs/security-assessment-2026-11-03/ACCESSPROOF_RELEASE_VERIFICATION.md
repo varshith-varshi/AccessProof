@@ -57,3 +57,15 @@ Plus the tooling defects the r22 rollout exposed (fixed in `d5d035d`):
 4. **Customer Guard/Gateway** must be rebuilt to get the patched dependencies; the Guard tarball 0.1.5 predates them. The lab Guard and Gateway were upgraded to images built from `d5d035d`.
 5. **Least-privilege switch** (needs owner approval):
    `sudo bash /home/ubuntu/accessproof-releases/r23-rt-fixes-400c73ebb7be/enable_least_privilege_db.sh r23-rt-fixes-400c73ebb7be --approve-database-role-change`
+
+## Update 14:08 UTC — r24 deployed
+| Item | Value |
+|---|---|
+| Release | `r24-identity-fixes-908ca7da1dc9` (commit `908ca7da1dc95e72dd39dd231ea6c8d7d96cbd9c`), artifact sha256 `217cb3087df92770cb9f48795a1a84b48dcdfd997429be2fb28d6cb34e869910` |
+| Deploy | SSM `74ce96fc-34f6-4af3-8894-81cad096f7ff`, 14:05:20 → 14:07:24 UTC, DEPLOYMENT VERIFIED; rehearsed first on staging under `accessproof_app` (SSM `b198107b-…`, probe 23/23) |
+| Contents | D-16 Guard identity-setting precedence; D-17 Gateway adopt-existing keeps heartbeat credential; D-18 certified Microsoft sources can satisfy `PRODUCTION_OIDC_READY`; live employee-identity tool |
+| Tests | Full SQLite suite 1437 tests: 1427 passed, 0 failed, 10 skipped |
+| Post-deploy | api/worker/web on r24, DB `v6f7a8b9c0d1`, 0 worker errors, 0 API 5xx; DB role still owner (`accessproof`) pending approval |
+| Gates | A PASS; B–J FAIL/BLOCKED (unchanged; need live identity, pairing, certificate, DB switch) |
+
+Tenant change (operator-approved): stale `fullcontrol` grant for first-party app "Microsoft Graph" removed from the lab site; AccessProof's own `fullcontrol` is required (GetUserEffectivePermissions needs EnumeratePermissions).
