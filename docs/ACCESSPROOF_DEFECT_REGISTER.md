@@ -193,6 +193,18 @@ Every probe passed 20/20 after each step. Gates A and I PASS when measured
 live. All other gates are honestly FAIL or BLOCKED (no real Entra,
 SharePoint, Guard or Gateway on the stand-in).
 
+## Red-team assessment (2026-11-03): local fixes, not deployed
+
+Full detail: `docs/security-assessment-2026-11-03/`.
+
+| ID | Sev | Finding | Status |
+|---|---|---|---|
+| RT-01 | P2 | Post-login open redirect: `next=/\t/evil.example` survived `safeNextPath` (reproduced in Chromium) | FIXED_LOCAL: same-origin validation; e2e regression |
+| RT-02 | P2 | Guard JWKS refetch on every unknown `kid` (50 tokens caused 50 IdP fetches) | FIXED_LOCAL: 30 s refresh floor |
+| RT-03 | P3 | TOTP code replay opened a second session | FIXED_LOCAL: `last_totp_step` (migration `v6f7a8b9c0d1`) |
+| RT-04 | P1 | 60 dependency advisories (starlette, cryptography, OTel, certifi, pillow, dnspython) | FIXED_LOCAL: pip-audit clean; full suite green on SQLite and PostgreSQL |
+| RT-05 | P3 | 16 moderate npm advisories in dev-only tooling | OPEN (not shipped) |
+
 ## Open (not fixable from code, or out of time) — carried forward
 
 | ID | Sev | Item | Status |

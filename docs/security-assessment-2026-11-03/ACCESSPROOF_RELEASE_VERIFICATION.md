@@ -16,9 +16,9 @@
 ## What is verified for the candidate release
 | Check | Result | Where |
 |---|---|---|
-| Source commit | `{{COMMIT}}` on `claude/modest-bell-tazupa` | git |
-| Full suite, SQLite | {{SQLITE}} | JUnit XML |
-| Full suite, PostgreSQL 17 as `accessproof_app` | {{PG}} | JUnit XML |
+| Source commit | `6aadb6af917b` on `claude/modest-bell-tazupa` | git |
+| Full suite, SQLite | 1401 passed, 0 failed, 10 skipped (1411 tests) | JUnit XML |
+| Full suite, PostgreSQL 17 as `accessproof_app` | 1407 passed, 0 failed, 4 skipped (1411 tests) | JUnit XML |
 | Migrations | head `v6f7a8b9c0d1`; new migration verified up/down/up on PostgreSQL 17 | this assessment |
 | Dependency audit | pip-audit 0; npm prod 0 | this assessment |
 | Deploy, least-privilege switch, forced failure, rollback | Rehearsed on a production-shaped stand-in (r22/r23, before this assessment's fixes) | `docs/evidence/rehearsal-2026-11-03/` |

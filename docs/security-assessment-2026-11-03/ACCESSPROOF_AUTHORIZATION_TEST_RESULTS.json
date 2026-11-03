@@ -1,0 +1,99 @@
+{
+  "generated_at": "2026-11-03T11:07:36.920940+00:00",
+  "git_commit": "6aadb6af917b6fd330d75e4f4f6a20565b783b4a",
+  "tenant_reference": "6479e7ca-b256-4ebc-a408-871b9046547c (reference; not re-verified)",
+  "live_status": "BLOCKED",
+  "live_blocked_reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId.",
+  "local_totals": {
+    "sqlite": {
+      "tests": 1411,
+      "passed": 1401,
+      "failed": 0,
+      "skipped": 10
+    },
+    "postgresql_restricted_role": {
+      "tests": 1411,
+      "passed": 1407,
+      "failed": 0,
+      "skipped": 4
+    }
+  },
+  "schema": "accessproof.authorization_test_results/v1",
+  "records": [
+    {
+      "test_identifier": "AUTHZ-01",
+      "environment": "local-synthetic",
+      "organization": "synthetic",
+      "application": "synthetic",
+      "source": "synthetic SharePoint replica",
+      "employee_identity_reference": "attacker tenant",
+      "document_reference": "all routes",
+      "expected_decision": "no cross-tenant access",
+      "actual_decision": "no cross-tenant access",
+      "authorization_revision": "synthetic",
+      "observed_behavior": "{'passed': 1} across 1 test cases matching 'test_cross_tenant_route_sweep'",
+      "evidence_hash": "03303ccf84ed86afe93f79e7e0ab029597f40028110da117af075ec7eceafa83",
+      "status": "PASS_LOCAL"
+    },
+    {
+      "test_identifier": "AUTHZ-02",
+      "environment": "local-synthetic",
+      "organization": "synthetic",
+      "application": "synthetic",
+      "source": "synthetic SharePoint replica",
+      "employee_identity_reference": "attacker tenant",
+      "document_reference": "all routes",
+      "expected_decision": "no cross-tenant access (PostgreSQL, restricted role)",
+      "actual_decision": "no cross-tenant access (PostgreSQL, restricted role)",
+      "authorization_revision": "synthetic",
+      "observed_behavior": "{'passed': 1} across 1 test cases matching 'test_cross_tenant_route_sweep'",
+      "evidence_hash": "7c9b82a64346ac7fd1e6de18f719e0f4713c318ae4807270e29f296f71e158a3",
+      "status": "PASS_LOCAL"
+    },
+    {
+      "test_identifier": "AUTHZ-03",
+      "environment": "local-synthetic",
+      "organization": "synthetic",
+      "application": "synthetic",
+      "source": "synthetic SharePoint replica",
+      "employee_identity_reference": "synthetic members",
+      "document_reference": "n/a",
+      "expected_decision": "no escalation",
+      "actual_decision": "no escalation",
+      "authorization_revision": "synthetic",
+      "observed_behavior": "{'passed': 9} across 9 test cases matching 'test_account_attack_matrix'",
+      "evidence_hash": "d1a3c91c32de428d4d2ffd6d9cf4f780a62fc21f55ba9f426d6c949c1e4ad227",
+      "status": "PASS_LOCAL"
+    },
+    {
+      "test_identifier": "AUTHZ-04",
+      "environment": "local-synthetic",
+      "organization": "synthetic",
+      "application": "synthetic",
+      "source": "synthetic SharePoint replica",
+      "employee_identity_reference": "n/a",
+      "document_reference": "n/a",
+      "expected_decision": "RLS enforced for restricted roles",
+      "actual_decision": "RLS enforced for restricted roles",
+      "authorization_revision": "synthetic",
+      "observed_behavior": "{'passed': 6} across 6 test cases matching 'test_postgres_tenant_isolation'",
+      "evidence_hash": "c2c3f2d0f2ad4455d19a03560068d9502a82fe5d66baf5a251fb58bd66e813d8",
+      "status": "PASS_LOCAL"
+    },
+    {
+      "test_identifier": "AUTHZ-05",
+      "environment": "local-synthetic",
+      "organization": "synthetic",
+      "application": "synthetic",
+      "source": "synthetic SharePoint replica",
+      "employee_identity_reference": "synthetic",
+      "document_reference": "synthetic",
+      "expected_decision": "intersection of participants",
+      "actual_decision": "intersection of participants",
+      "authorization_revision": "synthetic",
+      "observed_behavior": "{'passed': 15} across 15 test cases matching 'test_participant_aware_authorization'",
+      "evidence_hash": "ab2d453578506a322396aaed281a7ef83ec10d0b2567cdf5e020dc002200c966",
+      "status": "PASS_LOCAL"
+    }
+  ]
+}

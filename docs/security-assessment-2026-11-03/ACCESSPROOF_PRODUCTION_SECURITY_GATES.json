@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-11-03T11:07:36.920940+00:00",
+  "git_commit": "6aadb6af917b6fd330d75e4f4f6a20565b783b4a",
+  "tenant_reference": "6479e7ca-b256-4ebc-a408-871b9046547c (reference; not re-verified)",
+  "live_status": "BLOCKED",
+  "live_blocked_reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId.",
+  "local_totals": {
+    "sqlite": {
+      "tests": 1411,
+      "passed": 1401,
+      "failed": 0,
+      "skipped": 10
+    },
+    "postgresql_restricted_role": {
+      "tests": 1411,
+      "passed": 1407,
+      "failed": 0,
+      "skipped": 4
+    }
+  },
+  "schema": "accessproof.production_security_gates/v1",
+  "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED",
+  "production_gates": {
+    "A_INFRASTRUCTURE": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "B_IDENTITY": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "C_SHAREPOINT_SOURCE": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "D_GUARD": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "E_GATEWAY": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "F_LAYER1": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "G_LAYER2": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "H_REVOCATION_AND_CACHE": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "I_DATABASE_SECURITY": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    },
+    "J_ACTIVATION": {
+      "status": "BLOCKED",
+      "reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId."
+    }
+  },
+  "rehearsal_stand_in_gates": {
+    "source": "docs/evidence/rehearsal-2026-11-03/gates-r23-least-privilege.json",
+    "note": "production-shaped local stand-in, NOT production; measured before this assessment's fixes",
+    "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED",
+    "gates": {
+      "A_INFRASTRUCTURE": "PASS",
+      "B_IDENTITY": "FAIL",
+      "C_SHAREPOINT_SOURCE": "FAIL",
+      "D_GUARD": "FAIL",
+      "E_GATEWAY": "FAIL",
+      "F_LAYER1": "FAIL",
+      "G_LAYER2": "FAIL",
+      "H_REVOCATION_AND_CACHE": "BLOCKED",
+      "I_DATABASE_SECURITY": "PASS",
+      "J_ACTIVATION": "FAIL"
+    }
+  },
+  "regression": {
+    "sqlite": {
+      "tests": 1411,
+      "passed": 1401,
+      "failed": 0,
+      "skipped": 10
+    },
+    "postgresql_restricted_role": {
+      "tests": 1411,
+      "passed": 1407,
+      "failed": 0,
+      "skipped": 4
+    },
+    "all_green": true
+  },
+  "reviewer_approval": "NOT RECORDED"
+}

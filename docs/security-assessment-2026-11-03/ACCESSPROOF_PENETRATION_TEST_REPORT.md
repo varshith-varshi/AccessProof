@@ -1,7 +1,7 @@
 # AccessProof penetration test report — 2026-11-03
 
 **Tester:** Claude Code (authorized engineering assessment for NeuralMatrix)
-**Commit range:** `e76a89a` → `{{COMMIT}}`, branch `claude/modest-bell-tazupa`
+**Commit range:** `e76a89a` → `6aadb6af917b`, branch `claude/modest-bell-tazupa`
 
 **Levels performed:**
 * Level 1 (source analysis): yes.
@@ -85,7 +85,7 @@ Details: `ACCESSPROOF_ADVERSARIAL_TEST_MATRIX.md`.
 certifi 2026.10.23, pillow 13.0.0, dnspython 2.9.1. After the upgrade
 `pip-audit` reports **no known vulnerabilities**.
 
-Validated by the full suite: {{UPGRADE_RESULT}}.
+Validated by the full suite: SQLite 1401 passed, 0 failed, 10 skipped (1411 tests); PostgreSQL as accessproof_app 1407 passed, 0 failed, 4 skipped (1411 tests).
 
 Customer-hosted Guard and Gateway images must be **rebuilt** to inherit these
 versions. The already-built Guard 0.1.5 tarball predates the upgrade.

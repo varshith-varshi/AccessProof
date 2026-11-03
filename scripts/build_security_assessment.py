@@ -124,7 +124,8 @@ def main() -> None:
         live_record(f"REV-{t}", expected="DENY after propagation" if t != "E" else "ALLOW after restore", document="finance_alice.txt", employee="alice",
                     evidence_required="7 timestamps per Part 4.8 from the authorized trial") for t in "ABCDEFG"] + [
         local_record("REV-L1", sqlite, "revocation", expected="DENY", document="synthetic", employee="synthetic"),
-        local_record("REV-L2", sqlite, "in_flight", expected="DENY", document="synthetic", employee="synthetic")]})
+        local_record("REV-L2", sqlite, "inflight", expected="DENY", document="synthetic", employee="synthetic"),
+        local_record("REV-L3", sqlite, "mid_generation_revocation", expected="no streamed release after revocation", document="synthetic", employee="synthetic")]})
     write("SHAREPOINT_RAG_E2E_RESULTS.json", {"schema": "accessproof.sharepoint_rag_e2e_results/v1", "records": [
         live_record(f"E2E-{i:02d}", expected=e, document=d, employee=u, evidence_required="live protected RAG answer + Guard audit") for i, (u, d, e) in enumerate([
             ("alice", "finance question", "ALLOW"), ("bob", "finance question", "DENY"), ("bob", "engineering question", "ALLOW"),

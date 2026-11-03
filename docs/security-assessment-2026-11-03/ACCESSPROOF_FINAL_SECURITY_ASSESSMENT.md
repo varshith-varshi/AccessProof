@@ -1,6 +1,6 @@
 # SHAREPOINT PRODUCTION PROTECT — NOT VERIFIED
 
-**AccessProof final security assessment — 2026-11-03** · commit `{{COMMIT}}`
+**AccessProof final security assessment — 2026-11-03** · commit `6aadb6af917b`
 
 The supported production RAG pipeline has **not** been proven to enforce
 SharePoint authorization in production. This assessment had no access to
@@ -44,7 +44,7 @@ What it did establish:
 | 16 | Source certificate validity | BLOCKED | No certifier key; none issued |
 | 17 | PostgreSQL tenant isolation | PASS-LOCAL and rehearsal / production BLOCKED | Switch needs approval and access |
 | 18 | Production deployment verification | BLOCKED | Not deployed |
-| 19 | Required regression tests | {{REGRESSION_STATUS}} | SQLite {{SQLITE}}; PostgreSQL {{PG}} |
+| 19 | Required regression tests | PASS-LOCAL | SQLite 1401 passed, 0 failed, 10 skipped (1411 tests); PostgreSQL 1407 passed, 0 failed, 4 skipped (1411 tests) |
 | 20 | Reviewer approval | NOT RECORDED | Human decision |
 
 ## Fixes committed in this assessment (local only, not deployed)
@@ -65,7 +65,7 @@ What it did establish:
 1. **Access:** valid AWS credentials for account 102076848988, plus network
    access to `graph.microsoft.com`, `api.accessproof.in` and
    `app.accessproof.in`. Alternatively, an operator runs the steps below.
-2. **Deploy:** `ship_via_ssm.sh` at commit `{{COMMIT}}`. First re-rehearse it
+2. **Deploy:** `ship_via_ssm.sh` at commit `6aadb6af917b`. First re-rehearse it
    on the stand-in with the new migration and dependencies.
 3. **Least-privilege switch:** owner approval, then
    `enable_least_privilege_db.sh … --approve-database-role-change`. Evidence:

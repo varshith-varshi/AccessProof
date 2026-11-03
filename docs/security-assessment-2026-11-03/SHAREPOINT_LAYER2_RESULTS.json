@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-11-03T11:07:36.920940+00:00",
+  "git_commit": "6aadb6af917b6fd330d75e4f4f6a20565b783b4a",
+  "tenant_reference": "6479e7ca-b256-4ebc-a408-871b9046547c (reference; not re-verified)",
+  "live_status": "BLOCKED",
+  "live_blocked_reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId.",
+  "local_totals": {
+    "sqlite": {
+      "tests": 1411,
+      "passed": 1401,
+      "failed": 0,
+      "skipped": 10
+    },
+    "postgresql_restricted_role": {
+      "tests": 1411,
+      "passed": 1407,
+      "failed": 0,
+      "skipped": 4
+    }
+  },
+  "schema": "accessproof.sharepoint_layer2_results/v1",
+  "records": [
+    {
+      "test_identifier": "L2-01",
+      "environment": "live-tenant",
+      "timestamp": null,
+      "organization": "production (not reached)",
+      "application": "sharepoint-rag (reference)",
+      "source": "neuralmatrix093.sharepoint.com / drive 8200ffae-ba10-42c5-bfa9-8f7ac155c5c4 (reference; not re-verified)",
+      "employee_identity_reference": "alice/bob",
+      "document_reference": "lab documents",
+      "expected_decision": "buffered, provenance verified, revision-bound release",
+      "actual_decision": null,
+      "authorization_revision": null,
+      "observed_behavior": null,
+      "evidence_hash": null,
+      "status": "BLOCKED",
+      "blocked_reason": "No live Microsoft/production access from this session: graph.microsoft.com and api/app.accessproof.in denied by network policy; AWS STS InvalidClientTokenId.",
+      "evidence_required": "Layer 2 audit events from live traffic"
+    },
+    {
+      "test_identifier": "L2-L1",
+      "environment": "local-synthetic",
+      "organization": "synthetic",
+      "application": "synthetic",
+      "source": "synthetic SharePoint replica",
+      "employee_identity_reference": "synthetic",
+      "document_reference": "synthetic",
+      "expected_decision": "exfiltration stripped",
+      "actual_decision": "exfiltration stripped",
+      "authorization_revision": "synthetic",
+      "observed_behavior": "{'passed': 1} across 1 test cases matching 'test_gateway_strips_injected_exfiltration'",
+      "evidence_hash": "2c49ae102d0a62437d8f229a9c17850c290883b2f403e73e0bbabdd3cfcc9faf",
+      "status": "PASS_LOCAL"
+    }
+  ]
+}
