@@ -1,0 +1,118 @@
+{
+ "schema": "accessproof.layer1_guard_matrix/v1",
+ "guard_image": "accessproof-guard-r27:c5758058756b",
+ "token": "Entra v2 ID token (aud=lab sign-in app); identity via automatic directory_verified binding",
+ "results": [
+  {
+   "actor": "alice",
+   "document": "finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "0f59173b-d5e8-479e-a294-099e4990c79b",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.595300+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "engineering_bob.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "a9e39bf3-b33e-403e-bf55-2e628ecefc3e",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.606488+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "shared_control.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "732325db-69a4-4d1c-9dca-a790e050682b",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.616253+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "group_finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "5fe88099-6542-4a6c-8037-5c83053f5f8d",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.625575+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "inherited_finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "983a3056-e711-449d-b8bc-958ff81cac1a",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.637700+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "c5437daa-0229-4291-9c72-8cccab8475fa",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.650535+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "engineering_bob.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "50338534-4899-4462-9e5f-1b682e2f0d90",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.659872+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "shared_control.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "1c774234-f73d-4217-b740-206564109960",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.670122+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "group_finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "2a87b3f0-a5c8-4ed9-8f97-124c4ecf9043",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.679463+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "inherited_finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "c5b72f60-d7c4-4db1-9b36-283df017b4be",
+   "policy_version": 14,
+   "authorization_revision": 682,
+   "pass": true,
+   "at": "2026-11-03T18:19:30.690021+00:00"
+  }
+ ],
+ "pass": true
+}

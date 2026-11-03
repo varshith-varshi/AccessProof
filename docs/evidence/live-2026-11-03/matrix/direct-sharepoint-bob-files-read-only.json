@@ -1,0 +1,55 @@
+{
+ "schema": "accessproof.direct_sharepoint_probe/v1",
+ "actor": "bob",
+ "identity": {
+  "actor": "bob",
+  "verified_at": "2026-11-03T16:56:05.929811+00:00",
+  "guard_verifier": "apps.guard.accessproof_guard.identity.OidcVerifier",
+  "subject_claim": "oid",
+  "graph_me_oid_match": true,
+  "upn": "bob@neuralmatrix093.onmicrosoft.com",
+  "id_token_claims": {
+   "iss": "https://login.microsoftonline.com/6479e7ca-b256-4ebc-a408-871b9046547c/v2.0",
+   "tid": "6479e7ca-b256-4ebc-a408-871b9046547c",
+   "oid": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "aud": "9d031e10-4bed-4ab9-a98d-3eef237c4a56",
+   "ver": "2.0",
+   "iat": 1793724665,
+   "exp": 1793728565,
+   "preferred_username": "bob@NeuralMatrix093.onmicrosoft.com",
+   "sub_sha256": "aa2cc6c9d1f89b05b8c763860ddf999c696bcf368d2fd8dd2e2812715e992a56"
+  }
+ },
+ "drive_id": "b!QuwAmwpi_E6ss_TWYsjOtpscIyCWMV5KntAEBAkNWTCu_wCCELrFQr-pj3rBVcXE",
+ "results": [
+  {
+   "document": "finance_alice.txt",
+   "item_id": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP",
+   "expected": "DENY",
+   "actual": "INCONCLUSIVE_NO_POSITIVE_CONTROL",
+   "http_status": 403,
+   "pass": false,
+   "at": "2026-11-03T17:28:15.419908+00:00"
+  },
+  {
+   "document": "engineering_bob.txt",
+   "item_id": "012JSJ74X46JMPG5ZRBJBKZIFY3AC43RQT",
+   "expected": "ALLOW",
+   "actual": "INCONCLUSIVE_NO_POSITIVE_CONTROL",
+   "http_status": 403,
+   "pass": false,
+   "at": "2026-11-03T17:28:15.537262+00:00"
+  },
+  {
+   "document": "shared_control.txt",
+   "item_id": "012JSJ74RVIGYMKZU6J5EZ7EKZZO6JQGET",
+   "expected": "ALLOW",
+   "actual": "INCONCLUSIVE_NO_POSITIVE_CONTROL",
+   "http_status": 403,
+   "pass": false,
+   "at": "2026-11-03T17:28:15.659185+00:00"
+  }
+ ],
+ "positive_control": false,
+ "pass": false
+}
