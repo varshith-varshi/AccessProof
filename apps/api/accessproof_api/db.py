@@ -139,6 +139,8 @@ class MfaMethod(Base):
     encrypted_secret: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     recovery_hashes_json: Mapped[str] = mapped_column(Text, default="[]")
+    # Last accepted TOTP time step; codes at or before it are replays.
+    last_totp_step: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

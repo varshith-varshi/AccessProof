@@ -1,3 +1,4 @@
+import time
 from fastapi.testclient import TestClient
 from apps.api.accessproof_api.app import app
 from apps.api.accessproof_api.db import Base, engine
@@ -42,7 +43,8 @@ def test_email_verify_password_reset_sessions_and_mfa():
             json={
                 "email": "secure@example.com",
                 "password": "correct horse battery staple",
-                "totp_code": totp_code(secret),
+                # The enable code was consumed (RT-03); a fresh time step is required.
+                "totp_code": totp_code(secret, int(time.time()) + 30),
             },
         )
         assert with_mfa.status_code == 200

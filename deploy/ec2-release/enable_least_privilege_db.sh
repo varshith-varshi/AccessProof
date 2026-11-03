@@ -37,8 +37,12 @@ healthy() {  # <service> <seconds>
 
 mkdir -p "$REL/deployment-logs" "$ROLES"
 chmod 700 "$ROLES"
-rev=$(compose exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d '[:space:]')
-case "$rev" in t4d5e6f7a8b9|u5e6f7a8b9c0) ;; *) log "database revision $rev predates P0-01 policies; deploy first"; exit 2;; esac
+# Require the P0-01 policies themselves (migration t4d5e6f7a8b9 or later),
+# not a hard-coded revision list that every later migration would break.
+policies=$(compose exec -T db psql -U accessproof -d accessproof -tAc \
+  "select count(*) from pg_policies where policyname = 'accessproof_tenant_isolation'" | tr -d '[:space:]')
+[[ "$policies" =~ ^[0-9]+$ ]] && (( policies >= 58 )) \
+  || { log "tenant RLS policies missing ($policies); deploy a release with migration t4d5e6f7a8b9 or later first"; exit 2; }
 # RECOVERY=1: allowed when the API is down because the role passwords in the
 # database and .env diverged; re-running re-syncs them from .env (idempotent).
 if ! healthy api 10; then

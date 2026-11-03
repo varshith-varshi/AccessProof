@@ -4,6 +4,8 @@ Runs only against the isolated test database configured by tests/conftest.py.
 """
 from __future__ import annotations
 
+import time
+
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
@@ -47,8 +49,12 @@ def test_mfa_disable_consumes_recovery_code_and_does_not_break_other_codes() -> 
             "code": code1,
         })
         assert first.status_code == 200, first.text
+        # Re-enabling with the already-consumed code is a replay (RT-03).
         assert client.post("/api/v1/auth/mfa/enable", headers=headers, json={
             "code": valid_totp,
+        }).status_code == 400
+        assert client.post("/api/v1/auth/mfa/enable", headers=headers, json={
+            "code": totp_code(secret, int(time.time()) + 30),
         }).status_code == 200
         replay = client.post("/api/v1/auth/mfa/disable", headers=headers, json={
             "code": code1,

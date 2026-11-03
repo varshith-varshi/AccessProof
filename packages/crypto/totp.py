@@ -33,5 +33,19 @@ def verify_totp(secret: str, code: str, at: int | None = None, window: int = 1) 
     )
 
 
+def matched_totp_step(secret: str, code: str, at: int | None = None, window: int = 1) -> int | None:
+    """The time-step counter the code is valid for, or None.
+
+    Callers persist the last accepted step and reject any step at or before
+    it (RFC 6238 section 5.2), so an observed code cannot be replayed.
+    """
+    now = at if at is not None else int(time.time())
+    for drift in range(-window, window + 1):
+        moment = now + drift * 30
+        if hmac.compare_digest(totp_code(secret, moment), code):
+            return moment // 30
+    return None
+
+
 def provisioning_uri(secret: str, email: str, issuer: str = "AccessProof") -> str:
     return f"otpauth://totp/{quote(issuer)}:{quote(email)}?secret={secret}&issuer={quote(issuer)}&algorithm=SHA1&digits=6&period=30"

@@ -184,7 +184,7 @@ from apps.api.accessproof_api.schemas import (
     ScimConfigurationUpdate as ScimConfigurationUpdate,
 )
 from packages.crypto.passwords import hash_password, verify_password
-from packages.crypto.totp import generate_totp_secret, provisioning_uri, verify_totp
+from packages.crypto.totp import generate_totp_secret, matched_totp_step, provisioning_uri
 from packages.crypto.secrets import build_secret_backend, hash_token
 from packages.crypto.signing import Ed25519Signer, verify_manifest, verify_manifest_with_trust
 from packages.auth.oidc import OidcDiscovery, OidcError, OidcProviderClient
@@ -1875,14 +1875,15 @@ def login(
                 403, detail={"code": "sso_required", "organization_id": only.organization_id}
             )
     mfa = db.scalar(
-        select(MfaMethod).where(MfaMethod.user_id == user.id, MfaMethod.enabled.is_(True))
+        select(MfaMethod).where(MfaMethod.user_id == user.id, MfaMethod.enabled.is_(True)).with_for_update()
     )
     if mfa:
         if not payload.totp_code:
             raise HTTPException(401, detail={"code": "mfa_required"})
-        secret = _secret_box.decrypt(mfa.encrypted_secret)
-        valid = verify_totp(secret, payload.totp_code)
-        if not valid:
+        valid = _consume_totp(mfa, payload.totp_code)
+        if valid:
+            db.commit()
+        else:
             recovery_hashes = json.loads(mfa.recovery_hashes_json)
             candidate = hash_token(payload.totp_code)
             if candidate in recovery_hashes:
@@ -2423,6 +2424,19 @@ def revoke_session(
     return Response(status_code=204)
 
 
+def _consume_totp(method: MfaMethod, code: str) -> bool:
+    """Accept a TOTP code at most once (RFC 6238 section 5.2).
+
+    The caller must hold a row lock on `method` so two concurrent requests
+    cannot both accept the same code.
+    """
+    step = matched_totp_step(_secret_box.decrypt(method.encrypted_secret), code)
+    if step is None or (method.last_totp_step is not None and step <= method.last_totp_step):
+        return False
+    method.last_totp_step = step
+    return True
+
+
 @app.post("/api/v1/auth/mfa/setup")
 def mfa_setup(
     actor: Actor = Depends(current_actor), db: OrmSession = Depends(get_db)
@@ -2457,10 +2471,10 @@ def mfa_enable(
     actor: Actor = Depends(current_actor),
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
-    row = db.scalar(select(MfaMethod).where(MfaMethod.user_id == actor.user.id))
+    row = db.scalar(select(MfaMethod).where(MfaMethod.user_id == actor.user.id).with_for_update())
     if not row:
         raise HTTPException(409, "Run MFA setup first")
-    if not verify_totp(_secret_box.decrypt(row.encrypted_secret), payload.code):
+    if not _consume_totp(row, payload.code):
         raise HTTPException(400, "Invalid TOTP code")
     row.enabled = True
     db.commit()
@@ -2474,12 +2488,11 @@ def mfa_disable(
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
     row = db.scalar(
-        select(MfaMethod).where(MfaMethod.user_id == actor.user.id, MfaMethod.enabled.is_(True))
+        select(MfaMethod).where(MfaMethod.user_id == actor.user.id, MfaMethod.enabled.is_(True)).with_for_update()
     )
     if not row:
         return {"enabled": False}
-    secret = _secret_box.decrypt(row.encrypted_secret)
-    valid = verify_totp(secret, payload.code)
+    valid = _consume_totp(row, payload.code)
     if not valid:
         hashes = json.loads(row.recovery_hashes_json)
         candidate = hash_token(payload.code)
@@ -6089,8 +6102,8 @@ def execute_onboarding_reset(
         raise HTTPException(409, "RESET_SCOPE_CHANGED_REVIEW_AGAIN")
     if body["confirm_text"] != f"RESET {org.name}":
         raise HTTPException(422, "CONFIRM_TEXT_MISMATCH")
-    mfa = db.scalar(select(MfaMethod).where(MfaMethod.user_id == actor.user.id, MfaMethod.enabled.is_(True)))
-    if mfa is not None and not verify_totp(_secret_box.decrypt(mfa.encrypted_secret), str(body.get("totp_code") or "")):
+    mfa = db.scalar(select(MfaMethod).where(MfaMethod.user_id == actor.user.id, MfaMethod.enabled.is_(True)).with_for_update())
+    if mfa is not None and not _consume_totp(mfa, str(body.get("totp_code") or "")):
         raise HTTPException(401, "MFA_CODE_REQUIRED")
     now = datetime.now(timezone.utc)
     for row in db.scalars(select(AIApplication).where(
