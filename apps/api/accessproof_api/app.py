@@ -1326,6 +1326,7 @@ def guard_policies(
     guard_id: str,
     after_version: int = 0,
     full_snapshot: bool = False,
+    identity_version: str = "",
     authorization: str | None = Header(default=None),
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -1469,7 +1470,13 @@ def guard_policies(
         db.commit()
     # The Guard receives only verified mappings for its own organization.  It
     # resolves a JWT principal locally and never sends employee tokens to us.
-    mappings = [
+    # Identity envelope (scales to large directories): resend the verified
+    # mapping set only when it changed since the version the Guard holds.
+    # Older Guards never send identity_version and always get the full set.
+    from apps.api.accessproof_api.identity_resolution import identity_version as _identity_version
+    current_identity_version = _identity_version(db, guard.organization_id)
+    identity_unchanged = bool(identity_version) and identity_version == current_identity_version
+    mappings = [] if identity_unchanged else [
         {
             "source_id": row.source_id,
             "issuer": row.oidc_issuer,
@@ -1497,11 +1504,16 @@ def guard_policies(
             else source.provider.lower()
         )
     ]
+    def _identity_envelope() -> dict[str, Any]:
+        if identity_unchanged:
+            return {"identity_mappings_unchanged": True, "identity_version": current_identity_version}
+        return {"identity_mappings": mappings, "identity_version": current_identity_version}
+
     if full_snapshot:
         states = db.scalars(select(GuardEffectiveAccess).where(
             GuardEffectiveAccess.organization_id == guard.organization_id
         )).all()
-        return {"kind": "full", "version": latest, "applications": bound_applications, "identity_mappings": mappings, "authorization_revisions": authorization_revisions, "decisions": [
+        return {"kind": "full", "version": latest, "applications": bound_applications, **_identity_envelope(), "authorization_revisions": authorization_revisions, "decisions": [
             {"subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id, "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id),
              "scope": row.scope, "decision": row.decision, "reason": row.reason}
             for row in states
@@ -1510,7 +1522,7 @@ def guard_policies(
         GuardPolicy.organization_id == guard.organization_id,
         GuardPolicy.version > after_version,
     ).order_by(GuardPolicy.version.asc())).all()
-    return {"kind": "incremental", "version": latest, "applications": bound_applications, "identity_mappings": mappings, "authorization_revisions": authorization_revisions, "policies": [
+    return {"kind": "incremental", "version": latest, "applications": bound_applications, **_identity_envelope(), "authorization_revisions": authorization_revisions, "policies": [
         {"version": row.version, "subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id,
          "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id), "scope": row.scope, "decision": row.decision,
          "reason": row.reason}
@@ -1644,8 +1656,11 @@ def update_current_identity_mapping(
     now = datetime.now(timezone.utc)
     row.status = payload.status
     row.revoked_at = now if payload.status == "REVOKED" else None
+    # An administrator's decision makes the row administrator-owned: automatic
+    # directory reconciliation never overrides it (identity_resolution.py).
+    row.verified_by_user_id = actor.user.id
     _audit(db, actor, row.organization_id, "identity_mapping.status_changed", "identity_mapping", row.id,
-           {"status": payload.status, "source_id": row.source_id})
+           {"status": payload.status, "source_id": row.source_id, "method": row.method})
     db.commit()
     return _identity_mapping_payload(row, subject)
 

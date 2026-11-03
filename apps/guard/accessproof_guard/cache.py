@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 import json
 from contextlib import contextmanager
 from collections.abc import Iterator
@@ -112,8 +113,8 @@ class PolicyCache:
     def apply_sync_snapshot(
         self, version: int, decisions: list[dict[str, object]], *,
         full_snapshot: bool, applications: list[dict[str, object]],
-        mappings: list[dict[str, object]], revisions: list[dict[str, object]] | None,
-        ack_versions: list[int] | None = None,
+        mappings: list[dict[str, object]] | None, revisions: list[dict[str, object]] | None,
+        ack_versions: list[int] | None = None, identity_version: str | None = None,
     ) -> bool:
         """Crash-atomic Guard authorization state installation.
 
@@ -123,14 +124,19 @@ class PolicyCache:
         """
         with self._lock:
             with self._write_transaction():
-                self.validate_identity_mappings(mappings)
+                if mappings is not None:
+                    self.validate_identity_mappings(mappings)
                 if revisions is not None:
                     self.validate_authorization_revisions(revisions)
                 installed = self.install(version, decisions, full_snapshot=full_snapshot)
                 if revisions is not None:
                     self.set_authorization_revisions(revisions)
                 self.set_application_bindings(applications)
-                self.set_identity_mappings(mappings)
+                if mappings is not None:
+                    # A full verified identity set (None = control plane confirmed
+                    # the version this Guard sent is still current).
+                    self.set_identity_mappings(mappings)
+                    self._record_identity_version(identity_version)
                 self.mark_sync_success()
                 if installed and ack_versions:
                     self.queue_installed_policy_acks(ack_versions)
@@ -455,6 +461,31 @@ class PolicyCache:
                 "WHERE b.mode='protect' AND r.application_id IS NULL LIMIT 1"
             ).fetchone()
         return row is None
+
+    IDENTITY_FULL_REFRESH_SECONDS = 300
+
+    def _record_identity_version(self, identity_version: str | None) -> None:
+        if identity_version:
+            self.db.execute("INSERT INTO metadata (key, value) VALUES ('identity_version', ?) "
+                            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (identity_version,))
+            self.db.execute("INSERT INTO metadata (key, value) VALUES ('identity_installed_at', ?) "
+                            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(time.time()),))
+        else:
+            self.db.execute("DELETE FROM metadata WHERE key IN ('identity_version', 'identity_installed_at')")
+
+    def reusable_identity_version(self) -> str | None:
+        """The identity version to offer the control plane, or None to force a
+        full refresh. A full set is re-downloaded at least every
+        IDENTITY_FULL_REFRESH_SECONDS, so a change the control-plane version
+        fingerprint could miss cannot persist on this Guard indefinitely."""
+        with self._lock:
+            rows = dict(self.db.execute(
+                "SELECT key, value FROM metadata WHERE key IN ('identity_version', 'identity_installed_at')").fetchall())
+        try:
+            fresh = time.time() - float(rows.get("identity_installed_at", "0")) < self.IDENTITY_FULL_REFRESH_SECONDS
+        except ValueError:
+            fresh = False
+        return rows.get("identity_version") if fresh and rows.get("identity_version") else None
 
     def set_identity_mappings(self, mappings: list[dict[str, object]]) -> None:
         """Atomically replace verified mappings received over Guard sync.

@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
     UniqueConstraint,
@@ -824,6 +825,7 @@ class GuardSubject(Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "provider", "provider_subject_id"),
         UniqueConstraint("organization_id", "provider", "drive_permission_id", name="uq_guard_subject_drive_permission_id"),
+        Index("ix_guard_subjects_org_provider_tenant", "organization_id", "provider", "provider_tenant_id"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
@@ -833,6 +835,10 @@ class GuardSubject(Base):
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     primary_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    # Directory provenance (w7a8b9c0d1e2): the tenant the account was read from
+    # and member/guest/unknown. Required for automatic identity binding.
+    provider_tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    account_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -851,6 +857,7 @@ class GuardIdentityMapping(Base):
             "organization_id", "source_id", "oidc_issuer", "oidc_subject", "oidc_tenant_id",
             name="uq_guard_identity_mapping_principal",
         ),
+        Index("ix_guard_identity_mappings_org_source_status", "organization_id", "source_id", "status"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)

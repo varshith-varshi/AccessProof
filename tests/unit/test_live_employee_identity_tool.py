@@ -96,6 +96,10 @@ def test_serve_fails_on_bad_socket_before_asking_anyone_to_sign_in(tmp_path, mon
     deep.mkdir(mode=0o700)
     args = argparse.Namespace(socket=str(deep / "alice.sock"), actor="alice", client_id="c",
                               flow="auth-code", signin_timeout=5, max_hours=0.0)
+    import os
+    before = os.umask(0o022); os.umask(before)
     with pytest.raises(OSError):
         ei.serve(args)
     assert asked == []
+    after = os.umask(0o022); os.umask(after)
+    assert after == before  # the restrictive socket umask never leaks

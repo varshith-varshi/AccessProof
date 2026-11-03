@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apps.api.accessproof_api.config import settings
+from apps.api.accessproof_api.identity_resolution import is_guid, reconcile_microsoft_bindings
 from apps.api.accessproof_api.db import (
     GuardEffectiveAccess,
     GuardGroup,
@@ -26,6 +27,12 @@ from connectors.directory import (
     MicrosoftEntraDirectoryAdapter,
 )
 from packages.connector_sdk.base import AuthenticationError, AuthorizationError, ProviderUnavailableError, RateLimitError
+
+
+def _microsoft_tenant(credentials: dict[str, Any]) -> str | None:
+    """The tenant these source credentials are bound to, or None."""
+    value = str(credentials.get("tenant_id") or credentials.get("tenant_hint") or "").strip().lower()
+    return value if is_guid(value) else None
 
 
 def _now() -> datetime:
@@ -146,18 +153,31 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
     identity_map_changed = False
     subjects: dict[str, GuardSubject] = {}
     changed_subjects: dict[str, GuardSubject] = {}
-    for user in users:
-        subject = db.scalar(select(GuardSubject).where(
+    # One query for the whole directory (was one query per user).
+    known_subjects = {
+        row.provider_subject_id: row for row in db.scalars(select(GuardSubject).where(
             GuardSubject.organization_id == source.organization_id,
             GuardSubject.provider == provider,
-            GuardSubject.provider_subject_id == user.provider_id,
         ))
+    }
+    microsoft_tenant = _microsoft_tenant(credentials) if provider == "microsoft365" else None
+    for user in users:
+        subject = known_subjects.get(user.provider_id)
         if subject is None:
             subject = GuardSubject(organization_id=source.organization_id, provider=provider, provider_subject_id=user.provider_id)
             db.add(subject)
+            known_subjects[user.provider_id] = subject
         if subject.id is not None and subject.status != user.status:
             changed_subjects[subject.id] = subject
         subject.display_name, subject.primary_email, subject.status, subject.last_synced_at = user.display_name, user.email, user.status, now
+        if provider == "microsoft365":
+            # Directory provenance for automatic identity binding: the tenant
+            # these source credentials read the account from, member vs guest.
+            if (subject.provider_tenant_id and microsoft_tenant
+                    and subject.provider_tenant_id != microsoft_tenant):
+                raise DirectorySyncError("DIRECTORY_TENANT_CONFLICT")
+            subject.provider_tenant_id = microsoft_tenant
+            subject.account_kind = user.account_kind
         if provider == "google-drive" and settings.env == "production":
             resolved_id = verified_user_permission_ids.get(user.provider_id)
             identity_map_changed |= subject.drive_permission_id != resolved_id
@@ -165,10 +185,7 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
         subjects[user.provider_id] = subject
     # This is a full, paginated provider snapshot. A previously known account
     # absent from a completed snapshot must not keep authorization indefinitely.
-    for prior_subject in db.scalars(select(GuardSubject).where(
-        GuardSubject.organization_id == source.organization_id,
-        GuardSubject.provider == provider,
-    )):
+    for prior_subject in list(known_subjects.values()):
         if prior_subject.provider_subject_id not in subjects:
             if prior_subject.status != "removed":
                 changed_subjects[prior_subject.id] = prior_subject
@@ -179,12 +196,14 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
     for changed_subject in changed_subjects.values():
         _queue_subject_status_refresh(db, source, provider, changed_subject, now)
     group_rows: dict[str, GuardGroup] = {}
-    for directory_group in groups:
-        group_row = db.scalar(select(GuardGroup).where(
+    known_groups = {
+        row.provider_group_id: row for row in db.scalars(select(GuardGroup).where(
             GuardGroup.organization_id == source.organization_id,
             GuardGroup.provider == provider,
-            GuardGroup.provider_group_id == directory_group.provider_id,
         ))
+    }
+    for directory_group in groups:
+        group_row = known_groups.get(directory_group.provider_id)
         if group_row is None and provider == "google-drive" and settings.env == "production":
             # The ACL may have arrived before Workspace group enumeration.
             # Adopt only a pending entry bound to the *provider-confirmed*
@@ -260,6 +279,7 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
                 _queue_membership_events(db, source, provider, prior_group, subject, "membership_revoke", now)
             membership_row.active = False
             membership_row.updated_at = now
+    subjects_by_id = {row.id: row for row in known_subjects.values()}
     memberships = 0
     for group_id, member_ids in members.items():
         active_group = group_rows[group_id]
@@ -287,7 +307,7 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
                 _queue_membership_events(db, source, provider, active_group, subject, "membership_upsert", now)
             memberships += 1
         for membership_row in existing:
-            subject = db.get(GuardSubject, membership_row.subject_id)
+            subject = subjects_by_id.get(membership_row.subject_id) or db.get(GuardSubject, membership_row.subject_id)
             if subject and subject.provider_subject_id not in present:
                 if membership_row.active:
                     _queue_membership_events(db, source, provider, active_group, subject, "membership_revoke", now)
@@ -342,7 +362,15 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
     # monotonic successful revision so restarts and operator diagnostics have
     # durable evidence without pretending a provider delta token exists.
     cursor.last_provider_revision = now.isoformat()
-    return {"users": len(users), "groups": len(groups), "memberships": memberships}
+    result: dict[str, Any] = {"users": len(users), "groups": len(groups), "memberships": memberships}
+    if provider == "microsoft365":
+        if microsoft_tenant is None:
+            # No authoritative tenant: no automatic binding (fail closed).
+            result["automatic_identity_resolution"] = "TENANT_UNKNOWN"
+        else:
+            result["automatic_identity_resolution"] = reconcile_microsoft_bindings(
+                db, source, microsoft_tenant, now=now).as_dict()
+    return result
 
 
 def _queue_subject_status_refresh(

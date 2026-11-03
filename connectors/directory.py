@@ -33,6 +33,9 @@ class DirectoryUser:
     display_name: str | None
     email: str | None
     status: str
+    # "member" | "guest" | "unknown". Only Microsoft classifies accounts; an
+    # unclassifiable account is never eligible for automatic identity binding.
+    account_kind: str = "member"
 
 
 @dataclass(frozen=True)
@@ -227,7 +230,7 @@ class MicrosoftEntraDirectoryAdapter(_DirectoryClient):
         result: list[DirectoryUser] = []
         async for page in self._pages(
             f"{self.API}/users",
-            params={"$select": "id,displayName,mail,userPrincipalName,accountEnabled", "$top": "999"},
+            params={"$select": "id,displayName,mail,userPrincipalName,accountEnabled,userType", "$top": "999"},
         ):
             for user in self._entries(page):
                 identifier = user.get("id")
@@ -237,8 +240,23 @@ class MicrosoftEntraDirectoryAdapter(_DirectoryClient):
                 result.append(DirectoryUser(
                     identifier, user.get("displayName"), user.get("mail") or user.get("userPrincipalName"),
                     "active" if enabled else "disabled",
+                    self._account_kind(user),
                 ))
         return result
+
+    @staticmethod
+    def _account_kind(user: dict[str, Any]) -> str:
+        """Member vs B2B guest. A guest's object in this tenant is not its home
+        identity, so guests are never automatically bound (deny; admin exception).
+        userType is null only for some legacy member accounts; a guest UPN
+        always carries #EXT#, so null + no #EXT# is a member."""
+        kind = user.get("userType")
+        upn = str(user.get("userPrincipalName") or "")
+        if kind == "Guest" or "#EXT#" in upn.upper():
+            return "guest"
+        if kind == "Member" or (kind is None and upn):
+            return "member"
+        return "unknown"
 
     async def groups(self) -> list[DirectoryGroup]:
         result: list[DirectoryGroup] = []

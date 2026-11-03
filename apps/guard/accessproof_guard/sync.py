@@ -44,10 +44,12 @@ class GuardSyncClient:
         response = self.client.get(
             f"{self.credentials.control_plane_url.rstrip('/')}/api/v1/guards/{self.credentials.guard_id}/policies",
             headers=self._headers,
-            params={"after_version": self.cache.version(), "full_snapshot": str(full_snapshot).lower()},
+            params={"after_version": self.cache.version(), "full_snapshot": str(full_snapshot).lower(),
+                    **({"identity_version": known} if (known := self.cache.reusable_identity_version()) else {})},
         )
         response.raise_for_status()
         data = response.json()
+        data["_identity_version_sent"] = known
         if not isinstance(data, dict) or not isinstance(data.get("version"), int):
             raise ValueError("Invalid policy synchronization response")
         return data
@@ -100,7 +102,14 @@ class GuardSyncClient:
                 binding.get("source_acl_healthy"), bool
             ):
                 raise ValueError("SOURCE_ACL_HEALTH_REQUIRED")
-        if not isinstance(mappings, list):
+        identity_unchanged = (
+            payload.get("identity_mappings_unchanged") is True
+            and isinstance(payload.get("_identity_version_sent"), str)
+            and payload.get("identity_version") == payload.get("_identity_version_sent")
+        )
+        if identity_unchanged:
+            mappings = None  # keep the installed verified set (bounded by the forced refresh)
+        elif not isinstance(mappings, list):
             raise ValueError("MISSING_IDENTITY_MAPPINGS")
         revisions = payload.get("authorization_revisions")
         if revisions is not None and not isinstance(revisions, list):
@@ -108,7 +117,8 @@ class GuardSyncClient:
         # Validate authorization and identity snapshots before any policy
         # mutation or ACK. A malformed revision cannot leave a newer ALLOW
         # installed with an older or rejected authorization boundary.
-        self.cache.validate_identity_mappings(mappings)
+        if mappings is not None:
+            self.cache.validate_identity_mappings(mappings)
         if revisions is not None:
             self.cache.validate_authorization_revisions(revisions)
         full = payload.get("kind") == "full"
@@ -125,6 +135,7 @@ class GuardSyncClient:
             version, decisions, full_snapshot=full, applications=bindings,
             mappings=mappings, revisions=revisions,
             ack_versions=versions if version > self.cache.version() else [],
+            identity_version=payload.get("identity_version") if isinstance(payload.get("identity_version"), str) else None,
         )
         # Do not lose an installed ACK if the HTTP request, the API, or the
         # Guard process crashes after the SQLite commit. Pending versions are

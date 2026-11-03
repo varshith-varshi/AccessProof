@@ -247,8 +247,10 @@ def serve(args) -> int:
 
     sock_path.unlink(missing_ok=True)
     old = os.umask(0o177)
-    server = socketserver.UnixStreamServer(str(sock_path), Handler)
-    os.umask(old)
+    try:
+        server = socketserver.UnixStreamServer(str(sock_path), Handler)
+    finally:
+        os.umask(old)  # never leak the restrictive umask, even on failure
     # The socket is bound BEFORE anyone is asked to sign in, so a local
     # failure can never waste a completed employee sign-in.
     session.auth_code_sign_in(timeout_s=args.signin_timeout) if args.flow == "auth-code" else session.device_sign_in()
