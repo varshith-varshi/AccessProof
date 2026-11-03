@@ -357,3 +357,15 @@ def test_large_identity_envelope_is_gzipped_and_intact(lab):
     assert plain.headers.get("content-encoding") is None
     assert len(zipped.json()["identity_mappings"]) == 1000 == len(plain.json()["identity_mappings"])
     assert other.headers.get("content-encoding") is None
+
+
+def test_reconciliation_is_audited_without_personal_data(lab):
+    from apps.api.accessproof_api.db import AuditEvent
+    db, org, source = lab
+    _sync(db, source)
+    _sync(db, source)                       # unchanged: no new audit row
+    events = list(db.scalars(select(AuditEvent).where(AuditEvent.organization_id == org.id,
+                                                       AuditEvent.action == "identity_resolution.reconciled")))
+    assert len(events) == 1
+    meta = events[0].metadata_json
+    assert '"created": 2' in meta and ALICE not in meta and "alice" not in meta and T not in meta

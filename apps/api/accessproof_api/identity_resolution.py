@@ -29,6 +29,7 @@ Fail-closed rules:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,7 +38,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from apps.api.accessproof_api.db import GuardIdentityMapping, GuardSubject, SourceConnection
+from apps.api.accessproof_api.db import AuditEvent, GuardIdentityMapping, GuardSubject, SourceConnection
 
 AUTOMATIC_METHOD = "directory_verified"
 MICROSOFT_PROVIDERS = {"microsoft365", "sharepoint", "onedrive"}
@@ -131,7 +132,26 @@ def reconcile_microsoft_bindings(db: Session, source: SourceConnection, tenant_i
     if new_rows:
         db.add_all(new_rows)
     db.flush()
+    _audit_reconciliation(db, source, result)
     return result
+
+
+def _audit_reconciliation(db: Session, source: SourceConnection, result: ResolutionResult) -> None:
+    """Audit every state change (counts only; no names, emails or object ids).
+
+    Each conflict gets its own event so an administrator can investigate it.
+    An unchanged reconciliation writes nothing."""
+    if result.created or result.reverified or result.suspended or result.conflicts:
+        summary = result.as_dict()
+        db.add(AuditEvent(organization_id=source.organization_id, actor_user_id=None,
+                          action="identity_resolution.reconciled", target_type="source", target_id=source.id,
+                          metadata_json=json.dumps({k: v for k, v in summary.items() if k != "tenant_id"},
+                                                   sort_keys=True)))
+    for mapping_id in result.conflicts:
+        db.add(AuditEvent(organization_id=source.organization_id, actor_user_id=None,
+                          action="identity_mapping.conflict_detected", target_type="identity_mapping",
+                          target_id=mapping_id, metadata_json=json.dumps({"source_id": source.id,
+                                                                          "method": "directory_reconciliation"})))
 
 
 def _reconcile_existing(row: GuardIdentityMapping, subject: GuardSubject, ok: bool,
