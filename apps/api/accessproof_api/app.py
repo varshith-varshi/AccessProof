@@ -3206,6 +3206,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     checks.append({"code": "PERMISSION_SOURCE_CONFIGURED", "ok": source_credentials_ok, "reason": None if source_credentials_ok else "Connect a permission source with valid, approved credentials."})
     checks.append({"code": "PERMISSION_SOURCE_TRUSTED", "ok": source_connected, "reason": None if source_connected else "Connect and validate a permission source."})
     microsoft_preview = bool(source and source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"})
+    microsoft_certified = False
     if microsoft_preview:
         # Per-source eligibility. No public API issues these certificates:
         # this cannot be satisfied with mock Graph responses, an admin toggle
@@ -3221,6 +3222,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
         except Exception:
             # Encryption backend/key failures are never positive ACL proof.
             certified = False
+        microsoft_certified = certified
         checks.append({
             "code": "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
             "ok": certified,
@@ -3287,10 +3289,15 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     # Only accept its authenticated healthy heartbeat as a configuration
     # signal. Actual token verification is tested separately in the pilot.
     # A Guard heartbeat is not evidence that Alice/Bob legitimately signed in
-    # through production Entra issuer/JWKS. Microsoft remains blocked until a
-    # separate provider-live identity verifier exists; never infer it from health.
+    # through production Entra issuer/JWKS; never infer it from health. For
+    # Microsoft sources that evidence is the independently signed source
+    # certificate for this exact scope: it cannot be issued unless real
+    # EMPLOYEE_OIDC_POSITIVE_IDENTITY / EMPLOYEE_OIDC_SECOND_IDENTITY /
+    # IDENTITY_MAPPING_IMMUTABLE_OBJECT_ID checks passed (D-18: previously no
+    # Microsoft source could ever satisfy this check, certified or not).
     oidc_ok = (settings.env != "production" or (
-        not microsoft_preview and bool(guard and guard.health == "healthy" and heartbeat_ok)
+        (not microsoft_preview or microsoft_certified)
+        and bool(guard and guard.health == "healthy" and heartbeat_ok)
     ))
     checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok,
                    "reason": None if oidc_ok else "Real employee Entra issuer/JWKS identity verification remains incomplete; a healthy Guard alone is not sufficient."})

@@ -9,7 +9,7 @@ import json
 from sqlalchemy import select
 from apps.api.accessproof_api.db import (
     Base, engine, SessionLocal, Organization, Project, SourceConnection,
-    SourceEffectiveCertification, AIApplication,
+    SourceEffectiveCertification, AIApplication, GuardRegistration,
 )
 from apps.api.accessproof_api import app as api_module
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -101,10 +101,29 @@ def test_signed_certification_requires_exact_profile_source_and_fresh_evidence(m
         released = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
         assert released["V1_PROVIDER_SCOPE"] is True
         assert released["CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"] is False
+        # D-18: a certificate alone never satisfies employee OIDC readiness;
+        # a healthy, heartbeating Guard is also required ...
+        assert released["PRODUCTION_OIDC_READY"] is False
+        guard = GuardRegistration(organization_id=org.id, name="certified-guard", status="enrolled",
+                                  health="healthy", enrolled_at=datetime.now(timezone.utc),
+                                  last_heartbeat_at=datetime.now(timezone.utc))
+        db.add(guard)
+        db.flush()
+        app_row.guard_id = guard.id
+        with_guard = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
+        # ... and with both, a certified SharePoint source CAN become OIDC-ready
+        # (previously impossible for any Microsoft source).
+        assert with_guard["PRODUCTION_OIDC_READY"] is True
+        guard.health = "degraded"
+        assert {c["code"]: c["ok"] for c in api_module._automatic_activation_checklist(db, app_row)}["PRODUCTION_OIDC_READY"] is False
+        guard.health = "healthy"
         cert.signature = "ed25519:certifier-test:" + "A" * 86
         tampered = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
         assert tampered["V1_PROVIDER_SCOPE"] is False
         assert tampered["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"] is False
+        # Without a valid certificate, a healthy Guard never makes Microsoft OIDC-ready.
+        assert tampered["PRODUCTION_OIDC_READY"] is False
+        app_row.guard_id = None
         # Restore the original synthetic proof for the remaining tamper tests.
         source.provider = "microsoft365"
         profile, digest = _source_scope(source, credentials)
