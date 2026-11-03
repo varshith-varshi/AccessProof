@@ -90,3 +90,18 @@ Lab changes: synthetic group `AP-Lab-Group-Finance-Readers` (alice), `group_fina
 | Tests | SQLite 1460 tests: 0 failed, 10 skipped. PostgreSQL 17 as `accessproof_app` (r25 tree): 1455 tests, 0 failed, 4 skipped |
 | D-20 live | forged employee token via lab Gateway: before 503 GUARD_REQUEST_FAILED, after 401 IDENTITY_REJECTED; 0 model calls both times |
 | DB role | still owner `accessproof` (switch awaits an explicit operator "approved") |
+
+## Update 19:10 UTC — r27 and r28 deployed (automatic identity resolution, D-22, D-23)
+| Release | Commit | Deploy SSM | DB | Notes |
+|---|---|---|---|---|
+| `r27-auto-identity-c5758058756b` | `c575805` | `9e823c69-…` | `w7a8b9c0d1e2` | automatic directory-verified identity resolution, migration w7 (rehearsed incl. rollback w7→v6f7 under `accessproof_app`) |
+| `r28-revocation-delta-0357b5c6107e` | `0357b5c` | (ship 19:05Z) | `w7a8b9c0d1e2` | D-23 Graph sharing-change delta, reconciliation audit, gzip Guard envelope; rehearsed (probe 23/23) |
+
+Tests at r28: SQLite 1492 tests, 0 failed, 10 skipped; PostgreSQL 17 as `accessproof_app` 1492 tests, 0 failed, 4 skipped.
+
+Live (lab tenant, production control plane):
+* The 18:18:33Z directory sync created VERIFIED `directory_verified` bindings for Alice and Bob automatically; manual mapping API calls: 0.
+* Layer 1 Guard matrix 10/10, including the group and inherited fixtures.
+* SharePoint's own effective-permission matrix 10/10; AccessProof agrees on every cell.
+* Protected RAG E2E-01..06, 10, 11: 8/8 pass after the D-22 Guard fix; model-context witness shows denied documents never reached the model.
+* Revocation A **FAILED before D-23** (no detection in ~26 min); fixed in r28 and to be re-measured.
