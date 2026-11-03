@@ -95,11 +95,42 @@ _machine_settings = _effective_machine_settings()
 control_plane_url = _machine_settings.get("control_plane_url")
 guard_id = _machine_settings.get("guard_id")
 guard_credential = _machine_settings.get("credential")
-issuer = issuer or _machine_settings.get("issuer")
-audience = audience or _machine_settings.get("audience")
-identity_mode = _machine_settings.get("identity_mode", identity_mode)
-expected_tenant = expected_tenant or _machine_settings.get("tenant_id")
-subject_claim = _machine_settings.get("subject_claim", subject_claim)
+
+
+def _resolve_identity_settings(env: Any, saved: dict[str, str]) -> dict[str, str | None]:
+    """One precedence rule for every employee-identity setting (D-16).
+
+    An explicitly set environment value wins, then the enrollment record, then
+    the default. Previously issuer/audience/tenant followed that rule but
+    subject_claim and identity_mode let the enrollment file override the
+    environment, so an operator configuring the immutable Entra ``oid`` claim
+    silently kept the pairwise ``sub`` claim.
+    """
+    def pick(env_key: str, saved_key: str, default: str | None = None) -> str | None:
+        value = env.get(env_key)
+        if value:
+            return value
+        value = saved.get(saved_key)
+        return value if value else default
+
+    has_static_key = bool(env.get("ACCESSPROOF_GUARD_JWT_VERIFICATION_KEY"))
+    resolved_mode = pick("ACCESSPROOF_GUARD_IDENTITY_MODE", "identity_mode",
+                         "static" if has_static_key else "oidc")
+    return {
+        "issuer": pick("ACCESSPROOF_GUARD_JWT_ISSUER", "issuer"),
+        "audience": pick("ACCESSPROOF_GUARD_JWT_AUDIENCE", "audience"),
+        "tenant_id": pick("ACCESSPROOF_GUARD_IDENTITY_TENANT_ID", "tenant_id"),
+        "subject_claim": pick("ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM", "subject_claim", "sub"),
+        "identity_mode": (resolved_mode or "oidc").lower(),
+    }
+
+
+_identity_settings = _resolve_identity_settings(os.environ, _machine_settings)
+issuer = _identity_settings["issuer"]
+audience = _identity_settings["audience"]
+identity_mode = str(_identity_settings["identity_mode"])
+expected_tenant = _identity_settings["tenant_id"]
+subject_claim = str(_identity_settings["subject_claim"])
 guard_version = os.getenv("ACCESSPROOF_GUARD_VERSION", "0.1.0")
 # Security presence is deliberately independent from the policy/audit loop.
 # A one-second target is not a hard real-time guarantee over unreliable networks.
