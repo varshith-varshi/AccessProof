@@ -155,3 +155,36 @@ def test_host_scripts_share_one_release_lock(name):
     s = (REL_DIR / name).read_text()
     assert "exec 9>>/home/ubuntu/accessproof-releases/.release.lock" in s
     assert "flock -n 9" in s
+
+
+def _extract_function(script: str, name: str) -> str:
+    start = script.index(f"{name}() {{")
+    end = script.index("\n}\n", start) + 3
+    return script[start:end]
+
+
+def test_least_privilege_first_run_does_not_abort_on_missing_passwords(tmp_path):
+    """D-14: on a FIRST switch .env has no role passwords; grep exits 1 and,
+    under `set -Eeuo pipefail`, `current=$(existing app)` aborted the script
+    (rehearsal 2026-11-03, SSM 1376ff17-…). Run the real function and call."""
+    s = (REL_DIR / "enable_least_privilege_db.sh").read_text()
+    func = _extract_function(s, "existing")
+    call = next(line.strip() for line in s.splitlines() if "current=$(existing" in line)
+    env = tmp_path / ".env"
+    env.write_text("POSTGRES_PASSWORD=owner\nSESSION_HMAC_KEY=x\n")
+    snippet = (
+        f"set -Eeuo pipefail\nAPP_DIR={tmp_path}\n{func}\n"
+        f"for role in app worker metrics; do {call}; echo \"$role=[$current]\"; done\n"
+    )
+    r = subprocess.run(["bash", "-c", snippet], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["app=[]", "worker=[]", "metrics=[]"]
+
+    # Re-run (idempotent path): existing passwords are reused, not rotated.
+    env.write_text(
+        "ACCESSPROOF_APP_DB_PASSWORD=a1\nACCESSPROOF_WORKER_DB_PASSWORD=w1\n"
+        "ACCESSPROOF_METRICS_DATABASE_URL=postgresql+psycopg://accessproof_metrics:m1@db:5432/accessproof\n"
+    )
+    r = subprocess.run(["bash", "-c", snippet], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["app=[a1]", "worker=[w1]", "metrics=[m1]"]

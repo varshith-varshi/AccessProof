@@ -91,7 +91,8 @@ existing() {  # <role> -> current password from .env, or empty
 }
 for role in app worker metrics; do
   rm -f "$SECRETS/$role.pw"
-  current=$(existing "$role")
+  # No match (first switch) must not trip `set -e`/pipefail: grep exits 1.
+  current=$(existing "$role") || current=""
   if [[ -n "$current" ]]; then printf '%s\n' "$current" > "$SECRETS/$role.pw"; log "$role: reusing existing password"
   else openssl rand -hex 32 > "$SECRETS/$role.pw"; log "$role: generated new password"; fi
 done
@@ -99,7 +100,7 @@ chown 10001:10001 "$SECRETS" "$SECRETS"/*.pw; chmod 500 "$SECRETS"; chmod 400 "$
 # Read ONLY the owner password (never source .env: exported values would
 # override .env during later compose interpolation). Passed via the
 # environment (-e NAME), never in argv.
-POSTGRES_PASSWORD=$(grep -E '^POSTGRES_PASSWORD=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- | sed -E "s/^['\"]//; s/['\"]$//")
+POSTGRES_PASSWORD=$(grep -E '^POSTGRES_PASSWORD=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- | sed -E "s/^['\"]//; s/['\"]$//") || POSTGRES_PASSWORD=""
 [[ -n "$POSTGRES_PASSWORD" ]] || { log "POSTGRES_PASSWORD missing from .env"; false; }
 export DATABASE_URL="postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof"
 compose run --rm --no-deps -T -v "$SECRETS:/run/db-roles:ro" -e DATABASE_URL api \
