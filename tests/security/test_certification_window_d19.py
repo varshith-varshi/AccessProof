@@ -97,3 +97,40 @@ def test_window_still_requires_fresh_policy(guard):
     cache.db.commit()
     r = _filter(client, token("alice"))
     assert r.status_code == 503 and r.json()["detail"] == "POLICY_SYNC_STALE"
+
+
+def _layer2(client, tok, decision_id, request_id, used):
+    return client.post("/guard/v1/check-output", headers={"Authorization": f"Bearer {tok}"}, json={
+        "decision_id": decision_id, "application_id": "ms-rag", "request_id": request_id,
+        "used_resource_ids": used, "provenance": [{"source_resource_ids": used}]})
+
+
+def test_d22_window_releases_authorized_answer_at_layer2(guard):
+    _, cache, client, token = guard
+    cache.set_application_bindings([_binding()])
+    l1 = _filter(client, token("alice"), "rel-1").json()
+    assert l1["decision"] == "allow"
+    l2 = _layer2(client, token("alice"), l1["decision_id"], "rel-1", ["finance"])
+    assert l2.status_code == 200 and l2.json()["decision"] == "allow", l2.json()
+
+
+def test_d22_window_still_blocks_revocation_between_layers(guard):
+    _, cache, client, token = guard
+    cache.set_application_bindings([_binding()])
+    l1 = _filter(client, token("alice"), "rel-2").json()
+    assert l1["decision"] == "allow"
+    cache.install(2, [{"subject_id": "alice", "source_id": "src-ms", "resource_id": "finance",
+                       "scope": "read", "decision": "deny"}], full_snapshot=True)
+    cache.mark_sync_success()
+    l2 = _layer2(client, token("alice"), l1["decision_id"], "rel-2", ["finance"]).json()
+    assert l2["decision"] == "block" and l2["reason"] == "LAYER2_ACCESS_REVOKED"
+
+
+def test_d22_window_closing_between_layers_blocks_release(guard):
+    _, cache, client, token = guard
+    cache.set_application_bindings([_binding()])
+    l1 = _filter(client, token("alice"), "rel-3").json()
+    cache.set_application_bindings([_binding(certification_window=False)])
+    l2 = _layer2(client, token("alice"), l1["decision_id"], "rel-3", ["finance"])
+    # Without the window an uncertified source fails closed (503 at the mode check, or a block).
+    assert l2.status_code == 503 or l2.json()["decision"] == "block"

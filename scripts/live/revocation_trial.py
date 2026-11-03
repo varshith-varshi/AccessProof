@@ -30,6 +30,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -61,6 +62,12 @@ RECOVERY = Path.home() / ".config/accessproof/revocation-recovery.json"
 TRIALS = {"A": "finance_alice.txt", "B": "group_finance_alice.txt",
           "C": "inherited_finance_alice.txt", "D": "delete_canary_alice.txt"}
 G = fx.G
+
+
+# Which served token the Guard receives: "api_token" (delegated API access token,
+# the production contract) or "id_token" (interim, before the API scope is consented).
+TOKEN_KIND = os.environ.get("AP_TOKEN_KIND", "api_token")
+assert TOKEN_KIND in {"api_token", "id_token"}
 
 
 def now() -> str:
@@ -232,7 +239,7 @@ class Trial:
                 ts["t3_revision_updated"] = now()
             if ts["t3_revision_updated"] and ts["t4_guard_acknowledged"] is None and guard_revision() == rev:
                 ts["t4_guard_acknowledged"] = now()
-            d = guard_decision(ei.fetch(self.sock, "api_token"), self.provider_resource() if self.letter != "D" else item)
+            d = guard_decision(ei.fetch(self.sock, TOKEN_KIND), self.provider_resource() if self.letter != "D" else item)
             decisions.append({"at": now(), "decision": d})
             if d == want:
                 ts["t5_first_decision"] = ts["t5_first_decision"] or now()
@@ -276,7 +283,7 @@ def main() -> int:
             return 1
     item = t.item_id()
     baseline = {"alice_direct": t.alice_direct(item) if a.trial != "D" else "n/a",
-                "guard": guard_decision(ei.fetch(a.socket, "api_token"), item),
+                "guard": guard_decision(ei.fetch(a.socket, TOKEN_KIND), item),
                 "accessproof_allows": ap_effective_allows(t.doc), "revision": ap_revision()}
     print(json.dumps({"trial": a.trial, "document": t.doc, "baseline": baseline, "execute": a.execute}))
     if not a.execute:

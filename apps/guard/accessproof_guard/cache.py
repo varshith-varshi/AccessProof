@@ -688,12 +688,15 @@ class PolicyCache:
                 if len(rows) != len(decision_ids):
                     return "invalid"
                 binding = self.db.execute(
-                    "SELECT source_id, mode, source_acl_healthy FROM bound_applications "
+                    "SELECT source_id, mode, source_acl_healthy, certification_window FROM bound_applications "
                     "WHERE application_id=?", (application_id,),
                 ).fetchone()
                 if not binding or binding[0] != source_id or binding[1] != expected_mode:
                     return "invalid"
-                if expected_mode == "protect" and not binding[2]:
+                # D-22: honour the same control-plane certification window as
+                # Layer 1 (D-19), read in this atomic transaction. Revision and
+                # per-resource re-decisions below still apply unchanged.
+                if expected_mode == "protect" and not binding[2] and not binding[3]:
                     return "revoked"
                 if expected_mode == "protect" and self.authorization_revisions_received():
                     current = self.authorization_revision(application_id)

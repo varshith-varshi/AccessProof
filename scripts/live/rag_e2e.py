@@ -20,6 +20,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -92,6 +93,12 @@ except urllib.error.HTTPError as e:
 '''
 
 
+# Which served token the Guard receives: "api_token" (delegated API access token,
+# the production contract) or "id_token" (interim, before the API scope is consented).
+TOKEN_KIND = os.environ.get("AP_TOKEN_KIND", "api_token")
+assert TOKEN_KIND in {"api_token", "id_token"}
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -141,7 +148,7 @@ def judge(expected: str, doc: str, s: dict) -> bool:
 
 
 def run_check(cid, actor, question, expected, doc, socks) -> dict:
-    token = ei.fetch(socks[actor], "api_token")
+    token = ei.fetch(socks[actor], TOKEN_KIND)
     start, t = witness_lines(), now()
     resp = exec_in_rag(_CALL, {"q": Q[question], "t": token})
     time.sleep(1)
@@ -152,7 +159,7 @@ def run_check(cid, actor, question, expected, doc, socks) -> dict:
 
 
 def guard_unavailable(socks) -> dict:
-    token = ei.fetch(socks["alice"], "api_token")
+    token = ei.fetch(socks["alice"], TOKEN_KIND)
     subprocess.run(["docker", "stop", "-t", "5", GUARD], check=True, capture_output=True)
     try:
         start, t = witness_lines(), now()
@@ -167,7 +174,7 @@ def guard_unavailable(socks) -> dict:
 
 
 def invalid_provenance(socks) -> dict:
-    token = ei.fetch(socks["alice"], "api_token")
+    token = ei.fetch(socks["alice"], TOKEN_KIND)
     start, t = witness_lines(), now()
     resp = exec_in_rag(_TAMPER, {"q": Q["finance"], "t": token, "doc": "finance_alice.txt"})
     s = summarize(resp, witness_since(start))
