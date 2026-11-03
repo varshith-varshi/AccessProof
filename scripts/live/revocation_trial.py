@@ -51,6 +51,22 @@ def _load(name: str):
 
 ei = _load("employee_identity")
 fx = _load("sharepoint_fixtures")
+sem = _load("sharepoint_effective_matrix")
+
+
+def sharepoint_effective_view(document: str, actor: str = "alice") -> bool:
+    """SharePoint's own verdict (GetUserEffectivePermissions) for this employee."""
+    import asyncio
+    people = json.loads((Path.home() / ".config/accessproof/sharepoint-rest-validation/synthetic-verified-employees.json").read_text())
+    items = sem.list_items()
+    if document not in items:
+        return False  # deleted: nothing to view
+    saved = sem.EXPECTED
+    try:
+        sem.EXPECTED = {actor: {document: True}}
+        return bool(asyncio.run(sem.effective(items, people))[0]["sharepoint_effective_view"])
+    finally:
+        sem.EXPECTED = saved
 
 ORG = "48ee8c86-d4d8-4cde-b00b-bc779f965f4f"
 SOURCE = "2fa9562b-b765-4098-bebf-222ea53ec667"
@@ -226,11 +242,12 @@ class Trial:
         end = time.monotonic() + budget_s
         while time.monotonic() < end and ts["t6_stable_decision"] is None:
             if ts["t1_source_confirmed"] is None:
+                # SharePoint's own effective-permission verdict for Alice (not a
+                # scope-limited delegated read, which could look like DENY: D-21).
                 grant_holder = {"A": item, "C": self.state.get("subfolder_id")}.get(self.letter)
                 listed = self._grant_on(grant_holder) is not None if grant_holder else None
-                direct = self.alice_direct(item) if self.letter != "D" else ("DENY" if self.http.get(
-                    f"{G}/drives/{self.drive}/items/{item}", headers=self.lab.h).status_code == 404 else "ALLOW")
-                if direct == provider_ok and listed in (None, want == "ALLOW"):
+                view = sharepoint_effective_view(self.doc)
+                if ("ALLOW" if view else "DENY") == provider_ok and listed in (None, want == "ALLOW"):
                     ts["t1_source_confirmed"] = now()
             if ts["t2_accessproof_detected"] is None and ap_effective_allows(self.doc) == (want == "ALLOW"):
                 ts["t2_accessproof_detected"] = now()
@@ -282,13 +299,13 @@ def main() -> int:
             print("deletion canary never became ALLOW; aborting", file=sys.stderr)
             return 1
     item = t.item_id()
-    baseline = {"alice_direct": t.alice_direct(item) if a.trial != "D" else "n/a",
+    baseline = {"sharepoint_effective_view": sharepoint_effective_view(t.doc),
                 "guard": guard_decision(ei.fetch(a.socket, TOKEN_KIND), item),
                 "accessproof_allows": ap_effective_allows(t.doc), "revision": ap_revision()}
     print(json.dumps({"trial": a.trial, "document": t.doc, "baseline": baseline, "execute": a.execute}))
     if not a.execute:
         return 0
-    if baseline["guard"] != "ALLOW":
+    if baseline["guard"] != "ALLOW" or not baseline["sharepoint_effective_view"]:
         print("baseline is not ALLOW through the Guard; refusing to revoke", file=sys.stderr)
         return 1
     result = {"schema": "accessproof.revocation_trial/v1", "trial": a.trial, "document": t.doc,
