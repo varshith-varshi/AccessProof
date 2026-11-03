@@ -1,0 +1,8 @@
+# Full suite on PostgreSQL 17 (disposable container postgres:17-alpine, 127.0.0.1 only), 2026-11-03
+tree: 7b92a45 (r25 application code + test-stub fix)
+schema: alembic upgrade head as owner -> v6f7a8b9c0d1 (all migrations applied cleanly)
+roles: scripts/provision_database_roles.py -> accessproof_app / accessproof_rls_admin / accessproof_metrics:
+       superuser=false, bypassrls=false, owns_tables=false, tenant_tables_checked=58 (each verified by connecting as the role)
+run: API requests as accessproof_app, worker SessionLocal as accessproof_rls_admin, schema resets as owner
+result: 1455 tests, 0 failures, 0 errors, 4 skipped (333.9 s)
+container and generated passwords deleted after the run

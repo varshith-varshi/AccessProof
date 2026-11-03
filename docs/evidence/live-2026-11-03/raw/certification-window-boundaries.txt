@@ -1,0 +1,17 @@
+# D-19 certification-window boundary tests, 2026-11-03 ~15:40 UTC (lab Guard r25 image, production r25 control plane)
+# Binding at the time: sharepoint-rag-staging mode=protect source_acl_healthy=0 certification_window=1; identity_mappings=0
+# Guard /guard/v1/filter-resources, well-formed body (application sharepoint-rag-staging, source 2fa9562b-...):
+missing Authorization                      -> 401 IDENTITY_TOKEN_INVALID
+non-bearer scheme                          -> 401 IDENTITY_TOKEN_INVALID
+forged RS256 (attacker key, Alice oid)     -> 401 IDENTITY_TOKEN_INVALID
+forged, wrong tenant                       -> 401 IDENTITY_TOKEN_INVALID
+forged, wrong audience (AccessProof app)   -> 401 IDENTITY_TOKEN_INVALID
+forged, expired                            -> 401 IDENTITY_TOKEN_INVALID
+alg=none                                   -> 401 IDENTITY_TOKEN_INVALID
+unbound application                        -> 403 APPLICATION_NOT_BOUND
+wrong source for app                       -> 403 APPLICATION_SOURCE_MISMATCH
+# Gateway POST /v1/chat/completions with a REAL currently-valid signed chunk (finance_alice.txt), from inside the RAG container:
+no token      -> 401 IDENTITY_TOKEN_REQUIRED
+forged token  -> 503 GUARD_REQUEST_FAILED  (defect D-20: identity rejection reported as outage; fixed in de09f0a -> 401 IDENTITY_REJECTED)
+model calls during both Gateway requests (context witness): 0
+# Guard /health during the window: ready=false, certification_window=true; Gateway /health/ready: 503 GUARD_NOT_READY
