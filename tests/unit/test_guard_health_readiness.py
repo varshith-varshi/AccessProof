@@ -27,6 +27,7 @@ def test_guard_health_tracks_policy_readiness(
         authorization_revisions_received=lambda: False,
         all_protect_revisions_present=lambda: True,
         version=lambda: policy_version,
+        certification_window=lambda application_id: False,  # D-19 interface; no window here
     )
     monkeypatch.setattr(guard_app, "cache", fake_cache)
     monkeypatch.setattr(guard_app, "control_plane_url", "http://control-plane.invalid")
