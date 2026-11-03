@@ -39,8 +39,12 @@
    "observed_behavior": "Root-site METADATA is readable (200) under Sites.Selected; its content is not. AccessProof's grant on the lab site is 'fullcontrol', and a second 'fullcontrol' grant exists for first-party app c94a1c36 ('Microsoft Graph').",
    "status": "PASS_WITH_FINDINGS",
    "findings": [
-    "T-01 (P2): AccessProof holds 'fullcontrol' (not 'read') on the lab site. Full Control may be required to enumerate SharePoint role assignments; confirm the minimum role before lowering. Remove the stale 'Microsoft Graph' fullcontrol grant if it is not in use. Tenant change: requires owner approval."
-   ]
+    "T-01 (P2) RESOLVED 2026-11-03: stale 'Microsoft Graph' fullcontrol grant removed (operator-approved, DELETE 204). AccessProof's fullcontrol is REQUIRED: GetUserEffectivePermissions needs EnumeratePermissions, which only fullcontrol carries among Sites.Selected roles."
+   ],
+   "followup_evidence": {
+    "file": "raw/t01-grant-cleanup.txt",
+    "sha256": "6a3356210c74e88ff20074b9166d4891ddac9924668dd7138874b23c23d7fdb7"
+   }
   },
   {
    "environment": "live-tenant+production",

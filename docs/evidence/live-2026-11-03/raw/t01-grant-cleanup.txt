@@ -1,0 +1,9 @@
+# T-01 resolution, 2026-11-03 (operator-approved removal). No tokens.
+Lab site neuralmatrix093.sharepoint.com,9b00ec42-620a-4efc-acb3-f4d662c8ceb6,20231c9b-3196-4a5e-9ed0-0404090d5930
+BEFORE: ['fullcontrol'] app c94a1c36-2bbc-4372-958b-18910df9580c "Microsoft Graph"; ['fullcontrol'] app b8424d54-... "AccessProof"
+DELETE /sites/{site}/permissions/{Microsoft Graph grant} -> 204 (operator approval: "yes u can")
+AFTER:  ['fullcontrol'] app b8424d54-... "AccessProof" only; lab /drives -> 200
+Why AccessProof keeps fullcontrol: connectors/microsoft365/sharepoint_effective.py calls SharePoint REST
+ListItem.GetUserEffectivePermissions, which requires the EnumeratePermissions right; among the Sites.Selected
+roles (read, write, manage, fullcontrol) only fullcontrol includes it. Lowering the grant would break the
+effective-permission evidence the source certificate requires.
