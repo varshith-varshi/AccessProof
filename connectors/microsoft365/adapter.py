@@ -187,10 +187,19 @@ class Microsoft365Adapter(SourceAdapter):
                     queued.append(item_id)
         return resources
 
+    # D-23: without these, Graph reports content/metadata changes in a SharePoint
+    # or OneDrive for Business drive delta, but NOT permission-only changes, so
+    # a revoked grant stayed authorized until the hourly reconciliation.
+    # deltashowsharingchanges returns items whose sharing changed;
+    # deltatraversepermissiongaps keeps items reachable after permission gaps;
+    # deltashowremovedasdeleted reports items the app can no longer see as
+    # deleted (fail closed) rather than silently omitting them.
+    DELTA_PREFER = "deltashowremovedasdeleted, deltatraversepermissiongaps, deltashowsharingchanges"
+
     async def acl_latest_delta_link(self) -> str:
         """Capture a start cursor BEFORE the initial inventory to close scan races."""
         path = f"/drives/{self.drive_id}/root/delta?token=latest"
-        response = await self._request("GET", path)
+        response = await self._request("GET", path, headers={"Prefer": self.DELTA_PREFER})
         payload = response.json()
         if not isinstance(payload, dict):
             raise UnsafeBoundaryError("Microsoft Graph delta checkpoint unavailable")
@@ -213,7 +222,8 @@ class Microsoft365Adapter(SourceAdapter):
             path = self._continuation_path(
                 delta_url, f"/v1.0/drives/{self.drive_id}/root/delta"
             )
-        return cast(dict[str, Any], (await self._request("GET", path)).json())
+        return cast(dict[str, Any], (await self._request(
+            "GET", path, headers={"Prefer": self.DELTA_PREFER})).json())
 
     async def is_inside_boundary(self, item_id: str, *, max_depth: int = 64) -> bool:
         """Confirm Graph item ancestry inside the explicitly approved folder.
