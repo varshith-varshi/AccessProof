@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from packages.rag_core import GuardClient, ProtectedRAG, RetrievedResource, SourceAttestationVerifier
 from packages.rag_core.participants import MAX_PARTICIPANTS, ParticipantAwareGuard
 from packages.rag_core.output_safety import OutputLinkPolicy, sanitize_answer
+from packages.rag_core.roster import RosterError, RosterVerifier
 from packages.rag_core.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
 from packages.demo_cache.trusted_snapshot import load_snapshot, SnapshotInvalid
 from .model_adapters import ModelAdapter, ModelProtocolError, selected_adapter
@@ -90,6 +91,9 @@ class ProtectedChatRequest(BaseModel):
     # (group chat, channel bot, multi-recipient draft). A source is used only
     # if every participant is authorized for it. Can only narrow access.
     participant_tokens: list[str] = Field(default_factory=list, max_length=MAX_PARTICIPANTS - 1)
+    # Required in roster mode: adapter-signed complete membership of the
+    # conversation. Participant tokens must cover exactly these members.
+    conversation_roster: str | None = Field(default=None, min_length=1, max_length=32_000)
     request_id: str | None = Field(
         default=None, min_length=1, max_length=255,
         pattern=r"^[a-zA-Z0-9_.:-]+$",
@@ -113,6 +117,9 @@ class SnapshotChatRequest(BaseModel):
     # (group chat, channel bot, multi-recipient draft). A source is used only
     # if every participant is authorized for it. Can only narrow access.
     participant_tokens: list[str] = Field(default_factory=list, max_length=MAX_PARTICIPANTS - 1)
+    # Required in roster mode: adapter-signed complete membership of the
+    # conversation. Participant tokens must cover exactly these members.
+    conversation_roster: str | None = Field(default=None, min_length=1, max_length=32_000)
     request_id: str | None = Field(
         default=None, min_length=1, max_length=255,
         pattern=r"^[a-zA-Z0-9_.:-]+$",
@@ -157,6 +164,9 @@ class CachedAnswerAuthorizationInput(BaseModel):
     # (group chat, channel bot, multi-recipient draft). A source is used only
     # if every participant is authorized for it. Can only narrow access.
     participant_tokens: list[str] = Field(default_factory=list, max_length=MAX_PARTICIPANTS - 1)
+    # Required in roster mode: adapter-signed complete membership of the
+    # conversation. Participant tokens must cover exactly these members.
+    conversation_roster: str | None = Field(default=None, min_length=1, max_length=32_000)
     authorization_revision: int | None = Field(default=None, ge=1)
     authorization_revision_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     request_id: str | None = Field(default=None, min_length=1, max_length=255,
@@ -244,6 +254,11 @@ class GatewaySettings:
     # denied, answer with this text (the RAG's normal "nothing found" reply)
     # instead of a distinguishable 403. The model is still never called.
     uniform_denial_message: str = ""
+    # "single_user": shared-conversation inputs are rejected (no false group
+    # safety). "roster_required": every request carries a trusted roster.
+    shared_conversation_mode: str = "single_user"
+    roster_verifier: RosterVerifier | None = None
+    identity_subject_claim: str = "sub"
 
     def __post_init__(self) -> None:
         # Operator-supplied settings may arrive directly or from environment.
@@ -272,6 +287,12 @@ class GatewaySettings:
                     or len(str(configured)) > 2048 or str(configured) in paths):
                 raise ValueError("Unsafe Gateway source snapshot configuration")
             paths.add(str(configured))
+        if self.shared_conversation_mode not in {"single_user", "roster_required"}:
+            raise ValueError("Unsupported shared conversation mode")
+        if self.shared_conversation_mode == "roster_required" and self.roster_verifier is None:
+            raise ValueError("Roster mode requires pinned roster adapter keys")
+        if self.identity_subject_claim not in {"sub", "oid"}:
+            raise ValueError("Unsafe identity subject claim")
         if self.model_provider != "custom":
             adapter = selected_adapter(self.model_provider)
             adapter.validate(self.model_url, self.model_name, self.model_bearer_token)
@@ -355,7 +376,38 @@ class GatewaySettings:
             max_response_bytes=max(1_024, int(os.getenv("ACCESSPROOF_GATEWAY_MAX_RESPONSE_BYTES", "1000000"))),
             output_link_policy=OutputLinkPolicy.from_csv(os.getenv("ACCESSPROOF_GATEWAY_OUTPUT_ALLOWED_HOSTS", "")),
             uniform_denial_message=os.getenv("ACCESSPROOF_GATEWAY_UNIFORM_DENIAL_MESSAGE", "")[:2000],
+            shared_conversation_mode=os.getenv("ACCESSPROOF_GATEWAY_SHARED_CONVERSATIONS", "single_user"),
+            roster_verifier=_roster_verifier_from_env(
+                required["ACCESSPROOF_GATEWAY_TENANT_ID"], required["ACCESSPROOF_GATEWAY_APPLICATION_ID"]),
+            identity_subject_claim=os.getenv("ACCESSPROOF_GATEWAY_IDENTITY_SUBJECT_CLAIM", "sub"),
         )
+
+
+def _roster_verifier_from_env(tenant_id: str, application_id: str) -> RosterVerifier | None:
+    raw = os.getenv("ACCESSPROOF_GATEWAY_ROSTER_PUBLIC_KEYS_JSON", "")
+    if not raw:
+        return None
+    try:
+        encoded = json.loads(raw)
+        keys = {kid: Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(v + "=" * (-len(v) % 4)))
+                for kid, v in encoded.items()}
+        return RosterVerifier(tenant_id=tenant_id, application_id=application_id, trusted_keys=keys,
+                              max_age_seconds=int(os.getenv("ACCESSPROOF_GATEWAY_ROSTER_MAX_AGE_SECONDS", "120")))
+    except (ValueError, TypeError, AttributeError, binascii.Error, json.JSONDecodeError) as exc:
+        raise RuntimeError("Gateway roster public key configuration invalid") from exc
+
+
+def _token_identity(token: str, subject_claim: str) -> tuple[str, str]:
+    """(issuer, subject) as claimed; the Guard verifies the signature later."""
+    import jwt
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError as exc:
+        raise HTTPException(401, "PARTICIPANT_TOKEN_INVALID") from exc
+    issuer, subject = claims.get("iss"), claims.get(subject_claim)
+    if not isinstance(issuer, str) or not issuer or not isinstance(subject, str) or not subject:
+        raise HTTPException(401, "PARTICIPANT_TOKEN_INVALID")
+    return issuer, subject
 
 
 class GatewayService:
@@ -384,6 +436,30 @@ class GatewayService:
     def close(self) -> None:
         if self._owns_client:
             self.client.close()
+
+    def _enforce_audience(self, employee_token: str, participants: list[str], roster_token: str | None) -> None:
+        """Who will see this answer must be known completely, or we refuse.
+
+        Single-user mode rejects shared-conversation inputs outright so an
+        optional, caller-chosen participant list is never mistaken for group
+        safety. Roster mode requires the verified participants to equal the
+        adapter-signed membership exactly (nobody omitted, nobody extra).
+        """
+        if self.settings.shared_conversation_mode == "single_user":
+            if participants or roster_token:
+                raise HTTPException(422, "SHARED_CONVERSATIONS_NOT_ENABLED")
+            return
+        if not roster_token:
+            raise HTTPException(403, "CONVERSATION_ROSTER_REQUIRED")
+        assert self.settings.roster_verifier is not None
+        try:
+            roster = self.settings.roster_verifier.verify(roster_token)
+        except RosterError as exc:
+            raise HTTPException(403, str(exc)) from exc
+        claimed = {_token_identity(token, self.settings.identity_subject_claim)
+                   for token in [employee_token, *participants]}
+        if claimed != set(roster.members):
+            raise HTTPException(403, "ROSTER_PARTICIPANTS_MISMATCH")
 
     def _guard(self, employee_token: str, participants: list[str], *, multisource: bool) -> Any:
         client = GuardClient(self.settings.guard_url, client=self.client, multisource=multisource)
@@ -448,6 +524,7 @@ class GatewayService:
             request_id=request.request_id,
             stream=request.stream,
             participant_tokens=request.participant_tokens,
+            conversation_roster=request.conversation_roster,
         ), employee_token)
 
     def authorize_cached_answer(
@@ -471,6 +548,8 @@ class GatewayService:
             )
         except (TypeError, ValueError) as exc:
             raise HTTPException(422, "CACHE_MANIFEST_INVALID") from exc
+        self._enforce_audience(employee_token, _valid_participant_tokens(request.participant_tokens),
+                               request.conversation_roster)
         guard = self._guard(employee_token, _valid_participant_tokens(request.participant_tokens),
                             multisource=(self.settings.multisource_guard_v2 or len({d.source_id for d in request.dependencies}) > 1))
         decision = ProtectedRAG(
@@ -507,6 +586,8 @@ class GatewayService:
             # replay that text into a new model request.
             raise HTTPException(422, "MULTISOURCE_CONVERSATION_LINEAGE_UNTRACKED")
         request_id = request.request_id or str(uuid4())
+        self._enforce_audience(employee_token, _valid_participant_tokens(request.participant_tokens),
+                               request.conversation_roster)
         guard = self._guard(employee_token, _valid_participant_tokens(request.participant_tokens),
                             multisource=(self.settings.multisource_guard_v2 or len({r.source_id for r in resources}) > 1))
         protected = ProtectedRAG(

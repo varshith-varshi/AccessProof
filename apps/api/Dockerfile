@@ -9,7 +9,7 @@ COPY integrations /app/integrations
 COPY apps/api /app/apps/api
 # Generated before deployment by scripts/build-guard-package.sh.
 COPY packaging/guard/releases/ /app/guard-releases/
-COPY scripts/ensure_current_database.py scripts/check_schema.py scripts/provision_database_roles.py /app/scripts/
+COPY scripts/ensure_current_database.py scripts/check_schema.py scripts/provision_database_roles.py scripts/production_security_gates.py /app/scripts/
 RUN pip install --no-cache-dir ".[observability]"
 USER 10001:10001
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1

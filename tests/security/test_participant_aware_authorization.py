@@ -27,6 +27,9 @@ from packages.rag_core import (
     VerifiedSourceDocument,
 )
 from packages.rag_core.participants import ParticipantAwareGuard
+from packages.rag_core.roster import ROSTER_SCHEMA, RosterVerifier, sign_roster
+
+ADAPTER_KEY = Ed25519PrivateKey.generate()   # the trusted Teams/Slack adapter
 
 TENANT, APP, SOURCE = "tenant-r1", "shared-chat-rag", "sharepoint"
 ISSUER, AUDIENCE = "https://employee.synthetic", "rag-customer-test"
@@ -79,6 +82,9 @@ def world(tmp_path, monkeypatch):
             guard_url="https://guard.synthetic", model_url="https://model.synthetic/v1/chat/completions",
             application_id=APP, tenant_id=TENANT,
             verifier=SourceAttestationVerifier(tenant_id=TENANT, trusted_keys={"ingester": key.public_key()}),
+            shared_conversation_mode="roster_required",
+            roster_verifier=RosterVerifier(tenant_id=TENANT, application_id=APP,
+                                           trusted_keys={"adapter": ADAPTER_KEY.public_key()}),
         )
         with TestClient(create_app(settings, client=httpx.Client(transport=httpx.MockTransport(handle)))) as gateway:
             world_state.update(model_reply=model_reply)
@@ -91,13 +97,26 @@ def token(user: str) -> str:
                        "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}, SECRET, algorithm="HS256")
 
 
-def ask(gateway, chunks, docs, user="alice", participants=()):
+def roster(members, *, issued_at=None, key=None, application_id=APP, key_id="adapter"):
+    import secrets
+    import time
+    return sign_roster({
+        "schema": ROSTER_SCHEMA, "key_id": key_id, "tenant_id": TENANT, "application_id": application_id,
+        "conversation_id": "teams:19:chat-1", "nonce": secrets.token_hex(16),
+        "issued_at": int(time.time()) if issued_at is None else issued_at,
+        "members": [{"issuer": ISSUER, "subject": m} for m in members],
+    }, key or ADAPTER_KEY)
+
+
+def ask(gateway, chunks, docs, user="alice", participants=(), roster_members=None, roster_token=None):
     resources = [{"source_id": c.source_id, "resource_id": c.resource_id, "chunk_id": c.chunk_id,
                   "content": c.content, "content_version": c.content_version,
                   "content_attestation": c.content_attestation} for c in (chunks[d] for d in docs)]
+    members = roster_members if roster_members is not None else [user, *[p for p in participants if p != "forged"]]
     return gateway.post("/v1/chat/completions", headers={"Authorization": "Bearer " + token(user)}, json={
         "application_id": APP, "employee_question": "Summarize", "retrieved_resources": resources,
-        "participant_tokens": [token(p) if p != "forged" else "not-a-jwt" for p in participants]})
+        "participant_tokens": [token(p) if p != "forged" else "not-a-jwt" for p in participants],
+        "conversation_roster": roster_token or roster(sorted(set(members)))})
 
 
 def test_single_requester_behaviour_is_unchanged(world):
@@ -142,6 +161,7 @@ def test_duplicate_requester_token_and_participant_limit(world):
     alice = token("alice")
     ok = gateway.post("/v1/chat/completions", headers={"Authorization": "Bearer " + alice}, json={
         "application_id": APP, "employee_question": "q", "participant_tokens": [alice],
+        "conversation_roster": roster(["alice"]),
         "retrieved_resources": [{"source_id": c.source_id, "resource_id": c.resource_id, "chunk_id": c.chunk_id,
                                  "content": c.content, "content_version": c.content_version,
                                  "content_attestation": c.content_attestation} for c in [chunks["finance"]]]})
@@ -214,6 +234,7 @@ def test_gateway_strips_injected_exfiltration_from_authorized_answer(world):
     # The streamed path releases the same sanitized text.
     streamed = gateway.post("/v1/chat/completions", headers={"Authorization": "Bearer " + token("alice")}, json={
         "application_id": APP, "employee_question": "q", "stream": True,
+        "conversation_roster": roster(["alice"]),
         "retrieved_resources": [{"source_id": c.source_id, "resource_id": c.resource_id, "chunk_id": c.chunk_id,
                                  "content": c.content, "content_version": c.content_version,
                                  "content_attestation": c.content_attestation} for c in [chunks["shared"]]]})
@@ -268,3 +289,63 @@ def test_uniform_denial_hides_restricted_document_existence(world, monkeypatch):
     assert "SECRET" not in hidden.text and len(model_inputs) == before
     # Authorized questions are unaffected.
     assert ask(gateway, chunks, ["finance"]).json()["choices"][0]["message"]["content"] != "I couldn't find anything you have access to."
+
+
+# ------------------------------------------------- trusted roster (R-1 completion)
+def test_omitted_recipient_is_refused(world):
+    """The core gap: a caller hides Bob from the request while Bob is in the chat."""
+    gateway, chunks, model_inputs = world
+    before = len(model_inputs)
+    hidden = ask(gateway, chunks, ["finance"], user="alice", participants=(), roster_members=["alice", "bob"])
+    assert hidden.status_code == 403 and hidden.json()["detail"] == "ROSTER_PARTICIPANTS_MISMATCH"
+    extra = ask(gateway, chunks, ["shared"], participants=["bob"], roster_members=["alice"])
+    assert extra.status_code == 403
+    assert len(model_inputs) == before
+
+
+def test_roster_must_be_present_fresh_signed_and_bound(world):
+    import time
+    gateway, chunks, model_inputs = world
+    before = len(model_inputs)
+    no_roster = gateway.post("/v1/chat/completions", headers={"Authorization": "Bearer " + token("alice")}, json={
+        "application_id": APP, "employee_question": "q",
+        "retrieved_resources": [{"source_id": c.source_id, "resource_id": c.resource_id, "chunk_id": c.chunk_id,
+                                 "content": c.content, "content_version": c.content_version,
+                                 "content_attestation": c.content_attestation} for c in [chunks["shared"]]]})
+    assert no_roster.status_code == 403 and no_roster.json()["detail"] == "CONVERSATION_ROSTER_REQUIRED"
+    cases = {
+        "ROSTER_STALE": roster(["alice"], issued_at=int(time.time()) - 600),
+        "ROSTER_SIGNATURE_INVALID": roster(["alice"], key=Ed25519PrivateKey.generate()),
+        "ROSTER_KEY_UNTRUSTED": roster(["alice"], key_id="someone-else"),
+        "ROSTER_BINDING_MISMATCH": roster(["alice"], application_id="other-rag"),
+        "ROSTER_MALFORMED": "not-a-roster",
+    }
+    for code, token_value in cases.items():
+        response = ask(gateway, chunks, ["shared"], roster_token=token_value)
+        assert response.status_code == 403 and response.json()["detail"] == code, (code, response.text)
+    assert len(model_inputs) == before
+
+
+def test_single_user_mode_rejects_shared_conversation_inputs(tmp_path):
+    """Without a roster adapter, participant tokens are refused: no false group safety."""
+    key = Ed25519PrivateKey.generate()
+    settings = GatewaySettings(
+        guard_url="https://guard.synthetic", model_url="https://model.synthetic/v1/chat/completions",
+        application_id=APP, tenant_id=TENANT,
+        verifier=SourceAttestationVerifier(tenant_id=TENANT, trusted_keys={"ingester": key.public_key()}),
+    )
+    assert settings.shared_conversation_mode == "single_user"
+    called = []
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: called.append(r) or httpx.Response(500)))
+    with TestClient(create_app(settings, client=client)) as gateway:
+        response = gateway.post("/v1/chat/completions", headers={"Authorization": "Bearer " + token("alice")}, json={
+            "application_id": APP, "employee_question": "q", "participant_tokens": [token("bob")],
+            "retrieved_resources": [{"source_id": SOURCE, "resource_id": "x", "content": "c",
+                                     "content_version": "v", "content_attestation": "a"}]})
+    assert response.status_code == 422 and response.json()["detail"] == "SHARED_CONVERSATIONS_NOT_ENABLED"
+    assert called == []  # neither Guard nor model contacted
+    with pytest.raises(ValueError):
+        GatewaySettings(guard_url="https://g.example", model_url="https://m.example/v1/chat/completions",
+                        application_id=APP, tenant_id=TENANT,
+                        verifier=SourceAttestationVerifier(tenant_id=TENANT, trusted_keys={"k": key.public_key()}),
+                        shared_conversation_mode="roster_required")
