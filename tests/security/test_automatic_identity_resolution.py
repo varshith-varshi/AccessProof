@@ -159,8 +159,12 @@ def test_manual_contradiction_becomes_conflict_and_is_never_replaced(lab):
 def test_admin_decision_on_automatic_binding_is_sticky(lab):
     db, org, source = lab
     _sync(db, source)
+    from apps.api.accessproof_api.db import User
+    admin = User(email="admin@lab.example", password_hash="x", email_verified=True)
+    db.add(admin)
+    db.flush()
     row = _bindings(db, org)[BOB]
-    row.status, row.revoked_at, row.verified_by_user_id = "REVOKED", datetime.now(timezone.utc), "admin-user"
+    row.status, row.revoked_at, row.verified_by_user_id = "REVOKED", datetime.now(timezone.utc), admin.id
     db.commit()
     _sync(db, source)
     assert _bindings(db, org)[BOB].status == "REVOKED"
