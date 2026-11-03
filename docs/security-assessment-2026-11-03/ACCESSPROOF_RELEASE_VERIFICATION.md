@@ -81,3 +81,12 @@ Tenant change (operator-approved): stale `fullcontrol` grant for first-party app
 | DB role | still owner `accessproof`: the switch was blocked by the session's safety controls pending an explicit operator "approved" |
 
 Lab changes: synthetic group `AP-Lab-Group-Finance-Readers` (alice), `group_finance_alice.txt`, `Inherited-Alice/inherited_finance_alice.txt` (SharePoint REST confirms the file inherits); lab sign-in app `9d031e10-4bed-4ab9-a98d-3eef237c4a56` (single-tenant public client, delegated openid/profile/offline_access/User.Read/Files.Read, admin consent); lab Guard audience = that app, subject claim `oid`, tenant pinned. The lab index sync failed closed after the fixtures were added (it required exactly 3 documents); it now accepts exactly the approved fixture set.
+
+## Update 16:25 UTC — r26 deployed (D-20 Guard refusal semantics)
+| Item | Value |
+|---|---|
+| Release | `r26-guard-errors-f34b033cacfe` (commit `f34b033cacfee6cf4d8f83b0e8f7367d625a7eba`), artifact sha256 `b0375aafd139c638c7fa1233b1644ccf40c9499a3a424e78356d33d5064a54d8` |
+| Deploy | SSM `16f1b45c-66ec-4629-8d6e-3984b365321a`, 16:21:40 → 16:23:45 UTC, DEPLOYMENT VERIFIED; rehearsed on staging as `accessproof_app` (SSM `ff6ed560-…`, probe 23/23) |
+| Tests | SQLite 1460 tests: 0 failed, 10 skipped. PostgreSQL 17 as `accessproof_app` (r25 tree): 1455 tests, 0 failed, 4 skipped |
+| D-20 live | forged employee token via lab Gateway: before 503 GUARD_REQUEST_FAILED, after 401 IDENTITY_REJECTED; 0 model calls both times |
+| DB role | still owner `accessproof` (switch awaits an explicit operator "approved") |

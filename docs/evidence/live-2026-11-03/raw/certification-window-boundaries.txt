@@ -15,3 +15,4 @@ no token      -> 401 IDENTITY_TOKEN_REQUIRED
 forged token  -> 503 GUARD_REQUEST_FAILED  (defect D-20: identity rejection reported as outage; fixed in de09f0a -> 401 IDENTITY_REJECTED)
 model calls during both Gateway requests (context witness): 0
 # Guard /health during the window: ready=false, certification_window=true; Gateway /health/ready: 503 GUARD_NOT_READY
+# Re-run after D-20 (lab Gateway/Guard r26-f34b033cacfe), 2026-11-03T16:08:19Z: forged token via Gateway -> 401 IDENTITY_REJECTED; model calls 0
