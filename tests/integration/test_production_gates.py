@@ -123,6 +123,16 @@ def test_each_gate_flips_only_on_genuine_evidence(tmp_path, monkeypatch):
     assert g["B_IDENTITY"]["status"] == "FAIL"                                # no verified employee mappings
     assert report["verdict"] == "SHAREPOINT PRODUCTION PROTECT — NOT VERIFIED"
 
+    # Streamed (in-memory) evidence — used when the container rootfs is
+    # read-only — is judged exactly like a file, including tampering.
+    with SessionLocal() as db:
+        streamed = evaluate(db, organization_id=org, application_id="sharepoint-rag",
+                            host_facts=facts, evidence=evidence)
+        streamed_bad = evaluate(db, organization_id=org, application_id="sharepoint-rag",
+                                host_facts=facts, evidence={**evidence, "profile": "other"})
+    assert streamed["gates"]["C_SHAREPOINT_SOURCE"] == g["C_SHAREPOINT_SOURCE"]
+    assert streamed_bad["gates"]["C_SHAREPOINT_SOURCE"]["checks"]["certificate_evidence_matches"]["status"] == "FAIL"
+
     # Tampered or incomplete evidence never passes, even with a valid certificate.
     tampered = tmp_path / "tampered.json"
     tampered.write_text(json.dumps({**evidence, "profile": "other"}))

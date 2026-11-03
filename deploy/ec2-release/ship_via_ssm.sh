@@ -47,15 +47,19 @@ aws s3 cp "$ART" "s3://$BUCKET/artifact.tar" --region "$REGION" >/dev/null
 aws s3 cp deploy/ec2-release/deploy_on_ec2.sh "s3://$BUCKET/deploy_on_ec2.sh" --region "$REGION" >/dev/null
 aws s3 cp deploy/ec2-release/rollback_on_ec2.sh "s3://$BUCKET/rollback_on_ec2.sh" --region "$REGION" >/dev/null
 aws s3 cp deploy/ec2-release/enable_least_privilege_db.sh "s3://$BUCKET/enable_least_privilege_db.sh" --region "$REGION" >/dev/null
+aws s3 cp deploy/ec2-release/patch_compose_db_roles.py "s3://$BUCKET/patch_compose_db_roles.py" --region "$REGION" >/dev/null
+aws s3 cp deploy/ec2-release/run_security_gates.sh "s3://$BUCKET/run_security_gates.sh" --region "$REGION" >/dev/null
 U_ART=$(aws s3 presign "s3://$BUCKET/artifact.tar" --expires-in 900 --region "$REGION")
 U_DEP=$(aws s3 presign "s3://$BUCKET/deploy_on_ec2.sh" --expires-in 900 --region "$REGION")
 U_RB=$(aws s3 presign "s3://$BUCKET/rollback_on_ec2.sh" --expires-in 900 --region "$REGION")
 U_DB=$(aws s3 presign "s3://$BUCKET/enable_least_privilege_db.sh" --expires-in 900 --region "$REGION")
+U_PC=$(aws s3 presign "s3://$BUCKET/patch_compose_db_roles.py" --expires-in 900 --region "$REGION")
+U_GT=$(aws s3 presign "s3://$BUCKET/run_security_gates.sh" --expires-in 900 --region "$REGION")
 
 # Commands are passed as JSON so presigned URLs are never word-split.
-PARAMS=$(python3 - "$RELEASE_ID" "$SHA" "$U_ART" "$U_DEP" "$U_RB" "$U_DB" <<'PY'
+PARAMS=$(python3 - "$RELEASE_ID" "$SHA" "$U_ART" "$U_DEP" "$U_RB" "$U_DB" "$U_PC" "$U_GT" <<'PY'
 import json, sys
-rid, sha, art, dep, rb, dbr = sys.argv[1:]
+rid, sha, art, dep, rb, dbr, pc, gt = sys.argv[1:]
 d = f"/home/ubuntu/accessproof-releases/{rid}"
 print(json.dumps({"executionTimeout": ["3600"], "commands": [
     "set -euo pipefail",
@@ -65,6 +69,8 @@ print(json.dumps({"executionTimeout": ["3600"], "commands": [
     f"curl -fsS -o {d}/rollback_on_ec2.sh '{rb}'",
     # Staged for a separately approved run; never executed by this command.
     f"curl -fsS -o {d}/enable_least_privilege_db.sh '{dbr}'",
+    f"curl -fsS -o {d}/patch_compose_db_roles.py '{pc}'",
+    f"curl -fsS -o {d}/run_security_gates.sh '{gt}'",
     f"echo '{sha}  {d}/artifact.tar' | sha256sum -c -",
     f"bash {d}/deploy_on_ec2.sh {rid} {d}/artifact.tar {sha}",
 ]}))

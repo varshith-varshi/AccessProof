@@ -18,7 +18,7 @@ psqlv() { compose exec -T db psql -U accessproof -d accessproof -tAc "$1" | tr -
 
 [[ -f "$REL/rollback/.env" ]] || { echo "no rollback state for $RELEASE_ID"; exit 2; }
 PREVIOUS_REV=$(grep -E '^previous_db_revision=' "$REL/rollback/previous-state.txt" | cut -d= -f2)
-[[ "$PREVIOUS_REV" =~ ^[0-9a-f]{12}$ ]] || { echo "previous revision unknown"; exit 2; }
+[[ "$PREVIOUS_REV" =~ ^[0-9a-z]{12}$ ]] || { echo "previous revision unknown"; exit 2; }
 rev=$(psqlv "select version_num from alembic_version")
 if [[ "$rev" != "$PREVIOUS_REV" ]]; then
   [[ "$(psqlv "select count(*) from source_effective_certifications where length(signature) > 64")" == 0 ]] \

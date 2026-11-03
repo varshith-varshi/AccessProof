@@ -55,7 +55,7 @@ def _database_gate(db: Session) -> dict[str, Any]:
 
 def evaluate(db: Session, *, organization_id: str, application_id: str,
              host_facts: dict[str, Any] | None = None, evidence_path: Path | None = None,
-             now: datetime | None = None, window: timedelta = timedelta(days=7)) -> dict[str, Any]:
+             evidence: dict[str, Any] | None = None, now: datetime | None = None, window: timedelta = timedelta(days=7)) -> dict[str, Any]:
     from apps.api.accessproof_api.app import _automatic_activation_checklist, _guard_health_state, _secret_box
     from apps.api.accessproof_api.route_certification import describe_route_certificate
     from apps.api.accessproof_api.source_certification import effective_source_certified
@@ -118,10 +118,11 @@ def evaluate(db: Session, *, organization_id: str, application_id: str,
         cert = db.scalar(select(SourceEffectiveCertification).where(
             SourceEffectiveCertification.organization_id == organization_id,
             SourceEffectiveCertification.source_id == source.id))
-        if cert is None or evidence_path is None or not evidence_path.is_file():
-            c["certificate_evidence_matches"] = (BLOCKED, "evidence file not supplied")
-        else:
+        if evidence is None and evidence_path is not None and evidence_path.is_file():
             evidence = json.loads(evidence_path.read_text())
+        if cert is None or not isinstance(evidence, dict):
+            c["certificate_evidence_matches"] = (BLOCKED, "evidence not supplied")
+        else:
             checks = {item.get("code"): item.get("status") for item in evidence.get("checks", [])}
             missing = [code for code in REQUIRED_CHECKS if checks.get(code) != "PASS"]
             if evidence_digest(evidence) != cert.evidence_digest:

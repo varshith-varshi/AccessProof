@@ -6,6 +6,10 @@ Run INSIDE the API container so gate I measures the real runtime role:
   python scripts/production_security_gates.py --organization-id ORG \\
       --application-id APP [--host-facts facts.json] [--evidence evidence.json]
 
+or, when the container filesystem is read-only, stream both over stdin:
+
+  ... --stdin-bundle  < bundle.json   # {"host_facts": {...}, "evidence": {...} | null}
+
 Exit 0 only for TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL. Never
 writes to the database; prints no secrets or document content.
 """
@@ -28,12 +32,20 @@ def main() -> int:
     parser.add_argument("--application-id", required=True)
     parser.add_argument("--host-facts", type=Path)
     parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--stdin-bundle", action="store_true",
+                        help="read {host_facts, evidence} JSON from stdin (read-only container)")
     args = parser.parse_args()
     facts = json.loads(args.host_facts.read_text()) if args.host_facts else None
+    evidence = None
+    if args.stdin_bundle:
+        bundle = json.loads(sys.stdin.read())
+        if not isinstance(bundle, dict):
+            parser.error("stdin bundle must be a JSON object")
+        facts, evidence = bundle.get("host_facts"), bundle.get("evidence")
     with SessionLocal() as db:
         try:
             report = evaluate(db, organization_id=args.organization_id, application_id=args.application_id,
-                              host_facts=facts, evidence_path=args.evidence)
+                              host_facts=facts, evidence_path=args.evidence, evidence=evidence)
         finally:
             db.rollback()
     print(json.dumps(report, indent=2))

@@ -41,36 +41,47 @@ case "$rev" in t4d5e6f7a8b9|u5e6f7a8b9c0) ;; *) log "database revision $rev pred
 healthy api 10 || { log "API not healthy; refusing"; exit 2; }
 
 cp -p "$APP_DIR/.env" "$ROLES/env.before"; chmod 600 "$ROLES/env.before"
+cp -p "$COMPOSE_FILE" "$ROLES/compose.before"; chmod 600 "$ROLES/compose.before"
 restore() {
   log "RESTORE: reverting to previous database credentials"
   cp "$ROLES/env.before" "$APP_DIR/.env"
+  cp "$ROLES/compose.before" "$COMPOSE_FILE"
   compose up -d --no-deps --force-recreate api >>"$REL/deployment-logs/db-roles.log" 2>&1
   healthy api 240 && compose up -d --no-deps --force-recreate worker >>"$REL/deployment-logs/db-roles.log" 2>&1
   log "RESTORE complete (owner credentials)"; exit 1
 }
 trap 'log "failure at line $LINENO"; restore' ERR
 
+# Password files live in their own directory, owned by the API image's uid
+# (10001), and only that directory is mounted: the container user must be
+# able to traverse it, and env.before/compose.before never enter a container.
+SECRETS="$ROLES/secrets"
+mkdir -p "$SECRETS"
 for role in app worker metrics; do
-  [[ -s "$ROLES/$role.pw" ]] || openssl rand -hex 32 > "$ROLES/$role.pw"
+  [[ -s "$SECRETS/$role.pw" ]] || openssl rand -hex 32 > "$SECRETS/$role.pw"
 done
-chown 10001:10001 "$ROLES"/*.pw; chmod 400 "$ROLES"/*.pw   # API image runs as uid 10001
+chown 10001:10001 "$SECRETS" "$SECRETS"/*.pw; chmod 500 "$SECRETS"; chmod 400 "$SECRETS"/*.pw
 set -a; . "$APP_DIR/.env"; set +a                        # read secrets without printing them
 OWNER_URL="postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof"
-compose run --rm --no-deps -T -v "$ROLES:/run/db-roles:ro" -e DATABASE_URL="$OWNER_URL" api \
+compose run --rm --no-deps -T -v "$SECRETS:/run/db-roles:ro" -e DATABASE_URL="$OWNER_URL" api \
   python scripts/provision_database_roles.py \
     --app-password-file /run/db-roles/app.pw \
     --worker-password-file /run/db-roles/worker.pw \
     --metrics-password-file /run/db-roles/metrics.pw > "$REL/deployment-logs/db-roles-verification.json"
 log "roles provisioned and verified"
 
+# The server Compose file hard-codes the owner URL; switch only api/worker.
+python3 "$(dirname "$0")/patch_compose_db_roles.py" "$COMPOSE_FILE" | tee -a "$REL/deployment-logs/db-roles.log"
+compose config --quiet
+
 tmp="$APP_DIR/.env.db-roles"
 grep -vE '^(ACCESSPROOF_APP_DB_USER|ACCESSPROOF_APP_DB_PASSWORD|ACCESSPROOF_WORKER_DB_USER|ACCESSPROOF_WORKER_DB_PASSWORD|ACCESSPROOF_METRICS_DATABASE_URL)=' "$APP_DIR/.env" > "$tmp"
 {
   echo "ACCESSPROOF_APP_DB_USER=accessproof_app"
-  echo "ACCESSPROOF_APP_DB_PASSWORD=$(cat "$ROLES/app.pw")"
+  echo "ACCESSPROOF_APP_DB_PASSWORD=$(cat "$SECRETS/app.pw")"
   echo "ACCESSPROOF_WORKER_DB_USER=accessproof_rls_admin"
-  echo "ACCESSPROOF_WORKER_DB_PASSWORD=$(cat "$ROLES/worker.pw")"
-  echo "ACCESSPROOF_METRICS_DATABASE_URL=postgresql+psycopg://accessproof_metrics:$(cat "$ROLES/metrics.pw")@db:5432/accessproof"
+  echo "ACCESSPROOF_WORKER_DB_PASSWORD=$(cat "$SECRETS/worker.pw")"
+  echo "ACCESSPROOF_METRICS_DATABASE_URL=postgresql+psycopg://accessproof_metrics:$(cat "$SECRETS/metrics.pw")@db:5432/accessproof"
 } >> "$tmp"
 chmod 600 "$tmp"; mv "$tmp" "$APP_DIR/.env"
 

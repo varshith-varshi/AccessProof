@@ -102,7 +102,7 @@ for img in "$API_IMAGE" "$WORKER_IMAGE"; do
 done
 docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep ":$RELEASE_ID" >> "$REL/checksums.txt"
 TARGET_DB_REVISION=$(docker run --rm --entrypoint alembic "$API_IMAGE" heads 2>/dev/null | awk '/\(head\)/{print $1}')
-[[ "$TARGET_DB_REVISION" =~ ^[0-9a-f]{12}$ ]] || { log "could not determine target revision"; exit 2; }
+[[ "$TARGET_DB_REVISION" =~ ^[0-9a-z]{12}$ ]] || { log "could not determine target revision"; exit 2; }
 log "images built; target DB revision $TARGET_DB_REVISION"
 
 # ------------------------------------------------- verified database backup

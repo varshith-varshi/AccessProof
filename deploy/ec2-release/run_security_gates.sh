@@ -13,16 +13,16 @@ OUT=$(mktemp -d); trap 'rm -rf "$OUT"' EXIT
 head_rev=$(compose exec -T api alembic heads 2>/dev/null | awk '/\(head\)/{print $1}')
 db_rev=$(compose exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d '[:space:]')
 rollbacks=$(ls -d /home/ubuntu/accessproof-releases/*/rollback 2>/dev/null | wc -l)
-python3 - "$OUT/facts.json" "$(state api)" "$(state worker)" "$(state db)" "$(state redis)" "$(state web)" "$head_rev" "$db_rev" "$rollbacks" <<'PY'
+# The API container's root filesystem is read-only: facts and evidence are
+# streamed over stdin, never copied into the container.
+python3 - "$(state api)" "$(state worker)" "$(state db)" "$(state redis)" "$(state web)" \
+  "$head_rev" "$db_rev" "$rollbacks" "$EVIDENCE" > "$OUT/bundle.json" <<'PY'
 import json, sys
-out, api, worker, db, redis, web, head, rev, rollbacks = sys.argv[1:]
-json.dump({"api_healthy": api == "healthy", "worker_running": worker in {"running", "healthy"},
-           "db_healthy": db == "healthy", "redis_healthy": redis == "healthy", "web_healthy": web == "healthy",
-           "migration_at_head": bool(head) and head == rev, "rollback_available": int(rollbacks) > 0}, open(out, "w"))
+api, worker, db, redis, web, head, rev, rollbacks, evidence = sys.argv[1:]
+facts = {"api_healthy": api == "healthy", "worker_running": worker in {"running", "healthy"},
+         "db_healthy": db == "healthy", "redis_healthy": redis == "healthy", "web_healthy": web == "healthy",
+         "migration_at_head": bool(head) and head == rev, "rollback_available": int(rollbacks) > 0}
+json.dump({"host_facts": facts, "evidence": json.load(open(evidence)) if evidence else None}, sys.stdout)
 PY
-cid=$(compose ps -q api)
-docker cp "$OUT/facts.json" "$cid:/tmp/gate-facts.json"
-extra=()
-if [[ -n "$EVIDENCE" ]]; then docker cp "$EVIDENCE" "$cid:/tmp/gate-evidence.json"; extra=(--evidence /tmp/gate-evidence.json); fi
 compose exec -T api python scripts/production_security_gates.py --organization-id "$ORG" \
-  --application-id "$APP" --host-facts /tmp/gate-facts.json "${extra[@]}"
+  --application-id "$APP" --stdin-bundle < "$OUT/bundle.json"
