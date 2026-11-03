@@ -247,6 +247,20 @@ def report_claim(pairing: dict[str, str], manifest: dict[str, object]) -> dict[s
     return payload
 
 
+def save_presence_for_manual_gateway(claim: dict[str, object], output_dir: Path) -> Path | None:
+    """Persist the heartbeat credential for a Gateway not created by the installer."""
+    from apps.gateway.accessproof_gateway.installer import write_presence_environment
+
+    presence = claim.get("gateway_presence")
+    if not isinstance(presence, dict):
+        return None
+    if output_dir.is_symlink():
+        raise ConnectError("Refusing to write the heartbeat credential through a symlinked directory.")
+    output_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    output_dir.chmod(0o700)
+    return write_presence_environment(output_dir, presence)
+
+
 def enable_gateway_presence(
     claim: dict[str, object], manifest: dict[str, object], output_dir: Path,
 ) -> bool:
@@ -520,14 +534,24 @@ def main(argv: list[str] | None = None) -> int:
                 print("Existing Gateway paired:", claim["state"])
                 # Re-pairing rotates the heartbeat credential (D-02). Deliver it
                 # to the Gateway's own installation and recreate ONLY the Gateway.
-                if isinstance(local, dict) and enable_gateway_presence(
-                        claim, local, Path(local["installation_dir"])):
-                    print("RAG routes and all other containers were not changed.")
+                if isinstance(local, dict):
+                    if enable_gateway_presence(claim, local, Path(local["installation_dir"])):
+                        print("RAG routes and all other containers were not changed.")
+                    else:
+                        print("No other Docker containers or RAG routes changed.")
                 else:
+                    # D-17: a Gateway without installer metadata used to lose the
+                    # claim-issued heartbeat credential, so it could never report
+                    # CONNECTED. Keep it privately; never print it.
+                    saved = save_presence_for_manual_gateway(claim, args.output)
                     print("No Docker containers or RAG routes changed.")
-                    print("Live Gateway status will show DISCONNECTED until this Gateway is "
-                          "re-installed with the current installer, which enables "
-                          "authenticated heartbeats.")
+                    if saved is not None:
+                        print(f"Heartbeat credential saved privately to {saved} (mode 0600).")
+                        print("Add these variables to THIS Gateway's environment and recreate only "
+                              "the Gateway. Live status shows DISCONNECTED until heartbeats arrive.")
+                    else:
+                        print("Control plane did not issue a Gateway heartbeat credential; "
+                              "live status will show UNKNOWN.")
                 for message in summarize_automatic_verification(claim):
                     print(message)
                 return 0
