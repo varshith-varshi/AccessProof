@@ -85,3 +85,17 @@ def test_auth_code_flow_rejects_state_mismatch(monkeypatch):
     threading.Thread(target=browser, daemon=True).start()
     with pytest.raises(ei.IdentityFailure, match="STATE_MISMATCH"):
         s.auth_code_sign_in(timeout_s=20)
+
+
+def test_serve_fails_on_bad_socket_before_asking_anyone_to_sign_in(tmp_path, monkeypatch):
+    """A local socket failure must never waste a completed employee sign-in."""
+    import argparse
+    asked = []
+    monkeypatch.setattr(ei.Session, "auth_code_sign_in", lambda self, **k: asked.append("signin"))
+    deep = tmp_path / ("d" * 120)
+    deep.mkdir(mode=0o700)
+    args = argparse.Namespace(socket=str(deep / "alice.sock"), actor="alice", client_id="c",
+                              flow="auth-code", signin_timeout=5, max_hours=0.0)
+    with pytest.raises(OSError):
+        ei.serve(args)
+    assert asked == []

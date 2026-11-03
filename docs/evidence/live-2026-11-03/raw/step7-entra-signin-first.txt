@@ -1,0 +1,5 @@
+# Interactive Entra sign-in (Authorization Code + PKCE, Security Defaults ON), 2026-11-03 ~16:55-17:00 UTC
+# Verified by apps.guard.accessproof_guard.identity.OidcVerifier (issuer, audience 9d031e10-4bed-4ab9-a98d-3eef237c4a56, tenant pin, RS256 signature via tenant JWKS, exp) + state + nonce + Graph /me oid/UPN match
+VERIFIED bob: oid=b7989860-d1bc-4cc3-a96c-35117a3ef9c4 tid=6479e7ca-b256-4ebc-a408-871b9046547c iss=https://login.microsoftonline.com/6479e7ca-b256-4ebc-a408-871b9046547c/v2.0
+VERIFIED alice: oid=67b731fb-c51c-4344-bbd2-63d5bf77a5d5 tid=6479e7ca-b256-4ebc-a408-871b9046547c iss=https://login.microsoftonline.com/6479e7ca-b256-4ebc-a408-871b9046547c/v2.0
+# Both sessions then crashed binding an over-long Unix socket path (tool bug, fixed: socket now bound before sign-in); tokens were memory-only and were discarded.

@@ -118,7 +118,9 @@ class Session:
             "login_hint": f"{self.actor}@{UPN_DOMAIN}", "prompt": "select_account",
         })
         print(f"SIGN-IN REQUIRED FOR: {self.actor.upper()} ({self.actor}@{UPN_DOMAIN})", flush=True)
-        print("  Open this URL in a PRIVATE/INCOGNITO browser window ON THIS COMPUTER:", flush=True)
+        print("  Open this URL in a PRIVATE/INCOGNITO browser window. If the browser is on another", flush=True)
+        print("  device, its final 127.0.0.1 page fails to load: copy that page's full URL to the operator,", flush=True)
+        print("  who relays it to this listener (the code is useless without this process's PKCE verifier).", flush=True)
         print(f"  {url}", flush=True)
         end = time.monotonic() + timeout_s
         try:
@@ -229,7 +231,6 @@ def serve(args) -> int:
     if stat.S_IMODE(sock_path.parent.stat().st_mode) != 0o700:
         raise IdentityFailure("SOCKET_DIRECTORY_MUST_BE_0700")
     session = Session(args.actor, args.client_id)
-    session.auth_code_sign_in() if args.flow == "auth-code" else session.device_sign_in()
 
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
@@ -248,6 +249,9 @@ def serve(args) -> int:
     old = os.umask(0o177)
     server = socketserver.UnixStreamServer(str(sock_path), Handler)
     os.umask(old)
+    # The socket is bound BEFORE anyone is asked to sign in, so a local
+    # failure can never waste a completed employee sign-in.
+    session.auth_code_sign_in(timeout_s=args.signin_timeout) if args.flow == "auth-code" else session.device_sign_in()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     print(f"SERVING {args.actor} tokens on {sock_path} (in memory only) for up to {args.max_hours}h", flush=True)
     end = time.monotonic() + args.max_hours * 3600
@@ -350,6 +354,9 @@ def main() -> int:
     s.add_argument("--socket", required=True)
     s.add_argument("--max-hours", type=float, default=8.0)
     s.add_argument("--flow", choices=["auth-code", "device"], default="auth-code")
+    s.add_argument("--signin-timeout", type=int, default=1800,
+                   help="seconds to wait for the browser callback (a remote browser's failed "
+                        "127.0.0.1 redirect URL can be relayed to the listener by the operator)")
     g = sub.add_parser("get")
     g.add_argument("--socket", required=True)
     g.add_argument("what", choices=["id_token", "access_token", "claims"])
