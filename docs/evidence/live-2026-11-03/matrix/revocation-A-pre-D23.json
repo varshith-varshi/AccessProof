@@ -1,0 +1,20 @@
+{
+ "schema": "accessproof.revocation_trial/v1",
+ "trial": "A",
+ "document": "finance_alice.txt",
+ "release_under_test": "r27-auto-identity-c5758058756b (before D-23)",
+ "status": "FAIL",
+ "harness_note": "The harness lost its in-memory result when the Alice token session hit the 2-hour background-task limit (~18:56 UTC). Timestamps below come from the recovery record and read-only production queries (SSM ids given), not from the harness result file.",
+ "t0_source_change_initiated": "2026-11-03T18:29:43.478599+00:00",
+ "t1_source_change_confirmed": "SharePoint GetUserEffectivePermissions reported no view for Alice before the harness began polling AccessProof (baseline VIEW at 18:29; harness polls from t0).",
+ "t2_accessproof_detected": null,
+ "observations": [
+  {"at": "2026-11-03T18:51:10Z", "ssm": "read-only revocation trial A progress", "acl_cursor_last_success": "18:48:28Z", "grant_active": true, "effective": "allow"},
+  {"at": "2026-11-03T18:56:51Z", "acl_cursor_last_success": "18:53:34Z", "grant_revoke_events": 0, "grant_active": true, "effective": "allow"}
+ ],
+ "first_denial": null,
+ "stable_denial": null,
+ "restoration": "Grant restored by the harness's finally-block at ~18:56 UTC; SharePoint effective matrix re-verified 10/10 (sha256 8f2cc762c37cdd2f83e23891e4646d2ec73d40877b7b3f1cd3aea20d4b112ba9).",
+ "root_cause": "D-23: Microsoft drive delta requests lacked Prefer: deltashowsharingchanges (and companions), so permission-only changes never reached incremental ACL sync; the only backstop was the hourly known-item reconciliation.",
+ "fix": "19f96e5"
+}

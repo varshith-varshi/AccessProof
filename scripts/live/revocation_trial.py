@@ -310,16 +310,34 @@ def main() -> int:
         return 1
     result = {"schema": "accessproof.revocation_trial/v1", "trial": a.trial, "document": t.doc,
               "item_id": item, "baseline": baseline, "phases": []}
+    def save() -> str:
+        # Written after every phase and on any failure: a lost token session or
+        # crash must never discard what was already observed.
+        body = json.dumps(result, indent=1)
+        Path(a.out).write_text(body)
+        return body
     try:
         t0 = time.time()
         result["revoke"] = t.revoke()
+        save()
         result["phases"].append(t.measure(item, "DENY", t0, a.budget_seconds, "revoke"))
+        save()
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        save()
+        raise
     finally:
         if a.trial != "D":
             t0 = time.time()
             t.restore()
-            result["phases"].append(t.measure(item, "ALLOW", t0, a.budget_seconds, "restore (E)"))
-    body = json.dumps(result, indent=1)
+            result["restored_at"] = now()
+            save()
+            try:
+                result["phases"].append(t.measure(item, "ALLOW", t0, a.budget_seconds, "restore (E)"))
+            except Exception as exc:
+                result["restore_measure_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+            save()
+    body = save()
     Path(a.out).write_text(body)
     print(json.dumps({"trial": a.trial, "sha256": hashlib.sha256(body.encode()).hexdigest(),
                       "phases": [(ph["phase"], ph["completed"], ph["latency_seconds_from_t0"]) for ph in result["phases"]]}))
