@@ -141,7 +141,7 @@ def judge(expected: str, doc: str, s: dict) -> bool:
 
 
 def run_check(cid, actor, question, expected, doc, socks) -> dict:
-    token = ei.fetch(socks[actor], "id_token")
+    token = ei.fetch(socks[actor], "api_token")
     start, t = witness_lines(), now()
     resp = exec_in_rag(_CALL, {"q": Q[question], "t": token})
     time.sleep(1)
@@ -152,7 +152,7 @@ def run_check(cid, actor, question, expected, doc, socks) -> dict:
 
 
 def guard_unavailable(socks) -> dict:
-    token = ei.fetch(socks["alice"], "id_token")
+    token = ei.fetch(socks["alice"], "api_token")
     subprocess.run(["docker", "stop", "-t", "5", GUARD], check=True, capture_output=True)
     try:
         start, t = witness_lines(), now()
@@ -167,7 +167,7 @@ def guard_unavailable(socks) -> dict:
 
 
 def invalid_provenance(socks) -> dict:
-    token = ei.fetch(socks["alice"], "id_token")
+    token = ei.fetch(socks["alice"], "api_token")
     start, t = witness_lines(), now()
     resp = exec_in_rag(_TAMPER, {"q": Q["finance"], "t": token, "doc": "finance_alice.txt"})
     s = summarize(resp, witness_since(start))

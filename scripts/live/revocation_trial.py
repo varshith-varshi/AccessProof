@@ -232,7 +232,7 @@ class Trial:
                 ts["t3_revision_updated"] = now()
             if ts["t3_revision_updated"] and ts["t4_guard_acknowledged"] is None and guard_revision() == rev:
                 ts["t4_guard_acknowledged"] = now()
-            d = guard_decision(ei.fetch(self.sock, "id_token"), self.provider_resource() if self.letter != "D" else item)
+            d = guard_decision(ei.fetch(self.sock, "api_token"), self.provider_resource() if self.letter != "D" else item)
             decisions.append({"at": now(), "decision": d})
             if d == want:
                 ts["t5_first_decision"] = ts["t5_first_decision"] or now()
@@ -276,7 +276,7 @@ def main() -> int:
             return 1
     item = t.item_id()
     baseline = {"alice_direct": t.alice_direct(item) if a.trial != "D" else "n/a",
-                "guard": guard_decision(ei.fetch(a.socket, "id_token"), item),
+                "guard": guard_decision(ei.fetch(a.socket, "api_token"), item),
                 "accessproof_allows": ap_effective_allows(t.doc), "revision": ap_revision()}
     print(json.dumps({"trial": a.trial, "document": t.doc, "baseline": baseline, "execute": a.execute}))
     if not a.execute:

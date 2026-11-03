@@ -31,6 +31,9 @@ identity_mode = os.getenv("ACCESSPROOF_GUARD_IDENTITY_MODE", "oidc" if not verif
 expected_tenant = os.getenv("ACCESSPROOF_GUARD_IDENTITY_TENANT_ID")
 subject_claim = os.getenv("ACCESSPROOF_GUARD_IDENTITY_SUBJECT_CLAIM", "sub")
 identity_cache_seconds = max(30.0, float(os.getenv("ACCESSPROOF_GUARD_IDENTITY_CACHE_SECONDS", "300")))
+# Optional: require a user-delegated access token with this scope (e.g.
+# "access_as_user"); rejects ID tokens and app-only tokens.
+required_scope = os.getenv("ACCESSPROOF_GUARD_REQUIRED_SCOPE", "").strip() or None
 mode = os.getenv("ACCESSPROOF_GUARD_MODE", "protect").lower()
 fail_mode = os.getenv("ACCESSPROOF_GUARD_FAIL_MODE", "fail_closed").lower()
 max_policy_age_seconds = max(10.0, float(os.getenv("ACCESSPROOF_GUARD_MAX_POLICY_AGE_SECONDS", "120")))
@@ -151,6 +154,7 @@ def _oidc() -> OidcVerifier:
             subject_claim=subject_claim,
             tenant_id=expected_tenant,
             cache_seconds=identity_cache_seconds,
+            required_scope=required_scope,
         )
     return _oidc_verifier
 

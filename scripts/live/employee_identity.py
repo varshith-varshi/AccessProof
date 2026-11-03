@@ -47,7 +47,10 @@ from apps.guard.accessproof_guard.identity import OidcVerifier  # noqa: E402
 TENANT = "6479e7ca-b256-4ebc-a408-871b9046547c"
 LOGIN = "https://login.microsoftonline.com/"
 ISSUER = f"{LOGIN}{TENANT}/v2.0"
-SCOPES = "openid profile offline_access User.Read Files.Read"
+SCOPES = "openid profile offline_access User.Read Files.Read.All"
+# The protected RAG/Gateway API. Its access token (aud = sign-in app, scp = access_as_user)
+# is what the Guard accepts -- never the ID token.
+API_SCOPE_NAME = "access_as_user"
 UPN_DOMAIN = "neuralmatrix093.onmicrosoft.com"
 SITE = "https://graph.microsoft.com/v1.0/sites/neuralmatrix093.sharepoint.com:/sites/AccessProof-Validation-20261027"
 FOLDER = "Synthetic-RAG-Test"
@@ -190,16 +193,38 @@ class Session:
             raise IdentityFailure("SIGNED_OID_DOES_NOT_MATCH_GRAPH_USER")
         if str(who.get("userPrincipalName", "")).lower() != f"{self.actor}@{UPN_DOMAIN}":
             raise IdentityFailure("WRONG_EMPLOYEE_SIGNED_IN")
+        refresh_token = grant.get("refresh_token") or self.tokens.get("refresh_token")
+        api_token = self._api_access_token(refresh_token)
         with self.lock:
             self.tokens = {"id_token": grant["id_token"], "access_token": grant["access_token"],
-                           "refresh_token": grant.get("refresh_token") or self.tokens.get("refresh_token"),
-                           "id_exp": int(_claims(grant["id_token"])["exp"])}
+                           "api_token": api_token,
+                           "refresh_token": refresh_token,
+                           "id_exp": min(int(_claims(grant["id_token"])["exp"]), int(_claims(api_token)["exp"]))}
             self.verified = {"actor": self.actor, "verified_at": datetime.now(timezone.utc).isoformat(),
                              "guard_verifier": "apps.guard.accessproof_guard.identity.OidcVerifier",
                              "subject_claim": "oid", "graph_me_oid_match": True,
                              "upn": who["userPrincipalName"].lower(),
                              "id_token_claims": _summary(_claims(grant["id_token"]))}
         print(f"VERIFIED {self.actor}: oid={ident.subject} tid={ident.tenant_id} iss={ident.issuer}", flush=True)
+
+    def _api_access_token(self, refresh_token: str | None) -> str:
+        """Delegated access token for the protected RAG API, verified exactly as
+        the Guard will verify it (audience, tenant, signature, scope, oid)."""
+        if not refresh_token:
+            raise IdentityFailure("NO_REFRESH_TOKEN_FOR_API_TOKEN")
+        r = self.http.post(f"{LOGIN}{TENANT}/oauth2/v2.0/token", data={
+            "grant_type": "refresh_token", "client_id": self.client_id, "refresh_token": refresh_token,
+            "scope": f"api://{self.client_id}/{API_SCOPE_NAME} offline_access"})
+        if r.status_code != 200:
+            raise IdentityFailure(f"API_TOKEN_FAILED:{r.json().get('error')}")
+        token = r.json()["access_token"]
+        verifier = OidcVerifier(issuer=ISSUER, audience=self.client_id, subject_claim="oid",
+                                tenant_id=TENANT, required_scope=API_SCOPE_NAME)
+        try:
+            verifier.verify(token)
+        finally:
+            verifier.close()
+        return token
 
     def refresh_if_needed(self) -> None:
         with self.lock:
@@ -220,7 +245,7 @@ class Session:
         with self.lock:
             if what == "claims":
                 return json.dumps(self.verified)
-            if what in ("id_token", "access_token") and self.tokens:
+            if what in ("id_token", "access_token", "api_token") and self.tokens:
                 return self.tokens[what]
         raise IdentityFailure("UNKNOWN_OR_NOT_READY")
 
@@ -338,9 +363,19 @@ def probe(args) -> int:
             rows.append({"document": name, "item_id": items[name], "expected": expected,
                          "actual": decision, "http_status": status, "pass": decision == expected,
                          "at": datetime.now(timezone.utc).isoformat()})
+    # D-21: a 403/404 only means "SharePoint denies" if the SAME token can read
+    # the documents this employee IS entitled to. Without that positive control
+    # (e.g. a token lacking delegated Files.Read.All) every cell would look like
+    # DENY and deny expectations would falsely pass.
+    positive_control = any(r["expected"] == "ALLOW" and r.get("actual") == "ALLOW" for r in rows)
+    if not positive_control:
+        for r in rows:
+            if r.get("actual") == "DENY":
+                r["actual"], r["pass"] = "INCONCLUSIVE_NO_POSITIVE_CONTROL", False
     out = {"schema": "accessproof.direct_sharepoint_probe/v1", "actor": args.actor,
            "identity": claims, "drive_id": drive, "results": rows,
-           "pass": all(r["pass"] for r in rows)}
+           "positive_control": positive_control,
+           "pass": positive_control and all(r["pass"] for r in rows)}
     Path(args.out).write_text(json.dumps(out, indent=1))
     print(json.dumps({"actor": args.actor, "pass": out["pass"],
                       "results": [(r["document"], r["expected"], r["actual"], r.get("http_status")) for r in rows]}))
@@ -361,7 +396,7 @@ def main() -> int:
                         "127.0.0.1 redirect URL can be relayed to the listener by the operator)")
     g = sub.add_parser("get")
     g.add_argument("--socket", required=True)
-    g.add_argument("what", choices=["id_token", "access_token", "claims"])
+    g.add_argument("what", choices=["id_token", "access_token", "api_token", "claims"])
     pr = sub.add_parser("probe")
     pr.add_argument("--socket", required=True)
     pr.add_argument("--actor", choices=sorted(EXPECTED), required=True)

@@ -149,3 +149,35 @@ def test_adversarial_oidc_issuer_cannot_be_private(issuer: str) -> None:
                 lambda _: pytest.fail("private issuer must not be fetched")
             )),
         )
+
+
+@pytest.mark.parametrize(("claims", "code"), [
+    ({}, "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN"),                                      # ID token: no scp
+    ({"scp": "access_as_user", "idtyp": "app"}, "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN"),
+    ({"roles": ["Sites.Selected"]}, "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN"),          # app-only token
+    ({"scp": "User.Read Files.Read.All"}, "IDENTITY_SCOPE_MISSING"),                  # token for another API scope
+])
+def test_required_scope_rejects_id_app_and_wrong_scope_tokens(claims, code) -> None:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json={"issuer": ISSUER, "jwks_uri": f"{ISSUER}/keys"})
+        return httpx.Response(200, json={"keys": [_jwk(key, "k")]})
+    verifier = OidcVerifier(issuer=ISSUER, audience=AUDIENCE, subject_claim="sub", cache_seconds=300,
+                            client=httpx.Client(transport=httpx.MockTransport(handler)), required_scope="access_as_user")
+    with pytest.raises(IdentityError, match=code):
+        verifier.verify(_token(key, "k", **claims))
+    # The same verifier accepts a user-delegated access token with the scope.
+    assert verifier.verify(_token(key, "k", scp="openid access_as_user")).subject == "google-stable-subject"
+
+
+def test_without_required_scope_behaviour_is_unchanged() -> None:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json={"issuer": ISSUER, "jwks_uri": f"{ISSUER}/keys"})
+        return httpx.Response(200, json={"keys": [_jwk(key, "k")]})
+    verifier = _verifier(handler)
+    assert verifier.verify(_token(key, "k")).subject == "google-stable-subject"

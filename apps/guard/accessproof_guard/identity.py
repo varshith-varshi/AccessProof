@@ -61,6 +61,7 @@ class OidcVerifier:
         cache_seconds: float = 300,
         timeout_seconds: float = 5,
         client: httpx.Client | None = None,
+        required_scope: str | None = None,
     ) -> None:
         # Permissions must follow an immutable issuer-scoped user identifier.
         # Emails, usernames and display names can be reassigned and would
@@ -79,6 +80,10 @@ class OidcVerifier:
         self.audience = audience
         self.subject_claim = subject_claim
         self.tenant_id = tenant_id
+        # When set, only a USER-DELEGATED ACCESS TOKEN for this API carrying
+        # this scope is accepted: ID tokens (no scp) and app-only tokens
+        # (idtyp=app / roles without scp) are rejected.
+        self.required_scope = required_scope or None
         self.cache_seconds = max(30.0, cache_seconds)
         self.min_refresh_seconds = min(30.0, self.cache_seconds)
         self._client = client or httpx.Client(timeout=timeout_seconds, follow_redirects=False, trust_env=False)
@@ -207,6 +212,14 @@ class OidcVerifier:
             raise IdentityError("IDENTITY_TOKEN_INVALID") from exc
         if self.tenant_id and claims.get("tid") != self.tenant_id:
             raise IdentityError("IDENTITY_TENANT_MISMATCH")
+        if self.required_scope is not None:
+            scopes = claims.get("scp")
+            if claims.get("idtyp") == "app" or not isinstance(scopes, str):
+                # No delegated scope: an ID token or an application identity,
+                # never an employee calling this API.
+                raise IdentityError("IDENTITY_NOT_DELEGATED_ACCESS_TOKEN")
+            if self.required_scope not in scopes.split():
+                raise IdentityError("IDENTITY_SCOPE_MISSING")
         subject = claims.get(self.subject_claim)
         if not isinstance(subject, str) or not subject:
             raise IdentityError("IDENTITY_SUBJECT_UNKNOWN")

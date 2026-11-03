@@ -103,3 +103,16 @@ def test_serve_fails_on_bad_socket_before_asking_anyone_to_sign_in(tmp_path, mon
     assert asked == []
     after = os.umask(0o022); os.umask(after)
     assert after == before  # the restrictive socket umask never leaks
+
+
+def test_probe_without_positive_control_is_inconclusive(tmp_path, monkeypatch):
+    """D-21: all-403 (e.g. insufficient token scope) must never pass deny cells."""
+    import json
+    monkeypatch.setattr(ei, "fetch", lambda sock, what: json.dumps({"actor": "alice"}) if what == "claims" else "t")
+    monkeypatch.setattr(ei, "item_refs", lambda http: ("d", {n: n for n in ei.EXPECTED["alice"]}))
+    monkeypatch.setattr(ei, "delegated_decision", lambda http, d, i, t: ("DENY", 403))
+    out = tmp_path / "o.json"
+    rc = ei.probe(type("A", (), {"socket": "s", "actor": "alice", "out": str(out)})())
+    body = json.loads(out.read_text())
+    assert rc == 1 and body["pass"] is False and body["positive_control"] is False
+    assert {r["actual"] for r in body["results"]} == {"INCONCLUSIVE_NO_POSITIVE_CONTROL"}
