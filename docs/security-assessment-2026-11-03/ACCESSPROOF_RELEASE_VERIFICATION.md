@@ -69,3 +69,15 @@ Plus the tooling defects the r22 rollout exposed (fixed in `d5d035d`):
 | Gates | A PASS; B–J FAIL/BLOCKED (unchanged; need live identity, pairing, certificate, DB switch) |
 
 Tenant change (operator-approved): stale `fullcontrol` grant for first-party app "Microsoft Graph" removed from the lab site; AccessProof's own `fullcontrol` is required (GetUserEffectivePermissions needs EnumeratePermissions).
+
+## Update 15:27 UTC — r25 deployed (D-19 certification window)
+| Item | Value |
+|---|---|
+| Release | `r25-cert-window-ff7656eed119` (commit `ff7656eed119ae414a8865db44fad5015e80cd51`), artifact sha256 `312153e30bd3349a86c8ac3b2d2e5f145f496be34e0b8aa92fe5e00648b77ae3` |
+| Deploy | SSM `4d8f91ed-3c18-43a8-b611-824b222bee64`, 15:23:10 → 15:25:13 UTC, DEPLOYMENT VERIFIED; rehearsed on staging under `accessproof_app` (SSM `210111b8-…`, probe 23/23) |
+| Contents | D-19 certification window (control plane + Guard), live test harnesses, fixture tool |
+| Tests | Full SQLite suite 1455 tests: 3 failures in one test stub (missing new cache method), fixed in `ff7656e`; all others passed |
+| Live check | Lab Guard (r25 image) binding: mode protect, source_acl_healthy 0, certification_window 1; `/health` ready=false; Gateway `/health/ready` 503 GUARD_NOT_READY; 0 identity mappings, so every employee request is still refused |
+| DB role | still owner `accessproof`: the switch was blocked by the session's safety controls pending an explicit operator "approved" |
+
+Lab changes: synthetic group `AP-Lab-Group-Finance-Readers` (alice), `group_finance_alice.txt`, `Inherited-Alice/inherited_finance_alice.txt` (SharePoint REST confirms the file inherits); lab sign-in app `9d031e10-4bed-4ab9-a98d-3eef237c4a56` (single-tenant public client, delegated openid/profile/offline_access/User.Read/Files.Read, admin consent); lab Guard audience = that app, subject claim `oid`, tenant pinned. The lab index sync failed closed after the fixtures were added (it required exactly 3 documents); it now accepts exactly the approved fixture set.
