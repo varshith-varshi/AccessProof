@@ -2,6 +2,7 @@
 # P0-01 production switch to least-privilege database roles — runs ON EC2.
 #
 #   sudo bash enable_least_privilege_db.sh <release-id> --approve-database-role-change
+#   (RECOVERY=1 when the API is down after a credential divergence)
 #
 # Requires a release deployed with migration t4d5e6f7a8b9 or later.
 # 1. Generates three random passwords (never printed; 0600 files + .env).
@@ -38,7 +39,12 @@ mkdir -p "$REL/deployment-logs" "$ROLES"
 chmod 700 "$ROLES"
 rev=$(compose exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d '[:space:]')
 case "$rev" in t4d5e6f7a8b9|u5e6f7a8b9c0) ;; *) log "database revision $rev predates P0-01 policies; deploy first"; exit 2;; esac
-healthy api 10 || { log "API not healthy; refusing"; exit 2; }
+# RECOVERY=1: allowed when the API is down because the role passwords in the
+# database and .env diverged; re-running re-syncs them from .env (idempotent).
+if ! healthy api 10; then
+  [[ "${RECOVERY:-0}" == 1 ]] || { log "API not healthy; refusing (set RECOVERY=1 to re-sync role passwords from .env)"; exit 2; }
+  log "RECOVERY: API unhealthy at start; re-syncing role passwords from .env"
+fi
 
 cp -p "$APP_DIR/.env" "$ROLES/env.before"; chmod 600 "$ROLES/env.before"
 cp -p "$COMPOSE_FILE" "$ROLES/compose.before"; chmod 600 "$ROLES/compose.before"
@@ -47,8 +53,12 @@ restore() {
   cp "$ROLES/env.before" "$APP_DIR/.env"
   cp "$ROLES/compose.before" "$COMPOSE_FILE"
   compose up -d --no-deps --force-recreate api >>"$REL/deployment-logs/db-roles.log" 2>&1
-  healthy api 240 && compose up -d --no-deps --force-recreate worker >>"$REL/deployment-logs/db-roles.log" 2>&1
-  log "RESTORE complete (owner credentials)"; exit 1
+  if ! healthy api 240; then
+    log "RESTORE FAILED: API not healthy after reverting .env/compose — ESCALATE (see api logs)"; exit 4
+  fi
+  compose up -d --no-deps --force-recreate worker >>"$REL/deployment-logs/db-roles.log" 2>&1
+  healthy worker 120 || { log "RESTORE FAILED: worker not running — ESCALATE"; exit 4; }
+  log "RESTORE complete: api/worker healthy on the pre-run credentials"; exit 1
 }
 trap 'log "failure at line $LINENO"; restore' ERR
 
@@ -57,8 +67,23 @@ trap 'log "failure at line $LINENO"; restore' ERR
 # able to traverse it, and env.before/compose.before never enter a container.
 SECRETS="$ROLES/secrets"
 mkdir -p "$SECRETS"
+# Idempotent: if this host already runs on the restricted roles, REUSE the
+# passwords in .env. Rotating here would leave the restored .env (on any later
+# failure) out of step with the database and lock the API out. New passwords
+# are generated only for roles that have none yet.
+existing() {  # <role> -> current password from .env, or empty
+  case "$1" in
+    app)     grep -E '^ACCESSPROOF_APP_DB_PASSWORD=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- ;;
+    worker)  grep -E '^ACCESSPROOF_WORKER_DB_PASSWORD=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- ;;
+    metrics) grep -E '^ACCESSPROOF_METRICS_DATABASE_URL=' "$APP_DIR/.env" | tail -1 \
+               | sed -nE 's#^[^=]+=postgresql\+psycopg://accessproof_metrics:([^@]+)@.*#\1#p' ;;
+  esac
+}
 for role in app worker metrics; do
-  [[ -s "$SECRETS/$role.pw" ]] || openssl rand -hex 32 > "$SECRETS/$role.pw"
+  rm -f "$SECRETS/$role.pw"
+  current=$(existing "$role")
+  if [[ -n "$current" ]]; then printf '%s\n' "$current" > "$SECRETS/$role.pw"; log "$role: reusing existing password"
+  else openssl rand -hex 32 > "$SECRETS/$role.pw"; log "$role: generated new password"; fi
 done
 chown 10001:10001 "$SECRETS" "$SECRETS"/*.pw; chmod 500 "$SECRETS"; chmod 400 "$SECRETS"/*.pw
 # Read ONLY the owner password (never source .env: exported values would
