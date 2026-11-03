@@ -1,0 +1,31 @@
+# Step 5 raw observations, 2026-11-03 (UTC). No tokens, secrets or document content.
+# Entra (az CLI, delegated, read-only; signed-in tenant 6479e7ca-b256-4ebc-a408-871b9046547c)
+app.displayName=AccessProof appId=b8424d54-5428-4d35-ae2c-639de7e512a9 signInAudience=AzureADMultipleOrgs
+web.redirectUris=["https://api.accessproof.in/api/v1/current/sources/microsoft-admin-consent/callback"] spa=[] publicClient=[]
+keyCredentials=2 x AsymmetricX509Cert (Verify) end 2027-04-30T13:52:03Z; passwordCredentials=1 (hint amL) end 2027-01-25T15:55:34Z
+requiredResourceAccess: SharePoint(00000003-0000-0ff1-ce00-000000000000) Role Sites.Selected; Graph(00000003-0000-0000-c000-000000000000) Role Sites.Selected, User.Read.All, Group.Read.All
+servicePrincipal c06b34f9-2886-4000-921a-9b5f56f1d519 appRoleAssignments (admin consent):
+  Microsoft Graph Sites.Selected 2026-10-27T15:58:21Z
+  Microsoft Graph Group.Read.All 2026-10-27T15:58:21Z
+  Microsoft Graph User.Read.All 2026-10-27T15:58:21Z
+  Office 365 SharePoint Online Sites.Selected 2026-11-01T14:34:27Z
+oauth2PermissionGrants (delegated) = []
+# Graph, app-only token acquired INSIDE production api container (SSM 8e0a1913-8fb9-4c15-8f48-1c990415b1e5, f58043ed-362b-4b89-a663-cc9e55a982a5, 9d42c7fe-4aaa-4d2f-a1fe-4ed3603f904c)
+token claims: aud=https://graph.microsoft.com tid=6479e7ca-b256-4ebc-a408-871b9046547c appid=b8424d54-5428-4d35-ae2c-639de7e512a9 appidacr=1 (client secret) idtyp=app roles=[Sites.Selected, Group.Read.All, User.Read.All]
+200 GET /sites/neuralmatrix093.sharepoint.com:/sites/AccessProof-Validation-20261027 -> lab site
+200 GET /sites/{H},9b00ec42-620a-4efc-acb3-f4d662c8ceb6,20231c9b-... -> lab site
+200 GET /drives/b!QuwAmw.../root -> /sites/AccessProof-Validation-20261027/Shared Documents
+200 GET lab site /drives -> 1 drive
+200 GET /sites/neuralmatrix093.sharepoint.com (root site METADATA)
+403 GET root site /drive (accessDenied); 403 root /drive/root/children (accessDenied)
+200 GET root site /drives -> 0 results; 200 root /lists -> 0 results (filtered)
+403 GET /drives/b!ZMPrk8... (crafted cross-site drive id from earlier tests) accessDenied
+404 GET /sites/{H}:/sites/accessproof-nonexistent-probe-7f3a itemNotFound
+403 GET /sites?search=* accessDenied
+200 GET /users?$top=1 (User.Read.All)
+200 GET lab site /permissions -> 2 grants:
+  ['fullcontrol'] application c94a1c36-2bbc-4372-958b-18910df9580c "Microsoft Graph" (first-party tool used to create grants)
+  ['fullcontrol'] application b8424d54-5428-4d35-ae2c-639de7e512a9 "AccessProof"
+# Production DB (read-only, SSM 08276de2-a8ab-40d2-9642-294c927289c9)
+source 2fa9562b-b765-4098-bebf-222ea53ec667 org 48ee8c86-d4d8-4cde-b00b-bc779f965f4f provider=sharepoint status=connected boundary=folder item 012JSJ74SOSX3HDJ2GXJBLWBEAD4WAJHZ2 ("Synthetic-RAG-Test") tenant=6479e7ca-b256-4ebc-a408-871b9046547c
+source_effective_certifications: 0 rows

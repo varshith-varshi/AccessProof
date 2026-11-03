@@ -1,0 +1,16 @@
+*** REHEARSAL against i-0e6d2256a1e5a6f67 (not production); public checks disabled ***
+note: working tree dirty; shipping committed d5d035d1101ca0cfea5d959eae37388fd745ead7 only
+release=r23-rt-fixes-d5d035d1101c sha256=5f17d4c0f3820944461ae9f5052806cad69a923b74d49321c1ace9eff332576a
+SSM command a6906a82-f5ae-44f1-bcef-6c9dd5701534
+
+STATUS Success
+/home/ubuntu/accessproof-releases/r23-rt-fixes-d5d035d1101c/artifact.tar: OK
+2026-11-03T12:57:40Z release r23-rt-fixes-d5d035d1101c starting
+2026-11-03T13:00:46Z images built; target DB revision v6f7a8b9c0d1
+2026-11-03T13:00:47Z backup verified (78 table-data entries)
+2026-11-03T13:00:50Z database at v6f7a8b9c0d1
+2026-11-03T13:01:16Z DEPLOYMENT VERIFIED: api/worker/web on r23-rt-fixes-d5d035d1101c, db v6f7a8b9c0d1
+
+ERR 
+
+[exited with code 0]

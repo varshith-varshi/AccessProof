@@ -1,0 +1,113 @@
+[ssm 46317c6a-6d9d-46ad-b704-e9a7446d2abf]
+api accessproof/api:r23-rt-fixes-d5d035d1101c Up About a minute (healthy)
+db postgres:17-alpine Up 7 minutes (healthy)
+redis redis:7-alpine Up 7 minutes (healthy)
+web accessproof/web-v2:r23-rt-fixes-d5d035d1101c Up 58 seconds (healthy)
+worker accessproof/worker:r23-rt-fixes-d5d035d1101c Up 59 seconds
+{
+ "ok": true,
+ "results": {
+  "alpha:login": {
+   "pass": true,
+   "detail": 200
+  },
+  "beta:login": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/auth/me": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/organization": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/sources": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/ai-applications": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/guards": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/protection/overview": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/audit": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/dashboard": {
+   "pass": true,
+   "detail": 200
+  },
+  "write: rename workspace": {
+   "pass": true,
+   "detail": 200
+  },
+  "write: create guard": {
+   "pass": true,
+   "detail": 201
+  },
+  "cross-tenant read refused": {
+   "pass": true,
+   "detail": 403
+  },
+  "cross-tenant write refused": {
+   "pass": true,
+   "detail": 403
+  },
+  "machine-only policy route refuses human session": {
+   "pass": true,
+   "detail": 401
+  },
+  "BOLA: beta cannot revoke alpha's guard": {
+   "pass": true,
+   "detail": 404
+  },
+  "BOLA: alpha's guard still unrevoked": {
+   "pass": true,
+   "detail": "not_enrolled"
+  },
+  "beta sees no alpha guards": {
+   "pass": true,
+   "detail": 200
+  },
+  "unauthenticated refused": {
+   "pass": true,
+   "detail": 401
+  },
+  "gateway heartbeat route fail-closed": {
+   "pass": true,
+   "detail": 422
+  },
+  "RT-04 login JSON without Content-Type": {
+   "observed": 422,
+   "note": "422 on the upgraded stack; 200 on the old stack"
+  },
+  "RT-03 TOTP replay rejected": {
+   "observed": true,
+   "expected_for_release": true,
+   "pass": true,
+   "statuses": {
+    "enable": 200,
+    "first": 200,
+    "replay": 401
+   }
+  },
+  "RT-03 cleanup: MFA disabled again": {
+   "pass": true,
+   "detail": 200
+  }
+ }
+}
+v6f7a8b9c0d1
+last_totp_step
+
+[status Success]

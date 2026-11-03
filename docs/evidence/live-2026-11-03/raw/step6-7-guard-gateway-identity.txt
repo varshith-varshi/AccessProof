@@ -1,0 +1,31 @@
+# Steps 6-7 raw observations, 2026-11-03 (UTC). No tokens, credentials or document content.
+## Production release (SSM db1329c5-fcda-40d6-920d-b317c62fbf8d, verification 1bd98b52-4bce-4c96-8cef-e9fe7b37a41e)
+api/worker/web accessproof/*:r23-rt-fixes-400c73ebb7be; source 400c73ebb7be1c22600d7c76dadf0386d5258807; artifact sha256 35f90f3f37dce58c2308023de025df47e20c698a305d0ba16e8571586786636c (identical to rehearsal r23d)
+alembic v6f7a8b9c0d1; mfa_methods.last_totp_step present; fastapi 0.162.0 starlette 1.10.0 cryptography 50.0.2
+api DB role: accessproof (owner, superuser, BYPASSRLS) -- least-privilege switch NOT run (awaiting approval)
+public: /health/ready 200 ready; app /login 200; GET /api/v1/guards 401; heartbeat {} 422
+## Customer test Guard (laptop, container accessproof-guard, compose ~/Downloads/accessproof-guard-0.1.4)
+before: image accessproof-guard-r11:20261102 (starlette 0.52.1, cryptography 46.0.7), health=unhealthy
+after:  image accessproof-guard-r23:d5d035d1101c (built from git archive d5d035d; apps/guard, apps/gateway, packages identical to 400c73e) starlette 1.10.0 cryptography 50.0.2
+credentials/state volume preserved; production guard 102691c8-54d7-44d7-b1b1-bc40c9f335f4 ("black") policy v8 re-synced 13:20:29Z
+/health: status=degraded ready=false policy_fresh=true authorization_revisions_ready=true identity_ready=true audit_buffer_ready=true sync_error=null
+cache: bound_applications = (sharepoint-rag-staging, 2fa9562b-..., mode=protect, source_acl_healthy=0); identity_mappings=0; authorization_revisions=1
+cause: control plane reports source_acl_healthy=false for Microsoft sources without a fresh independent certificate (app.py source_acl_healthy); 0 identity mappings. Correct fail-closed state.
+## Customer test Gateway (laptop, sharepoint-rag-lab-accessproof-gateway-1)
+before: accessproof-gateway:research-r21-a08af47 (starlette 0.52.1); after: accessproof-gateway:r23-d5d035d1101c
+binding: tenant 48ee8c86-d4d8-4cde-b00b-bc779f965f4f app sharepoint-rag-staging guard http://accessproof-guard:8080 model http://model:8000 (openai-compatible, llama3.2:3b via host Ollama bridge)
+/health/live 200; /health/ready 503 GUARD_NOT_READY
+POST /v1/chat/completions: no token -> 401 IDENTITY_TOKEN_REQUIRED; forged unsigned Entra-shaped JWT -> 422 INVALID_PROTECTED_REQUEST (rejected before signature check: body lacks attested retrieval)
+pairing: production gateway_installations for org = 0; gateway env has no PRESENCE_* (control plane) settings -> NOT PAIRED
+## Bypass (from inside sharepoint-rag-lab-rag-1)
+model:8000 blocked (no DNS); 192.168.144.1:11436 unreachable; 172.17.0.1:11436 unreachable; guard blocked; internet blocked; ONLY accessproof-gateway:8090 reachable
+networks rag-internal and model-internal are internal=true; rag is on rag-internal only; host Ollama listens 127.0.0.1:11434 and 192.168.144.1:11436 (not LAN)
+## Identity (read-only)
+Entra: alice@NeuralMatrix093.onmicrosoft.com oid 67b731fb-c51c-4344-bbd2-63d5bf77a5d5; bob@NeuralMatrix093.onmicrosoft.com oid b7989860-d1bc-4cc3-a96c-35117a3ef9c4
+production guard_subjects (microsoft365): alice d6e96677-bf84-43df-8505-f1aa51f99d56 -> 67b731fb-...; bob ff54213f-df09-46be-aedf-9c3f5b64b908 -> b7989860-...; directory sync 13:11:45Z
+production guard_identity_mappings for org: 0
+## AccessProof effective ACL view (production DB, read-only; ACL cursor last_success 13:20:16Z, provider revision 920, no error)
+finance_alice.txt: alice allow; bob none (deny)
+engineering_bob.txt: bob allow; alice none (deny)
+shared_control.txt: alice allow; bob allow
+(also: tenant admin Sai Varshith Indluri allow on all; app authorization revision 598)

@@ -1,0 +1,23 @@
+[ssm 00ed6605-5c27-41fa-ad0f-b6d8a1e39302]
+1
+deploy exit=1
+2026-11-03T13:10:08Z release r23f-forced-fail-400c73ebb7be starting
+2026-11-03T13:10:13Z images built; target DB revision v6f7a8b9c0d1
+2026-11-03T13:10:14Z backup verified (78 table-data entries)
+2026-11-03T13:10:16Z database at v6f7a8b9c0d1
+2026-11-03T13:10:16Z REHEARSAL: injected failure after migration
+2026-11-03T13:10:16Z failure at line 140
+2026-11-03T13:10:16Z ROLLBACK: restoring previous image references
+2026-11-03T13:10:16Z ROLLBACK: alembic downgrade u5e6f7a8b9c0
+2026-11-03T13:10:42Z ROLLBACK COMPLETE: previous release healthy
+/home/ubuntu/accessproof-releases/r23f-forced-fail-400c73ebb7be/deployment-logs/migration.log:INFO  [alembic.runtime.migration] Running upgrade u5e6f7a8b9c0 -> v6f7a8b9c0d1, Record the last accepted TOTP step so codes cannot be replayed (RT-03).
+/home/ubuntu/accessproof-releases/r23f-forced-fail-400c73ebb7be/deployment-logs/rollback-migration.log:INFO  [alembic.runtime.migration] Running downgrade v6f7a8b9c0d1 -> u5e6f7a8b9c0, Record the last accepted TOTP step so codes cannot be replayed (RT-03).
+api accessproof/api:r22-least-privilege-e76a89a87267 Up 23 seconds (healthy)
+db postgres:17-alpine Up 16 minutes (healthy)
+redis redis:7-alpine Up 16 minutes (healthy)
+web accessproof/web-v2:r22-least-privilege-e76a89a87267 Up 7 seconds (healthy)
+worker accessproof/worker:r22-least-privilege-e76a89a87267 Up 7 seconds
+u5e6f7a8b9c0
+api db user: accessproof_app
+
+[status Success]

@@ -1,0 +1,16 @@
+[ssm 3440ebd7-026d-4e5a-8948-96bfb74fbd80]
+== [1] r23c as accessproof_app
+probe ok= True failed= []
+== [2] rollback to r22 via r23c rollback script, release r23-rt-fixes-d5d035d1101c
+INFO  [alembic.runtime.migration] Running downgrade v6f7a8b9c0d1 -> u5e6f7a8b9c0, Record the last accepted TOTP step so codes cannot be replayed (RT-03).
+api accessproof/api:r22-least-privilege-e76a89a87267 Up 17 seconds (healthy)
+db postgres:17-alpine Up 15 minutes (healthy)
+redis redis:7-alpine Up 15 minutes (healthy)
+web accessproof/web-v2:r22-least-privilege-e76a89a87267 Up Less than a second (health: starting)
+worker accessproof/worker:r22-least-privilege-e76a89a87267 Up Less than a second
+Rolled back to: previous_api_image=accessproof/api:r22-least-privilege-e76a89a87267 previous_web_image=accessproof/web-v2:r22-least-privilege-e76a89a87267 previous_worker_image=accessproof/worker:r22-least-privilege-e76a89a87267 
+
+--stderr--
+/var/lib/amazon/ssm/i-0e6d2256a1e5a6f67/document/orchestration/3440ebd7-026d-4e5a-8948-96bfb74fbd80/awsrunShellScript/0.awsrunShellScript/_script.sh: 5: Bad substitution
+failed to run commands: exit status 2
+[status Failed]

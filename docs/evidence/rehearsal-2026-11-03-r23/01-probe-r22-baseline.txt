@@ -1,0 +1,102 @@
+[ssm 1a52f750-868a-4870-b9b7-507870fbf2e0]
+{"alpha-owner@rehearsal.accessproof.in": {"status": 201, "organization_id": "1120f2e5-b7ad-4ae6-9107-36f85ef33aca"}, "beta-owner@rehearsal.accessproof.in": {"status": 201, "organization_id": "1a8063d2-e7fa-4270-9e6c-496bbb76d7bc"}}
+alpha-owner@rehearsal.accessproof.in
+beta-owner@rehearsal.accessproof.in
+UPDATE 2
+{
+ "ok": false,
+ "results": {
+  "alpha:login": {
+   "pass": true,
+   "detail": 200
+  },
+  "beta:login": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/auth/me": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/organization": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/sources": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/ai-applications": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/guards": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/protection/overview": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/audit": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/dashboard": {
+   "pass": true,
+   "detail": 200
+  },
+  "write: rename workspace": {
+   "pass": true,
+   "detail": 200
+  },
+  "write: create guard": {
+   "pass": true,
+   "detail": 201
+  },
+  "cross-tenant read refused": {
+   "pass": true,
+   "detail": 403
+  },
+  "cross-tenant write refused": {
+   "pass": true,
+   "detail": 403
+  },
+  "cross-tenant guard object refused (BOLA)": {
+   "pass": false,
+   "detail": 401
+  },
+  "beta sees no alpha guards": {
+   "pass": true,
+   "detail": 200
+  },
+  "unauthenticated refused": {
+   "pass": true,
+   "detail": 401
+  },
+  "gateway heartbeat route fail-closed": {
+   "pass": true,
+   "detail": 422
+  },
+  "RT-04 login JSON without Content-Type": {
+   "observed": 422,
+   "note": "422 on the upgraded stack; 200 on the old stack"
+  },
+  "RT-03 TOTP replay rejected": {
+   "observed": false,
+   "expected_for_release": false,
+   "pass": true,
+   "statuses": {
+    "enable": 200,
+    "first": 200,
+    "replay": 200
+   }
+  },
+  "RT-03 cleanup: MFA disabled again": {
+   "pass": true,
+   "detail": 200
+  }
+ }
+}
+
+[status Success]

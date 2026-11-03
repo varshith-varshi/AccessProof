@@ -1,0 +1,63 @@
+{
+ "schema": "accessproof.live_evidence/v1",
+ "collected_by": "Claude Code session on operator laptop (AWS SSM + az CLI)",
+ "records": [
+  {
+   "environment": "live-tenant+production",
+   "organization": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f (varshith)",
+   "application": "sharepoint-rag-staging (9fd3809b-ae3c-4932-9a92-0b8eaf22ab6b)",
+   "source": "2fa9562b-b765-4098-bebf-222ea53ec667 / neuralmatrix093.sharepoint.com/sites/AccessProof-Validation-20261027",
+   "employee_identity_reference": "n/a (application identity b8424d54-5428-4d35-ae2c-639de7e512a9)",
+   "authorization_revision": null,
+   "evidence_hash": "b927028fb938150f62d0766c8cc13a3d965119e1c196822a2f2be5a8c38cddde",
+   "evidence_file": "raw/step5-tenant-graph.txt",
+   "test_identifier": "SRC-01",
+   "timestamp": "2026-11-03T12:47:00Z",
+   "document_reference": "tenant/app registration",
+   "expected_decision": "CONFIGURED_LEAST_PRIVILEGE",
+   "actual_decision": "Requested == consented; application roles only (Graph Sites.Selected, User.Read.All, Group.Read.All; SharePoint Sites.Selected); no delegated grants; single redirect URI on api.accessproof.in",
+   "observed_behavior": "Multi-tenant registration (AzureADMultipleOrgs) by design for customer consent. Live Graph token is secret-based (appidacr=1) although two certificates are registered. User.Read.All/Group.Read.All are tenant-wide directory reads used for group expansion.",
+   "status": "PASS_WITH_FINDINGS",
+   "findings": [
+    "T-02 (P3): production acquires app-only tokens with the client secret; certificate credentials exist. Prefer certificate-only and remove the secret (expires 2027-01-25)."
+   ]
+  },
+  {
+   "environment": "live-tenant+production",
+   "organization": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f (varshith)",
+   "application": "sharepoint-rag-staging (9fd3809b-ae3c-4932-9a92-0b8eaf22ab6b)",
+   "source": "2fa9562b-b765-4098-bebf-222ea53ec667 / neuralmatrix093.sharepoint.com/sites/AccessProof-Validation-20261027",
+   "employee_identity_reference": "n/a (application identity b8424d54-5428-4d35-ae2c-639de7e512a9)",
+   "authorization_revision": null,
+   "evidence_hash": "b927028fb938150f62d0766c8cc13a3d965119e1c196822a2f2be5a8c38cddde",
+   "evidence_file": "raw/step5-tenant-graph.txt",
+   "test_identifier": "SRC-02",
+   "timestamp": "2026-11-03T12:55:00Z",
+   "document_reference": "site grant",
+   "expected_decision": "Sites.Selected limited to lab site",
+   "actual_decision": "Content access limited to lab site: lab library 200; root-site library 403; tenant site search 403; nonexistent site 404",
+   "observed_behavior": "Root-site METADATA is readable (200) under Sites.Selected; its content is not. AccessProof's grant on the lab site is 'fullcontrol', and a second 'fullcontrol' grant exists for first-party app c94a1c36 ('Microsoft Graph').",
+   "status": "PASS_WITH_FINDINGS",
+   "findings": [
+    "T-01 (P2): AccessProof holds 'fullcontrol' (not 'read') on the lab site. Full Control may be required to enumerate SharePoint role assignments; confirm the minimum role before lowering. Remove the stale 'Microsoft Graph' fullcontrol grant if it is not in use. Tenant change: requires owner approval."
+   ]
+  },
+  {
+   "environment": "live-tenant+production",
+   "organization": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f (varshith)",
+   "application": "sharepoint-rag-staging (9fd3809b-ae3c-4932-9a92-0b8eaf22ab6b)",
+   "source": "2fa9562b-b765-4098-bebf-222ea53ec667 / neuralmatrix093.sharepoint.com/sites/AccessProof-Validation-20261027",
+   "employee_identity_reference": "n/a (application identity b8424d54-5428-4d35-ae2c-639de7e512a9)",
+   "authorization_revision": null,
+   "evidence_hash": "b927028fb938150f62d0766c8cc13a3d965119e1c196822a2f2be5a8c38cddde",
+   "evidence_file": "raw/step5-tenant-graph.txt",
+   "test_identifier": "SRC-03",
+   "timestamp": "2026-11-03T12:55:00Z",
+   "document_reference": "site/drive discovery",
+   "expected_decision": "lab site and drive only",
+   "actual_decision": "Lab site exposes exactly 1 drive; root site drives/lists enumerate as empty; crafted cross-site drive id 403",
+   "observed_behavior": "Production source boundary is folder item 012JSJ74SOSX3HDJ2GXJBLWBEAD4WAJHZ2 ('Synthetic-RAG-Test') in the lab library.",
+   "status": "PASS"
+  }
+ ]
+}
