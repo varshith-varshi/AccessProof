@@ -28,6 +28,17 @@ REUSE_EXISTING_IMAGES="${REUSE_EXISTING_IMAGES:-0}"  # 1 only for an offline reh
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$REL/deployment-logs/deploy.log"; }
 compose() { docker compose --project-directory "$APP_DIR" -f "$COMPOSE_FILE" "$@"; }
 env_value() { grep -E "^$1=" "$APP_DIR/.env" | tail -1 | cut -d= -f2-; }   # only for image refs
+# Migrations need DDL, so they always run as the table OWNER — never via the
+# api service's runtime DATABASE_URL, which after the P0-01 switch is the
+# restricted accessproof_app role. The password travels in the environment
+# (compose run -e NAME), never in argv, so it never appears in `ps`.
+owner_alembic() {  # <api-image> <alembic args...>
+  local image="$1"; shift
+  local pw; pw=$(grep -E '^POSTGRES_PASSWORD=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- | sed -E "s/^['\"]//; s/['\"]$//")
+  [[ -n "$pw" ]] || { echo "POSTGRES_PASSWORD missing from .env" >&2; return 1; }
+  DATABASE_URL="postgresql+psycopg://accessproof:${pw}@db:5432/accessproof" ACCESSPROOF_API_IMAGE="$image" \
+    compose run --rm --no-deps -T -e DATABASE_URL api alembic "$@"
+}
 db_revision() { compose exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d '[:space:]'; }
 
 wait_healthy() {  # <service> <seconds>
@@ -53,8 +64,7 @@ rollback() {
       exit 3
     fi
     log "ROLLBACK: alembic downgrade $EXPECTED_DB_REVISION"
-    ACCESSPROOF_API_IMAGE="$API_IMAGE" compose run --rm --no-deps -T api alembic downgrade "$EXPECTED_DB_REVISION" \
-      >>"$REL/deployment-logs/rollback-migration.log" 2>&1
+    owner_alembic "$API_IMAGE" downgrade "$EXPECTED_DB_REVISION" >>"$REL/deployment-logs/rollback-migration.log" 2>&1
   fi
   compose up -d --no-deps --force-recreate api >>"$REL/deployment-logs/rollback.log" 2>&1
   wait_healthy api 240 || { log "ROLLBACK: previous API not healthy — escalate"; exit 4; }
@@ -115,8 +125,7 @@ log "backup verified ($entries table-data entries)"
 trap 'log "failure at line $LINENO"; rollback' ERR
 
 # ---------------------------------------------------------------- migrate
-ACCESSPROOF_API_IMAGE="$API_IMAGE" compose run --rm --no-deps -T api alembic upgrade head \
-  >"$REL/deployment-logs/migration.log" 2>&1
+owner_alembic "$API_IMAGE" upgrade head >"$REL/deployment-logs/migration.log" 2>&1
 MIGRATED=1
 [[ "$(db_revision)" == "$TARGET_DB_REVISION" ]]
 log "database at $TARGET_DB_REVISION"

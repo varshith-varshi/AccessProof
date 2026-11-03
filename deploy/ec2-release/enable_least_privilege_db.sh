@@ -61,13 +61,18 @@ for role in app worker metrics; do
   [[ -s "$SECRETS/$role.pw" ]] || openssl rand -hex 32 > "$SECRETS/$role.pw"
 done
 chown 10001:10001 "$SECRETS" "$SECRETS"/*.pw; chmod 500 "$SECRETS"; chmod 400 "$SECRETS"/*.pw
-set -a; . "$APP_DIR/.env"; set +a                        # read secrets without printing them
-OWNER_URL="postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof"
-compose run --rm --no-deps -T -v "$SECRETS:/run/db-roles:ro" -e DATABASE_URL="$OWNER_URL" api \
+# Read ONLY the owner password (never source .env: exported values would
+# override .env during later compose interpolation). Passed via the
+# environment (-e NAME), never in argv.
+POSTGRES_PASSWORD=$(grep -E '^POSTGRES_PASSWORD=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- | sed -E "s/^['\"]//; s/['\"]$//")
+[[ -n "$POSTGRES_PASSWORD" ]] || { log "POSTGRES_PASSWORD missing from .env"; false; }
+export DATABASE_URL="postgresql+psycopg://accessproof:${POSTGRES_PASSWORD}@db:5432/accessproof"
+compose run --rm --no-deps -T -v "$SECRETS:/run/db-roles:ro" -e DATABASE_URL api \
   python scripts/provision_database_roles.py \
     --app-password-file /run/db-roles/app.pw \
     --worker-password-file /run/db-roles/worker.pw \
     --metrics-password-file /run/db-roles/metrics.pw > "$REL/deployment-logs/db-roles-verification.json"
+unset DATABASE_URL
 log "roles provisioned and verified"
 
 # The server Compose file hard-codes the owner URL; switch only api/worker.
