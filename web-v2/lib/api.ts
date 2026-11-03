@@ -143,8 +143,22 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {  co
 // Where to return after sign-up -> email verification -> sign-in (e.g. an
 // invitation link). Only same-site paths are accepted; cleared once used.
 const POST_AUTH_KEY = "accessproof_post_auth_next";
+// Post-auth redirect target. Only same-origin, path-absolute URLs survive.
+// Browsers strip tab/CR/LF anywhere in a URL and treat "\\" like "/", so
+// "/\t/evil.example" or "/\\evil.example" would otherwise become the
+// protocol-relative "//evil.example" (an open redirect after sign-in).
 export function safeNextPath(value: string | null | undefined): string | null {
-  return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : null;
+  if (!value || value.length > 2048 || !value.startsWith("/")) return null;
+  if (/[\u0000-\u0020\u007f\\]/.test(value)) return null;
+  if (value.startsWith("//")) return null;
+  try {
+    const base = "https://app.invalid";
+    const url = new URL(value, base);
+    if (url.origin !== base) return null;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return null;
+  }
 }
 export function rememberPostAuthNext(value: string | null | undefined) {
   const next = safeNextPath(value);

@@ -80,6 +80,7 @@ class OidcVerifier:
         self.subject_claim = subject_claim
         self.tenant_id = tenant_id
         self.cache_seconds = max(30.0, cache_seconds)
+        self.min_refresh_seconds = min(30.0, self.cache_seconds)
         self._client = client or httpx.Client(timeout=timeout_seconds, follow_redirects=False, trust_env=False)
         self._owns_client = client is None
         self._discovery: tuple[float, dict[str, str]] | None = None
@@ -143,7 +144,15 @@ class OidcVerifier:
 
     def _keys(self, *, refresh: bool = False) -> dict[str, dict[str, Any]]:
         with self._lock:
-            if not refresh and self._jwks and time.monotonic() - self._jwks[0] < self.cache_seconds:
+            age = time.monotonic() - self._jwks[0] if self._jwks else None
+            if not refresh and age is not None and age < self.cache_seconds:
+                return self._jwks[1]
+            # A token's `kid` is attacker-controlled.  Without a floor, every
+            # unknown-kid token would force a JWKS fetch from the IdP: an
+            # unauthenticated amplification that adds latency to every request
+            # and gets the Guard throttled, failing legitimate verification.
+            # Rotation is still honoured: a new kid is fetched within the floor.
+            if refresh and age is not None and age < self.min_refresh_seconds:
                 return self._jwks[1]
             # Key rotation refreshes JWKS only.  Discovery is a separate trust
             # boundary and stays cached until its own TTL expires.

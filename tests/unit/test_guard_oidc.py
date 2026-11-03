@@ -43,7 +43,7 @@ def _verifier(handler, **kwargs: object) -> OidcVerifier:
     )
 
 
-def test_oidc_verifier_discovers_caches_and_accepts_rotated_key() -> None:
+def test_oidc_verifier_discovers_caches_and_accepts_rotated_key(monkeypatch) -> None:
     first, second = rsa.generate_private_key(public_exponent=65537, key_size=2048), rsa.generate_private_key(public_exponent=65537, key_size=2048)
     calls: list[str] = []
     keys = [_jwk(first, "one")]
@@ -57,8 +57,16 @@ def test_oidc_verifier_discovers_caches_and_accepts_rotated_key() -> None:
     verifier = _verifier(handler)
     assert verifier.verify(_token(first, "one")).subject == "google-stable-subject"
     keys[:] = [_jwk(second, "two")]
+    # Within the refresh floor an unknown kid cannot force a refetch
+    # (attacker-controlled kids must not amplify into IdP traffic).
+    with pytest.raises(IdentityError, match="IDENTITY_TOKEN_INVALID"):
+        verifier.verify(_token(second, "two"))
+    assert calls.count("/keys") == 1
+    import time as _time
+    later = _time.monotonic() + verifier.min_refresh_seconds + 1
+    monkeypatch.setattr(_time, "monotonic", lambda: later)
     assert verifier.verify(_token(second, "two")).subject == "google-stable-subject"
-    # Discovery is cached; an unknown kid causes one bounded JWKS refresh.
+    # Discovery is cached; after the floor an unknown kid causes one bounded JWKS refresh.
     assert calls.count("/.well-known/openid-configuration") == 1
     assert calls.count("/keys") == 2
 
