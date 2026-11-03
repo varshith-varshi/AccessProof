@@ -42,15 +42,24 @@ if [[ "$rev" != "$PREVIOUS_REV" ]]; then
     || { echo "Ed25519 certificates exist; downgrade would delete them. Decide manually."; exit 3; }
   owner_alembic "accessproof/api:$RELEASE_ID" downgrade "$PREVIOUS_REV"
 fi
-if grep -q '^ACCESSPROOF_APP_DB_USER=' "$APP_DIR/.env" && ! grep -q '^ACCESSPROOF_APP_DB_USER=' "$REL/rollback/.env"; then
-  echo "WARNING: this rollback predates the least-privilege switch; api/worker return to OWNER credentials." >&2
-  echo "WARNING: re-run enable_least_privilege_db.sh after rolling forward." >&2
-fi
-cp "$REL/rollback/.env" "$APP_DIR/.env"
-compose up -d --no-deps --force-recreate api
-for i in $(seq 1 80); do
-  [[ "$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q api)")" == healthy ]] && break; sleep 3
+# Restore ONLY the image references (D-15). Copying the whole pre-release
+# .env would also revert any later least-privilege switch, silently putting
+# api/worker back on the superuser owner credentials.
+tmp="$APP_DIR/.env.rollback-$RELEASE_ID"
+cp -p "$APP_DIR/.env" "$tmp"
+for k in API WORKER WEB; do
+  v=$(grep -E "^ACCESSPROOF_${k}_IMAGE=" "$REL/rollback/.env" | tail -1 | cut -d= -f2-) || v=""
+  [[ "$v" =~ ^[a-z0-9./_-]+:[A-Za-z0-9._-]+$ ]] || { rm -f "$tmp"; echo "rollback: no valid previous ACCESSPROOF_${k}_IMAGE"; exit 2; }
+  sed -i -E "s#^ACCESSPROOF_${k}_IMAGE=.*#ACCESSPROOF_${k}_IMAGE=$v#" "$tmp"
+  grep -qx "ACCESSPROOF_${k}_IMAGE=$v" "$tmp" || { rm -f "$tmp"; echo "rollback: could not set ACCESSPROOF_${k}_IMAGE"; exit 2; }
 done
+chmod 600 "$tmp"; mv "$tmp" "$APP_DIR/.env"
+compose up -d --no-deps --force-recreate api
+api_ok=0
+for i in $(seq 1 80); do
+  [[ "$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q api)")" == healthy ]] && { api_ok=1; break; }; sleep 3
+done
+(( api_ok )) || { echo "ROLLBACK: previous API not healthy after 240s; escalate" >&2; exit 4; }
 compose up -d --no-deps --force-recreate worker web
 [[ "${PUBLIC_CHECKS:-1}" == 1 ]] && curl -fsS --max-time 15 https://api.accessproof.in/health/ready
 [[ "${PUBLIC_CHECKS:-1}" == 1 ]] && curl -fsS --max-time 15 -o /dev/null https://app.accessproof.in/login && echo "web ok"

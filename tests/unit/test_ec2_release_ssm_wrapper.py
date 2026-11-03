@@ -188,3 +188,41 @@ def test_least_privilege_first_run_does_not_abort_on_missing_passwords(tmp_path)
     r = subprocess.run(["bash", "-c", snippet], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert r.stdout.split() == ["app=[a1]", "worker=[w1]", "metrics=[m1]"]
+
+
+def test_rollback_restores_only_image_refs_and_keeps_db_roles(tmp_path):
+    """D-15: a rollback must not revert a later least-privilege switch."""
+    s = (REL_DIR / "rollback_on_ec2.sh").read_text()
+    block = s[s.index('tmp="$APP_DIR/.env.rollback-$RELEASE_ID"'):s.index('compose up -d --no-deps --force-recreate api')]
+    app, rel = tmp_path / "app", tmp_path / "rel"
+    (rel / "rollback").mkdir(parents=True)
+    app.mkdir()
+    (rel / "rollback" / ".env").write_text(
+        "POSTGRES_PASSWORD=owner\n"
+        "ACCESSPROOF_API_IMAGE=accessproof/api:r22-old\n"
+        "ACCESSPROOF_WORKER_IMAGE=accessproof/worker:r22-old\n"
+        "ACCESSPROOF_WEB_IMAGE=accessproof/web-v2:r22-old\n"
+    )
+    (app / ".env").write_text(
+        "POSTGRES_PASSWORD=owner\n"
+        "ACCESSPROOF_API_IMAGE=accessproof/api:r23-new\n"
+        "ACCESSPROOF_WORKER_IMAGE=accessproof/worker:r23-new\n"
+        "ACCESSPROOF_WEB_IMAGE=accessproof/web-v2:r23-new\n"
+        "ACCESSPROOF_APP_DB_USER=accessproof_app\n"
+        "ACCESSPROOF_APP_DB_PASSWORD=app-secret\n"
+    )
+    snippet = f"set -Eeuo pipefail\nAPP_DIR={app}\nREL={rel}\nRELEASE_ID=r23-new\n{block}"
+    r = subprocess.run(["bash", "-c", snippet], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = (app / ".env").read_text()
+    assert "ACCESSPROOF_API_IMAGE=accessproof/api:r22-old" in out
+    assert "ACCESSPROOF_WEB_IMAGE=accessproof/web-v2:r22-old" in out
+    assert "ACCESSPROOF_APP_DB_USER=accessproof_app" in out          # switch preserved
+    assert "ACCESSPROOF_APP_DB_PASSWORD=app-secret" in out
+    assert not list(app.glob(".env.rollback-*"))
+
+
+def test_rollback_fails_when_previous_api_never_healthy():
+    s = (REL_DIR / "rollback_on_ec2.sh").read_text()
+    assert "(( api_ok )) || {" in s and "exit 4" in s
+    assert 'cp "$REL/rollback/.env" "$APP_DIR/.env"' not in s
