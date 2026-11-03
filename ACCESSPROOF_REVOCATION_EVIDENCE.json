@@ -1,0 +1,62 @@
+{
+  "schema": "accessproof.revocation_evidence/v1",
+  "generated_at": "2026-11-03T04:07:49.528567+00:00",
+  "git_commit": "7e8cb39eace4f8c2d9444e94ba89f14bc5bfa1f7",
+  "verdict": "NOT_VERIFIED",
+  "live_revocation": {
+    "revocation_observed": {
+      "status": "BLOCKED",
+      "reason": "Requires owner-approved permission change on the synthetic site"
+    },
+    "stable_denial": {
+      "status": "BLOCKED",
+      "reason": "Requires owner-approved permission change on the synthetic site"
+    },
+    "cache_bypass_rejected": {
+      "status": "BLOCKED",
+      "reason": "Requires owner-approved permission change on the synthetic site"
+    },
+    "restoration_verified": {
+      "status": "BLOCKED",
+      "reason": "Requires owner-approved permission change on the synthetic site"
+    },
+    "propagation_latency_seconds": {
+      "status": "BLOCKED",
+      "reason": "Requires owner-approved permission change on the synthetic site"
+    }
+  },
+  "gate_H_on_rehearsal": {
+    "status": "BLOCKED",
+    "checks": {
+      "revocation_observed": {
+        "status": "BLOCKED",
+        "evidence": "requires certified evidence"
+      },
+      "stable_denial": {
+        "status": "BLOCKED",
+        "evidence": "requires certified evidence"
+      },
+      "cache_bypass_rejected": {
+        "status": "BLOCKED",
+        "evidence": "requires certified evidence"
+      },
+      "restoration_verified": {
+        "status": "BLOCKED",
+        "evidence": "requires certified evidence"
+      }
+    }
+  },
+  "local_automated_coverage": {
+    "description": "Simulated-provider revocation, revision replay and cache invalidation tests",
+    "sqlite": {
+      "passed": 87,
+      "failed": 0,
+      "skipped": 0
+    },
+    "postgresql_restricted_role": {
+      "passed": 87,
+      "failed": 0,
+      "skipped": 0
+    }
+  }
+}

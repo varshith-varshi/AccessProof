@@ -1,0 +1,26 @@
+{
+  "schema": "accessproof.real_rag_test_results/v1",
+  "generated_at": "2026-11-03T04:07:49.528567+00:00",
+  "git_commit": "7e8cb39eace4f8c2d9444e94ba89f14bc5bfa1f7",
+  "verdict": "NOT_TESTED_LIVE",
+  "real_tenant_rag": {
+    "status": "BLOCKED",
+    "reason": "graph.microsoft.com denied by session network policy; no tenant credentials",
+    "alice_authorized_answer": "NOT_TESTED",
+    "bob_denied_answer": "NOT_TESTED",
+    "note": "No generic HTTP 503 or indexed-document count is recorded as an authorization result."
+  },
+  "local_automated_coverage": {
+    "description": "In-process and loopback Gateway/RAG tests with synthetic identities and documents; not real-tenant evidence",
+    "sqlite": {
+      "passed": 428,
+      "failed": 0,
+      "skipped": 3
+    },
+    "postgresql_restricted_role": {
+      "passed": 428,
+      "failed": 0,
+      "skipped": 3
+    }
+  }
+}

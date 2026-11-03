@@ -1,114 +1,94 @@
 {
-  "schema": "accessproof.security_evidence/v1",
+  "schema": "accessproof.security_evidence/v2",
+  "generated_at": "2026-11-03T04:07:49.528567+00:00",
+  "git_commit": "7e8cb39eace4f8c2d9444e94ba89f14bc5bfa1f7",
   "signed": false,
-  "signature_note": "Unsigned engineering evidence. No legitimate signing authority was available, and no live evidence qualified for issuance.",
-  "readiness_determination": "NOT_READY",
-  "deployment_protection_state": "NOT_PROTECTED (last reported protect_pending; not re-observed)",
-  "git_base_commit": "6014a18a5df11f3cb20ec21a9e14935d4687f617",
-  "test_results_sha256": "3ca56cefa0b096f750336e03d099f7dba0d17da825b71a58e017ef9c54b743a6",
+  "signature_note": "Unsigned engineering evidence. Production certification requires the independent certifier and a human reviewer.",
+  "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED",
+  "deployment_protection_state": "NOT_PROTECTED (production not reachable; not re-observed)",
   "checks": [
+    {
+      "area": "Database",
+      "item": "P0-01 runtime role non-superuser / NOBYPASSRLS / owns nothing",
+      "status": "PASS_LOCAL_AND_REHEARSAL"
+    },
+    {
+      "area": "Database",
+      "item": "FORCE RLS on all tenant tables",
+      "status": "PASS_LOCAL_AND_REHEARSAL",
+      "tables": 58
+    },
+    {
+      "area": "Tests",
+      "item": "Full suite SQLite",
+      "status": "PASS",
+      "summary": "1355 passed, 0 failed, 10 skipped (1365 tests)"
+    },
+    {
+      "area": "Tests",
+      "item": "Full suite PostgreSQL as accessproof_app",
+      "status": "PASS",
+      "summary": "1361 passed, 0 failed, 4 skipped (1365 tests)"
+    },
+    {
+      "area": "Release",
+      "item": "Rehearsal deploy / switch / forced failure / rollback",
+      "status": "PASS_REHEARSAL",
+      "evidence": "docs/evidence/rehearsal-2026-11-03/"
+    },
     {
       "area": "Source security",
       "item": "SharePoint effective-permission certificate",
-      "status": "BLOCKED"
-    },
-    {
-      "area": "Source security",
-      "item": "Certificate trust boundary (API cannot mint)",
-      "status": "PASS",
-      "evidence": "tests/security/test_source_certificate_trust_boundary.py",
-      "level": "LOCAL"
+      "status": "BLOCKED",
+      "reason": "No certifier key; no real-tenant evidence"
     },
     {
       "area": "Identity",
-      "item": "Real Entra OIDC for Alice/Bob",
-      "status": "BLOCKED"
-    },
-    {
-      "area": "Identity",
-      "item": "OIDC iss/aud/exp/sig/tid verification",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Identity",
-      "item": "Static shared-secret identity refused in production",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Layer 1",
-      "item": "Unauthorized chunks never in model context",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Layer 1",
-      "item": "Mission \u00a76 tests 5-9 on real RAG",
-      "status": "BLOCKED"
-    },
-    {
-      "area": "Layer 2",
-      "item": "Signed provenance, trace completeness, L1==L2 revision, buffered release",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Revocation",
-      "item": "Live revoke/restore and latency",
+      "item": "Real Entra employee mappings (Alice, Bob)",
       "status": "BLOCKED"
     },
     {
       "area": "Revocation",
-      "item": "Revision-based denial and replay resistance",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Cache",
-      "item": "Cached answer re-authorization per employee/revision",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Gateway",
-      "item": "Authenticated, replay-protected heartbeat; activation gate",
-      "status": "PASS",
-      "level": "LOCAL"
-    },
-    {
-      "area": "Gateway",
-      "item": "Real customer route protected",
+      "item": "Live revoke/restore and cache invalidation",
       "status": "BLOCKED"
     },
     {
-      "area": "Reliability",
-      "item": "Production restart/outage drills",
-      "status": "NOT_TESTED"
+      "area": "Output",
+      "item": "Sanitizer v2 against real renderer",
+      "status": "PASS_LOCAL"
     },
     {
-      "area": "Deployment",
-      "item": "Fixes deployed and verified in production",
+      "area": "Production",
+      "item": "Deployment of this release",
       "status": "BLOCKED"
     },
     {
-      "area": "Model integration",
-      "item": "Real local LLM (Ollama) denied-doc test",
-      "status": "NOT_TESTED",
-      "reason": "SKIPPED: Ollama not running"
+      "area": "Approval",
+      "item": "Human reviewer approval",
+      "status": "NOT_STARTED"
     }
   ],
+  "rehearsal_gates": {
+    "A_INFRASTRUCTURE": "PASS",
+    "B_IDENTITY": "FAIL",
+    "C_SHAREPOINT_SOURCE": "FAIL",
+    "D_GUARD": "FAIL",
+    "E_GATEWAY": "FAIL",
+    "F_LAYER1": "FAIL",
+    "G_LAYER2": "FAIL",
+    "H_REVOCATION_AND_CACHE": "BLOCKED",
+    "I_DATABASE_SECURITY": "PASS",
+    "J_ACTIVATION": "FAIL"
+  },
+  "automated_tests_all_green": true,
   "documents": {
-    "docs/ACCESSPROOF_ARCHITECTURE_AUDIT.md": "4f7b6d544674f30cc9b0844edc24e7a7982678864b0676d3aac097860dd729d3",
-    "docs/ACCESSPROOF_FEATURE_MATRIX.md": "b65aac5d9a1bf3452b9daa601815c28f801ef1562cbbfc3e95da0c9b5d6c2c1d",
-    "docs/ACCESSPROOF_DEFECT_REGISTER.md": "14ed487788b98a09481bcf3d00921997de7e5076f8a140f33a9d0f3a45f7f93f",
-    "docs/ACCESSPROOF_SECURITY_THREAT_MODEL.md": "1e2f013986ba186e60224eb0e5ea8bf4092dbe0357f51188c15f646c6b6ecdef",
-    "docs/ACCESSPROOF_ONBOARDING_VALIDATION.md": "f27b24c4b4ea670f0b61298ad4a1ef8a5cd688525a72855d90aa784dce8f4f39",
-    "docs/ACCESSPROOF_GUARD_VALIDATION.md": "6b940e8cca970293a6e8d1df3a31d93cff976337ba9d82222fe347751217842e",
-    "docs/ACCESSPROOF_GATEWAY_VALIDATION.md": "f7adfb1761f4ad7fa05c501693e3bad9b04804e9c684ee0aeed2f6df7b4faa5c",
-    "docs/ACCESSPROOF_SHAREPOINT_AUTHORIZATION.md": "c11f97c6f8595cc0f0767a738acec5d5f25f1eedd2c759856a91727882686c84",
-    "docs/ACCESSPROOF_LAYER1_LAYER2_EVIDENCE.md": "08790ca3c3ed3d673a033b99cde0f277d0a7824ad23dbe4114c8bc0ab1dbe8cf",
-    "docs/ACCESSPROOF_REVOCATION_TESTS.md": "d3de1072dfcb727c3db843bb34fd5d03a7f82560835c42c8ac5b5ba9b6fb243e",
-    "docs/ACCESSPROOF_PRODUCTION_READINESS.md": "a6ffcac58af522e7709a5e9c6745506047251fa603e2d91b017d699b70feae5b"
-  }
+    "ACCESSPROOF_PRODUCTION_PROTECT_REPORT.md": "6d4b43008959b1be719e3a6e2e4374b7bbffe959c0d94916f32cb3c22f4cea4d",
+    "ACCESSPROOF_VERIFIED_FEATURE_MATRIX.md": "6795bd82cd30f0d34cf122680801ab4770cdbfc72714d5c9333670a7eab43f3b",
+    "ACCESSPROOF_TEST_RESULTS.json": "cd12869098f70e7cbf05fafaaed35521b95bac5b4f26280ccd13bdde715814fb",
+    "ACCESSPROOF_REAL_RAG_TEST_RESULTS.json": "98129ef193327f1ad0da9883fbb04ba6cec258f44534fe4dc08301207f652fd5",
+    "ACCESSPROOF_REVOCATION_EVIDENCE.json": "5120f3492135697364749a341821af0f61c4f26083103576dde156f8d0463513",
+    "ACCESSPROOF_DEPLOYMENT_MANIFEST.json": "f6534b629653239c07de258afc70eec3789367639c7a4888d0f7186c742afbdb",
+    "docs/ACCESSPROOF_DEFECT_REGISTER.md": "b3ed5c3c22ed26820ea68e07f480e3c9b6c413673344bcd1a46f024f889f8ba4"
+  },
+  "tests_ran_at_code_commit": "654db0e"
 }

@@ -1,140 +1,116 @@
 {
-  "schema": "accessproof.test_results/v1",
-  "generated_from": "pytest JUnit XML of this run (not hand-entered)",
-  "timestamp": "2026-11-02T20:50:30.806564+00:00",
-  "git_base_commit": "6014a18a5df11f3cb20ec21a9e14935d4687f617",
-  "git_commit_tested": "6014a18a5df11f3cb20ec21a9e14935d4687f617",
-  "uncommitted_changes_at_test_time": true,
-  "environment": "Claude Code cloud container, Python 3.13, SQLite test DB, in-process ASGI + loopback TCP; no production access",
-  "totals": {
-    "tests": 1317,
-    "failed": 0,
-    "skipped": 4,
-    "passed": 1313,
-    "duration_seconds": 134.183
-  },
-  "by_directory": {
-    "contract": {
-      "passed": 10,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
+  "schema": "accessproof.test_results/v2",
+  "generated_from": "pytest JUnit XML of these runs (not hand-entered)",
+  "generated_at": "2026-11-03T04:07:49.528567+00:00",
+  "git_commit_tested": "7e8cb39eace4f8c2d9444e94ba89f14bc5bfa1f7",
+  "uncommitted_code_changes_at_test_time": false,
+  "runs": {
+    "sqlite": {
+      "environment": "SQLite test DB",
+      "totals": {
+        "tests": 1365,
+        "passed": 1355,
+        "failed": 0,
+        "skipped": 10,
+        "duration_seconds": 233.478,
+        "timestamp": "2026-11-03T03:56:11.361459+00:00"
+      },
+      "failed": [],
+      "skipped": [
+        {
+          "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[authorized]",
+          "reason": "Local Ollama not running"
+        },
+        {
+          "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[partial]",
+          "reason": "Local Ollama not running"
+        },
+        {
+          "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[revoked_midstream]",
+          "reason": "Local Ollama not running"
+        },
+        {
+          "test": "tests.integration.test_live_sharepoint_fixture_ollama::test_actual_sharepoint_synthetic_bytes_authorized_into_real_ollama",
+          "reason": "No opt-in connected SharePoint synthetic fixture"
+        },
+        {
+          "test": "tests.security.test_postgres_tenant_isolation::test_app_role_sees_and_writes_only_its_tenant",
+          "reason": "PostgreSQL role mode not configured"
+        },
+        {
+          "test": "tests.security.test_postgres_tenant_isolation::test_former_settable_bypass_no_longer_works",
+          "reason": "PostgreSQL role mode not configured"
+        },
+        {
+          "test": "tests.security.test_postgres_tenant_isolation::test_restricted_roles_cannot_disable_policies_or_escalate",
+          "reason": "PostgreSQL role mode not configured"
+        },
+        {
+          "test": "tests.security.test_postgres_tenant_isolation::test_tenant_context_never_leaks_across_pooled_connections_or_rollbacks",
+          "reason": "PostgreSQL role mode not configured"
+        },
+        {
+          "test": "tests.security.test_postgres_tenant_isolation::test_worker_is_cross_tenant_and_metrics_is_read_only",
+          "reason": "PostgreSQL role mode not configured"
+        },
+        {
+          "test": "tests.security.test_postgres_tenant_isolation::test_application_runtime_audit_reports_least_privilege",
+          "reason": "PostgreSQL role mode not configured"
+        }
+      ]
     },
-    "integration": {
-      "passed": 160,
-      "failed": 0,
-      "skipped": 4,
-      "blocked": 0
-    },
-    "load": {
-      "passed": 1,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    },
-    "security": {
-      "passed": 472,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    },
-    "unit": {
-      "passed": 670,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
+    "postgresql_restricted_role": {
+      "environment": "PostgreSQL 17; API requests as accessproof_app, fixtures as accessproof_rls_admin, DDL as owner",
+      "totals": {
+        "tests": 1365,
+        "passed": 1361,
+        "failed": 0,
+        "skipped": 4,
+        "duration_seconds": 428.329,
+        "timestamp": "2026-11-03T04:00:09.217365+00:00"
+      },
+      "failed": [],
+      "skipped": [
+        {
+          "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[authorized]",
+          "reason": "Local Ollama not running"
+        },
+        {
+          "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[partial]",
+          "reason": "Local Ollama not running"
+        },
+        {
+          "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[revoked_midstream]",
+          "reason": "Local Ollama not running"
+        },
+        {
+          "test": "tests.integration.test_live_sharepoint_fixture_ollama::test_actual_sharepoint_synthetic_bytes_authorized_into_real_ollama",
+          "reason": "No opt-in connected SharePoint synthetic fixture"
+        }
+      ]
     }
   },
-  "by_category_module_name_match": {
-    "Guard": {
-      "passed": 182,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    },
-    "Gateway": {
-      "passed": 350,
-      "failed": 0,
-      "skipped": 3,
-      "blocked": 0
-    },
-    "SharePoint": {
-      "passed": 148,
-      "failed": 0,
-      "skipped": 1,
-      "blocked": 0
-    },
-    "Cache": {
-      "passed": 74,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    },
-    "Revocation": {
-      "passed": 13,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    },
-    "Layer 1/Layer 2": {
-      "passed": 53,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    },
-    "Source certification (D-01)": {
-      "passed": 12,
-      "failed": 0,
-      "skipped": 0,
-      "blocked": 0
-    }
-  },
-  "skipped": [
-    {
-      "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[authorized]",
-      "reason": "Local Ollama not running"
-    },
-    {
-      "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[partial]",
-      "reason": "Local Ollama not running"
-    },
-    {
-      "test": "tests.integration.test_gateway_real_local_ollama::test_real_ollama_provider_never_sees_denied_documents[revoked_midstream]",
-      "reason": "Local Ollama not running"
-    },
-    {
-      "test": "tests.integration.test_live_sharepoint_fixture_ollama::test_actual_sharepoint_synthetic_bytes_authorized_into_real_ollama",
-      "reason": "No opt-in connected SharePoint synthetic fixture"
-    }
-  ],
-  "failed": [],
   "blocked_not_run": [
     {
-      "category": "SharePoint live tenant tests",
+      "category": "Production host / AWS",
       "status": "BLOCKED",
-      "reason": "Tenant credentials and interactive employee sign-in unavailable"
+      "reason": "AWS STS InvalidClientTokenId; api/app.accessproof.in denied by session network policy"
     },
     {
-      "category": "RAG tests (real customer SharePoint RAG)",
+      "category": "Real SharePoint tenant (Microsoft Graph)",
       "status": "BLOCKED",
-      "reason": "Customer host / sharepoint-rag-lab not reachable"
+      "reason": "graph.microsoft.com denied by session network policy; no tenant credentials"
     },
     {
-      "category": "Revocation (live provider)",
+      "category": "Real Entra employees (Alice, Bob)",
       "status": "BLOCKED",
-      "reason": "Owner-authorized revoke/restore not available here"
+      "reason": "Requires interactive employee sign-in; identities are never fabricated"
     },
     {
-      "category": "Production tests",
+      "category": "Authorized revoke/restore trial",
       "status": "BLOCKED",
-      "reason": "app.accessproof.in / api.accessproof.in denied by session network policy; AWS STS rejected credentials"
+      "reason": "Requires owner-approved permission change on the synthetic site"
     }
   ],
-  "static_checks": {
-    "ruff_changed_files": "PASS",
-    "mypy_strict_changed_modules": "PASS",
-    "web_tsc_noEmit": "PASS",
-    "web_eslint_changed_file": "PASS"
-  },
   "note": "Skipped and BLOCKED items are never counted as passing."
 }

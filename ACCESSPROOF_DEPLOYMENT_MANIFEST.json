@@ -1,0 +1,81 @@
+{
+  "schema": "accessproof.deployment_manifest/v1",
+  "generated_at": "2026-11-03T04:07:49.528567+00:00",
+  "production": {
+    "host": "i-0c11427d4d9c1b438 (eu-north-1)",
+    "status": "NOT_DEPLOYED",
+    "reason": "AWS STS InvalidClientTokenId; api/app.accessproof.in denied by session network policy",
+    "last_known_production_release": "r20/r21 era per earlier reports; not re-observed from this environment"
+  },
+  "recommended_release": {
+    "source_commit": "7e8cb39eace4f8c2d9444e94ba89f14bc5bfa1f7",
+    "build": "deploy/ec2-release/ship_via_ssm.sh builds images on the host from this commit",
+    "db_head": "u5e6f7a8b9c0",
+    "expected_db_revision_before": "r2b3c4d5e6f7 (pass EXPECTED_DB_REVISION if different)",
+    "post_deploy_privileged_step": "enable_least_privilege_db.sh --approve-database-role-change (owner approval required)"
+  },
+  "rehearsal": {
+    "environment": "local production-shaped stand-in (NOT production)",
+    "release_images": {
+      "api": {
+        "tag": "accessproof/api:r23-rehearsal-fixes-3679321d8b05",
+        "image_id": "sha256:7845631345cab438d362cf9655bb046e0b76221937b6ccaeab9d22b7a540b810"
+      },
+      "worker": {
+        "tag": "accessproof/worker:r23-rehearsal-fixes-3679321d8b05",
+        "image_id": "sha256:37c7f7c644af055035bee60e4b16d8d1c5540af0e864015352a709640849489b"
+      },
+      "web-v2": {
+        "tag": "accessproof/web-v2:r23-rehearsal-fixes-3679321d8b05",
+        "image_id": "sha256:ce45e6e33bead9d577a1861214bb7012b52e90425deccda9bf347f9a08ae7a00"
+      }
+    },
+    "runtime_database_audit": {
+      "current_user": "accessproof_app",
+      "superuser": false,
+      "bypassrls": false,
+      "owns_tables": false,
+      "tables_missing_policy": [],
+      "settable_bypass_policies": 0,
+      "tenant_tables_checked": 58
+    },
+    "http_probe": {
+      "ok": true,
+      "checks": 20,
+      "passed": 20
+    },
+    "gates_verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED",
+    "gates": {
+      "A_INFRASTRUCTURE": "PASS",
+      "B_IDENTITY": "FAIL",
+      "C_SHAREPOINT_SOURCE": "FAIL",
+      "D_GUARD": "FAIL",
+      "E_GATEWAY": "FAIL",
+      "F_LAYER1": "FAIL",
+      "G_LAYER2": "FAIL",
+      "H_REVOCATION_AND_CACHE": "BLOCKED",
+      "I_DATABASE_SECURITY": "PASS",
+      "J_ACTIVATION": "FAIL"
+    },
+    "logs": [
+      "README.md",
+      "db-roles-verification-r22.json",
+      "db-runtime-audit.json",
+      "deploy-r22-least-privilege-e69ee0085e44.log",
+      "deploy-r23-rehearsal-fixes-3679321d8b05.log",
+      "forced-failure-before-D13-fix.log",
+      "forced-failure-restore.log",
+      "gates-r23-least-privilege.json",
+      "http-probe-r23.json",
+      "recovery-D13.log",
+      "rollback-r23-to-r22.log"
+    ]
+  },
+  "migrations_added_since_production": [
+    "q1a2b3c4d5e6",
+    "r2b3c4d5e6f7 (if not yet applied)",
+    "s3c4d5e6f7a8",
+    "t4d5e6f7a8b9",
+    "u5e6f7a8b9c0"
+  ]
+}
