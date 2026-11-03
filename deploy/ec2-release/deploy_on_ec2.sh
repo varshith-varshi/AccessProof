@@ -14,8 +14,9 @@ RELEASE_ID="${1:?release id}"; ARTIFACT="${2:?artifact}"; EXPECTED_SHA="${3:?sha
 APP_DIR=/home/ubuntu/accessproof
 COMPOSE_FILE="$APP_DIR/docker-compose.ec2.yml"
 REL="/home/ubuntu/accessproof-releases/$RELEASE_ID"
-EXPECTED_DB_REVISION="p8c1e2f3a4b5"   # production revision before this release
-TARGET_DB_REVISION="r2b3c4d5e6f7"
+# The revision production must be at before this release (r21 = r2b3c4d5e6f7).
+EXPECTED_DB_REVISION="${EXPECTED_DB_REVISION:-r2b3c4d5e6f7}"
+TARGET_DB_REVISION=""   # derived from the new API image's Alembic head
 API_IMAGE="accessproof/api:$RELEASE_ID"
 WORKER_IMAGE="accessproof/worker:$RELEASE_ID"
 WEB_IMAGE="accessproof/web-v2:$RELEASE_ID"
@@ -51,7 +52,7 @@ rollback() {
       log "ROLLBACK HALTED: Ed25519 certificates exist; downgrade would delete them. Manual decision required."
       exit 3
     fi
-    log "ROLLBACK: alembic downgrade $EXPECTED_DB_REVISION (drops gateway_installations only)"
+    log "ROLLBACK: alembic downgrade $EXPECTED_DB_REVISION"
     ACCESSPROOF_API_IMAGE="$API_IMAGE" compose run --rm --no-deps -T api alembic downgrade "$EXPECTED_DB_REVISION" \
       >>"$REL/deployment-logs/rollback-migration.log" 2>&1
   fi
@@ -100,7 +101,9 @@ for img in "$API_IMAGE" "$WORKER_IMAGE"; do
   docker run --rm --entrypoint test "$img" -f /app/apps/api/accessproof_api/gateway_presence.py
 done
 docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep ":$RELEASE_ID" >> "$REL/checksums.txt"
-log "images built"
+TARGET_DB_REVISION=$(docker run --rm --entrypoint alembic "$API_IMAGE" heads 2>/dev/null | awk '/\(head\)/{print $1}')
+[[ "$TARGET_DB_REVISION" =~ ^[0-9a-f]{12}$ ]] || { log "could not determine target revision"; exit 2; }
+log "images built; target DB revision $TARGET_DB_REVISION"
 
 # ------------------------------------------------- verified database backup
 compose exec -T db pg_dump -U accessproof -d accessproof -Fc > "$REL/backup/pre-$RELEASE_ID.dump"

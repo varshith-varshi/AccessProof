@@ -12,7 +12,7 @@ set -Eeuo pipefail
 umask 077
 COMMIT=$(git rev-parse --verify "${1:?git commit}^{commit}")
 ACCOUNT=102076848988; REGION=eu-north-1; INSTANCE=i-0c11427d4d9c1b438
-RELEASE_ID="r20-cert-presence-${COMMIT:0:12}"
+RELEASE_ID="r22-least-privilege-${COMMIT:0:12}"
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$ACCOUNT" ]] \
@@ -46,14 +46,16 @@ aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-conf
 aws s3 cp "$ART" "s3://$BUCKET/artifact.tar" --region "$REGION" >/dev/null
 aws s3 cp deploy/ec2-release/deploy_on_ec2.sh "s3://$BUCKET/deploy_on_ec2.sh" --region "$REGION" >/dev/null
 aws s3 cp deploy/ec2-release/rollback_on_ec2.sh "s3://$BUCKET/rollback_on_ec2.sh" --region "$REGION" >/dev/null
+aws s3 cp deploy/ec2-release/enable_least_privilege_db.sh "s3://$BUCKET/enable_least_privilege_db.sh" --region "$REGION" >/dev/null
 U_ART=$(aws s3 presign "s3://$BUCKET/artifact.tar" --expires-in 900 --region "$REGION")
 U_DEP=$(aws s3 presign "s3://$BUCKET/deploy_on_ec2.sh" --expires-in 900 --region "$REGION")
 U_RB=$(aws s3 presign "s3://$BUCKET/rollback_on_ec2.sh" --expires-in 900 --region "$REGION")
+U_DB=$(aws s3 presign "s3://$BUCKET/enable_least_privilege_db.sh" --expires-in 900 --region "$REGION")
 
 # Commands are passed as JSON so presigned URLs are never word-split.
-PARAMS=$(python3 - "$RELEASE_ID" "$SHA" "$U_ART" "$U_DEP" "$U_RB" <<'PY'
+PARAMS=$(python3 - "$RELEASE_ID" "$SHA" "$U_ART" "$U_DEP" "$U_RB" "$U_DB" <<'PY'
 import json, sys
-rid, sha, art, dep, rb = sys.argv[1:]
+rid, sha, art, dep, rb, dbr = sys.argv[1:]
 d = f"/home/ubuntu/accessproof-releases/{rid}"
 print(json.dumps({"executionTimeout": ["3600"], "commands": [
     "set -euo pipefail",
@@ -61,6 +63,8 @@ print(json.dumps({"executionTimeout": ["3600"], "commands": [
     f"curl -fsS -o {d}/artifact.tar '{art}'",
     f"curl -fsS -o {d}/deploy_on_ec2.sh '{dep}'",
     f"curl -fsS -o {d}/rollback_on_ec2.sh '{rb}'",
+    # Staged for a separately approved run; never executed by this command.
+    f"curl -fsS -o {d}/enable_least_privilege_db.sh '{dbr}'",
     f"echo '{sha}  {d}/artifact.tar' | sha256sum -c -",
     f"bash {d}/deploy_on_ec2.sh {rid} {d}/artifact.tar {sha}",
 ]}))

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.accessproof_api.app import app
 from apps.api.accessproof_api.db import (
+    Organization,
     AIApplication,
     AuthorizationRevision,
     Base,
@@ -35,6 +36,8 @@ def test_metrics_exposes_database_backed_operational_gauges():
     Base.metadata.create_all(engine)
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
+        db.add(Organization(id="org-observe", name="Observe org"))
+        db.flush()  # PostgreSQL enforces the organizations FK
         project = Project(organization_id="org-observe", name="Observe")
         db.add(project)
         db.flush()
@@ -140,6 +143,8 @@ def test_metrics_report_authorization_freshness_route_coverage_and_revision_lag(
     Base.metadata.create_all(engine)
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
+        db.add(Organization(id="org-authz", name="Authz org"))
+        db.flush()  # PostgreSQL enforces the organizations FK
         project = Project(organization_id="org-authz", name="Authz Observe")
         db.add(project)
         db.flush()

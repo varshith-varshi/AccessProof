@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from apps.api.accessproof_api.db import (
-    AIApplication, Base, GuardRegistration, Organization, RAGRouteChallenge,
+    AIApplication, Base, GuardRegistration, Organization, Project, RAGRouteChallenge,
+    SourceConnection,
     SessionLocal, engine,
 )
 from apps.api.accessproof_api.route_certification import (
@@ -20,12 +21,19 @@ def _setup(adapter: str = "accessproof-gateway"):
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
         db.add(Organization(id="org-1", name="Route Org"))
+        db.flush()  # PostgreSQL enforces the FK; no ORM relationship orders inserts
         guard = GuardRegistration(
             organization_id="org-1", name="guard", status="enrolled",
             active_policy_version=2, enrolled_at=now, health="healthy",
         )
         db.add(guard)
         db.flush()
+        project = Project(organization_id="org-1", name="Route project")
+        db.add(project)
+        db.flush()
+        db.add(SourceConnection(id="source-1", organization_id="org-1", project_id=project.id,
+                                name="Drive", provider="google-drive", boundary="root"))
+        db.flush()  # PostgreSQL enforces the source FK
         row = AIApplication(
             organization_id="org-1", application_id="rag", name="RAG",
             guard_id=guard.id, source_id="source-1", adapter_type=adapter,

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from collections import OrderedDict
 from packages.connector_sdk.base import SourceAdapter
 from packages.capability_registry import snapshot as capability_registry_snapshot
@@ -743,8 +743,37 @@ def _refresh_authorization_metrics(db: OrmSession, now: datetime) -> None:
         guard_revision_lag.set(max(reported_lags))
 
 
+_metrics_sessionmaker: Any = None
+
+
+def _metrics_db() -> Iterator[OrmSession]:
+    """Cross-tenant aggregates need a read-only role (P0-01).
+
+    The API's runtime role is tenant-scoped by RLS, so it would see no rows
+    and report false-calm zeros. ACCESSPROOF_METRICS_DATABASE_URL points at
+    the SELECT-only ``accessproof_metrics`` role. Without it (development,
+    SQLite) the request session is used.
+    """
+    global _metrics_sessionmaker
+    url = os.getenv("ACCESSPROOF_METRICS_DATABASE_URL", "")
+    if not url:
+        yield from get_db()
+        return
+    if _metrics_sessionmaker is None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        _metrics_sessionmaker = sessionmaker(bind=create_engine(url, pool_pre_ping=True, pool_size=2),
+                                             autoflush=False, expire_on_commit=False)
+    db = _metrics_sessionmaker()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        db.close()
+
+
 @app.get("/metrics")
-def metrics(db: OrmSession = Depends(get_db)) -> Response:
+def metrics(db: OrmSession = Depends(_metrics_db)) -> Response:
     _refresh_database_metrics(db)
     payload, content_type = metrics_payload()
     return Response(payload, media_type=content_type)
@@ -1100,6 +1129,8 @@ def exchange_guard(payload: GuardExchange, db: OrmSession = Depends(get_db)) -> 
     guard = db.get(GuardRegistration, enrollment.guard_id)
     if guard is None or guard.organization_id != enrollment.organization_id or guard.revoked_at:
         raise HTTPException(401, "Invalid enrollment token")
+    # Tenant derived from the matched one-time secret, never from the caller.
+    set_tenant_context(db, guard.organization_id)
     credential = secrets.token_urlsafe(48)
     guard.credential_hash = hash_token(credential)
     guard.version = payload.version
@@ -1777,6 +1808,9 @@ def signup(
     org = Organization(name=organization_name)
     db.add_all([user, org])
     db.flush()
+    # Every tenant row written below (membership audit, default records) must
+    # carry this new tenant's RLS context; never rely on a privileged role.
+    set_tenant_context(db, org.id)
     membership = Membership(user_id=user.id, organization_id=org.id, role=Role.OWNER.value)
     db.add(membership)
     _audit(db, None, org.id, "organization.created", "organization", org.id)
@@ -4148,6 +4182,9 @@ def claim_customer_gateway_pairing(
     validated_application: list[AIApplication] = []
 
     def eligible(org_id: str, row_id: str, application_id: str) -> bool:
+        # org_id comes from the server-side pairing record matched by the
+        # one-use token, never from the caller; scope RLS reads to it.
+        set_tenant_context(db, org_id)
         row = db.get(AIApplication, row_id)
         if (row is None or row.organization_id != org_id
                 or row.application_id != application_id
@@ -6502,6 +6539,8 @@ async def complete_google_source_oauth(
     expiry = claim.expires_at.replace(tzinfo=claim.expires_at.tzinfo or timezone.utc)
     if expiry <= now:
         raise HTTPException(400, "Google OAuth state expired")
+    # Tenant derived from the matched one-time secret, never from the caller.
+    set_tenant_context(db, claim.organization_id)
     # Always consume even failed callbacks, before any outbound credential exchange.
     claim.consumed_at = now
     db.commit()
@@ -6688,6 +6727,8 @@ async def complete_microsoft_source_admin_consent(
     expiry = claim.expires_at.replace(tzinfo=claim.expires_at.tzinfo or timezone.utc)
     if expiry <= now:
         raise HTTPException(400, "Microsoft consent state has expired")
+    # Tenant derived from the matched one-time secret, never from the caller.
+    set_tenant_context(db, claim.organization_id)
     source = db.scalar(select(SourceConnection).where(
         SourceConnection.id == claim.source_id,
         SourceConnection.organization_id == claim.organization_id,
@@ -8535,6 +8576,8 @@ def exchange_runner(payload: RunnerExchange, db: OrmSession = Depends(get_db)) -
             409,
             f"Runner {payload.version} is below minimum supported version {settings.minimum_runner_version}",
         )
+    # Tenant derived from the matched one-time secret, never from the caller.
+    set_tenant_context(db, row.organization_id)
     secret = secrets.token_urlsafe(48)
     runner = Runner(
         organization_id=row.organization_id,

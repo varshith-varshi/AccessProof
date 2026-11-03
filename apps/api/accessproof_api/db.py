@@ -889,7 +889,8 @@ class GuardPermissionEvent(Base):
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     source_id: Mapped[str] = mapped_column(String(36), index=True)
     provider: Mapped[str] = mapped_column(String(50))
-    provider_revision: Mapped[int] = mapped_column(default=0)
+    # Provider revisions can be millisecond timestamps: 64-bit on PostgreSQL.
+    provider_revision: Mapped[int] = mapped_column(BigInteger, default=0)
     subject_id: Mapped[str] = mapped_column(String(36), index=True)
     resource_id: Mapped[str] = mapped_column(String(36), index=True)
     change_type: Mapped[str] = mapped_column(String(30))
@@ -918,7 +919,7 @@ class GuardPolicy(Base):
     reason: Mapped[str] = mapped_column(String(255), default="effective_access")
     source_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     scope: Mapped[str] = mapped_column(String(100), default="read")
-    source_revision: Mapped[int] = mapped_column(default=0)
+    source_revision: Mapped[int] = mapped_column(BigInteger, default=0)
     effective_state_version: Mapped[int] = mapped_column(default=0)
     supersedes_policy_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     committed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -944,7 +945,7 @@ class GuardEffectiveAccess(Base):
     resource_id: Mapped[str] = mapped_column(String(36), index=True)
     scope: Mapped[str] = mapped_column(String(100), default="read")
     decision: Mapped[str] = mapped_column(String(20))
-    source_revision: Mapped[int] = mapped_column(default=0)
+    source_revision: Mapped[int] = mapped_column(BigInteger, default=0)
     state_version: Mapped[int] = mapped_column(default=1)
     reason: Mapped[str] = mapped_column(String(255), default="effective_access")
     resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1167,7 +1168,8 @@ class GuardGroupMembership(Base):
     group_id: Mapped[str] = mapped_column(ForeignKey("guard_groups.id", ondelete="CASCADE"), index=True)
     subject_id: Mapped[str] = mapped_column(ForeignKey("guard_subjects.id", ondelete="CASCADE"), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    provider_revision: Mapped[int] = mapped_column(default=0)
+    # Provider revisions can be millisecond timestamps: 64-bit on PostgreSQL.
+    provider_revision: Mapped[int] = mapped_column(BigInteger, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -1186,7 +1188,8 @@ class GuardPermissionGrant(Base):
     inherited_from_resource_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     access_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    provider_revision: Mapped[int] = mapped_column(default=0)
+    # Provider revisions can be millisecond timestamps: 64-bit on PostgreSQL.
+    provider_revision: Mapped[int] = mapped_column(BigInteger, default=0)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -1198,7 +1201,7 @@ class GuardPermissionSnapshot(Base):
     effective_access_id: Mapped[str] = mapped_column(ForeignKey("guard_effective_access.id", ondelete="CASCADE"), index=True)
     permission_event_id: Mapped[str] = mapped_column(ForeignKey("guard_permission_events.id", ondelete="CASCADE"), index=True)
     state_version: Mapped[int] = mapped_column(default=1)
-    source_revision: Mapped[int] = mapped_column(default=0)
+    source_revision: Mapped[int] = mapped_column(BigInteger, default=0)
     decision: Mapped[str] = mapped_column(String(20))
     reason: Mapped[str] = mapped_column(String(255))
     grant_keys_json: Mapped[str] = mapped_column(Text, default="[]")

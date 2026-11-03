@@ -13,7 +13,7 @@ from typing import Callable, Mapping
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .db import ProviderEventJournal, ProviderEventSubscription, SourceConnection
+from .db import ProviderEventJournal, ProviderEventSubscription, SourceConnection, set_tenant_context
 
 
 class NotificationRejected(ValueError):
@@ -59,6 +59,9 @@ def accept_google_notification(
     expected = decrypt_token(subscription.encrypted_channel_token)
     if not expected or not hmac.compare_digest(expected, token):
         raise NotificationRejected("CHANNEL_TOKEN_MISMATCH")
+    # The channel secret authenticated this subscription; scope every further
+    # tenant read/write to its organization (RLS), never to caller input.
+    set_tenant_context(db, subscription.organization_id)
     subscription.last_notification_at = datetime.now(timezone.utc)
     if state not in {"sync", "change", "update", "add", "remove", "trash", "untrash"}:
         return None

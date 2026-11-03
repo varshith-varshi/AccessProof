@@ -17,12 +17,14 @@ compose() { docker compose --project-directory "$APP_DIR" -f "$COMPOSE_FILE" "$@
 psqlv() { compose exec -T db psql -U accessproof -d accessproof -tAc "$1" | tr -d '[:space:]'; }
 
 [[ -f "$REL/rollback/.env" ]] || { echo "no rollback state for $RELEASE_ID"; exit 2; }
+PREVIOUS_REV=$(grep -E '^previous_db_revision=' "$REL/rollback/previous-state.txt" | cut -d= -f2)
+[[ "$PREVIOUS_REV" =~ ^[0-9a-f]{12}$ ]] || { echo "previous revision unknown"; exit 2; }
 rev=$(psqlv "select version_num from alembic_version")
-if [[ "$rev" != "p8c1e2f3a4b5" ]]; then
+if [[ "$rev" != "$PREVIOUS_REV" ]]; then
   [[ "$(psqlv "select count(*) from source_effective_certifications where length(signature) > 64")" == 0 ]] \
     || { echo "Ed25519 certificates exist; downgrade would delete them. Decide manually."; exit 3; }
   ACCESSPROOF_API_IMAGE="accessproof/api:$RELEASE_ID" compose run --rm --no-deps -T api \
-    alembic downgrade p8c1e2f3a4b5
+    alembic downgrade "$PREVIOUS_REV"
 fi
 cp "$REL/rollback/.env" "$APP_DIR/.env"
 compose up -d --no-deps --force-recreate api
