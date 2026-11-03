@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Real employee identity for live SharePoint validation (operator laptop only).
 
-    serve  --actor alice --client-id <public-client-app-id> --socket DIR/alice.sock
-           Device-code sign-in performed BY THE EMPLOYEE (this tool never sees a
-           password). Verifies the ID token with the Guard's exact OIDC verifier
+    serve  --actor alice --client-id <public-client-app-id> --socket DIR/alice.sock [--flow auth-code|device]
+           Interactive browser sign-in performed BY THE EMPLOYEE (this tool never
+           sees a password): OAuth 2.0 Authorization Code + PKCE (S256) with a
+           one-shot loopback listener on 127.0.0.1, exact `state` and OIDC
+           `nonce` checks. Device code remains available with --flow device for
+           tenants that permit it (Security Defaults block it: AADSTS530035). Verifies the ID token with the Guard's exact OIDC verifier
            (issuer, audience, tenant, immutable `oid`), cross-checks Graph /me,
            then keeps tokens IN MEMORY ONLY and serves them to local test tools
            over a 0600 Unix socket, refreshing (and re-verifying) before expiry.
@@ -22,6 +25,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import socket
 import socketserver
 import stat
@@ -31,7 +35,8 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 import httpx
 
@@ -79,6 +84,63 @@ class Session:
         self.tokens: dict = {}
         self.verified: dict = {}
 
+    def auth_code_sign_in(self, timeout_s: int = 600) -> None:
+        """Authorization Code + PKCE through the employee's own browser."""
+        verifier = secrets.token_urlsafe(64)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        state, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        received: dict[str, str] = {}
+
+        class Callback(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                parts = urlsplit(self.path)
+                if parts.path != "/" or received:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                received.update({k: v[0] for k, v in parse_qs(parts.query).items()})
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(b"AccessProof lab sign-in received. You can close this window.\n")
+
+            def log_message(self, *args):  # never log the authorization code
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Callback)
+        server.timeout = 2
+        redirect = f"http://127.0.0.1:{server.server_address[1]}"
+        url = f"{LOGIN}{TENANT}/oauth2/v2.0/authorize?" + urlencode({
+            "client_id": self.client_id, "response_type": "code", "redirect_uri": redirect,
+            "response_mode": "query", "scope": SCOPES, "state": state, "nonce": nonce,
+            "code_challenge": challenge, "code_challenge_method": "S256",
+            "login_hint": f"{self.actor}@{UPN_DOMAIN}", "prompt": "select_account",
+        })
+        print(f"SIGN-IN REQUIRED FOR: {self.actor.upper()} ({self.actor}@{UPN_DOMAIN})", flush=True)
+        print("  Open this URL in a PRIVATE/INCOGNITO browser window ON THIS COMPUTER:", flush=True)
+        print(f"  {url}", flush=True)
+        end = time.monotonic() + timeout_s
+        try:
+            while not received and time.monotonic() < end:
+                server.handle_request()
+        finally:
+            server.server_close()
+        if not received:
+            raise IdentityFailure("SIGN_IN_TIMED_OUT")
+        if received.get("error"):
+            raise IdentityFailure(f"SIGN_IN_FAILED:{received.get('error')}:{received.get('error_description', '')[:120]}")
+        if not secrets.compare_digest(received.get("state", ""), state):
+            raise IdentityFailure("STATE_MISMATCH")
+        if not received.get("code"):
+            raise IdentityFailure("AUTHORIZATION_CODE_MISSING")
+        t = self.http.post(f"{LOGIN}{TENANT}/oauth2/v2.0/token", data={
+            "grant_type": "authorization_code", "client_id": self.client_id, "code": received["code"],
+            "redirect_uri": redirect, "code_verifier": verifier, "scope": SCOPES})
+        if t.status_code != 200:
+            raise IdentityFailure(f"CODE_REDEMPTION_FAILED:{t.json().get('error')}")
+        self._accept(t.json(), expected_nonce=nonce)
+
     def device_sign_in(self) -> None:
         r = self.http.post(f"{LOGIN}{TENANT}/oauth2/v2.0/devicecode",
                            data={"client_id": self.client_id, "scope": SCOPES})
@@ -106,7 +168,7 @@ class Session:
             raise IdentityFailure(f"SIGN_IN_FAILED:{err}")
         raise IdentityFailure("SIGN_IN_EXPIRED")
 
-    def _accept(self, grant: dict) -> None:
+    def _accept(self, grant: dict, expected_nonce: str | None = None) -> None:
         if not grant.get("id_token") or not grant.get("access_token"):
             raise IdentityFailure("TOKENS_MISSING")
         verifier = OidcVerifier(issuer=ISSUER, audience=self.client_id, subject_claim="oid", tenant_id=TENANT)
@@ -114,6 +176,8 @@ class Session:
             ident = verifier.verify(grant["id_token"])  # signature, iss, aud, exp, tid, oid
         finally:
             verifier.close()
+        if expected_nonce is not None and not secrets.compare_digest(str(ident.claims.get("nonce", "")), expected_nonce):
+            raise IdentityFailure("NONCE_MISMATCH")
         me = self.http.get("https://graph.microsoft.com/v1.0/me",
                            headers={"Authorization": "Bearer " + grant["access_token"]},
                            params={"$select": "id,userPrincipalName,accountEnabled"})
@@ -165,7 +229,7 @@ def serve(args) -> int:
     if stat.S_IMODE(sock_path.parent.stat().st_mode) != 0o700:
         raise IdentityFailure("SOCKET_DIRECTORY_MUST_BE_0700")
     session = Session(args.actor, args.client_id)
-    session.device_sign_in()
+    session.auth_code_sign_in() if args.flow == "auth-code" else session.device_sign_in()
 
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
@@ -285,6 +349,7 @@ def main() -> int:
     s.add_argument("--client-id", required=True)
     s.add_argument("--socket", required=True)
     s.add_argument("--max-hours", type=float, default=8.0)
+    s.add_argument("--flow", choices=["auth-code", "device"], default="auth-code")
     g = sub.add_parser("get")
     g.add_argument("--socket", required=True)
     g.add_argument("what", choices=["id_token", "access_token", "claims"])

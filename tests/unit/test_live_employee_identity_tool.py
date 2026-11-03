@@ -31,3 +31,57 @@ def test_expected_matrix_is_the_certified_fixture():
 def test_summary_never_contains_raw_subject():
     s = ei._summary({"sub": "pairwise-secret-sub", "oid": "o", "tid": "t", "iss": "i", "aud": "a"})
     assert "pairwise-secret-sub" not in str(s) and len(s["sub_sha256"]) == 64
+
+
+def test_auth_code_flow_uses_pkce_state_and_nonce(monkeypatch):
+    """Drive the loopback callback with a fake browser; never contacts Microsoft."""
+    import base64, hashlib, threading, urllib.parse, urllib.request
+
+    s = ei.Session("alice", "client-id")
+    captured = {}
+
+    def fake_post(url, data=None, **kw):
+        captured["token_request"] = data
+        return httpx.Response(400, json={"error": "synthetic_stop"}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(s.http, "post", fake_post)
+    printed = []
+    monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a))))
+
+    def browser():
+        import time
+        for _ in range(200):
+            urls = [p.strip() for p in printed if p.strip().startswith("https://")]
+            if urls:
+                break
+            time.sleep(0.02)
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(urls[0]).query))
+        captured["authorize"] = q
+        urllib.request.urlopen(q["redirect_uri"] + "/?" + urllib.parse.urlencode({"code": "c0de", "state": q["state"]}))
+    threading.Thread(target=browser, daemon=True).start()
+    with pytest.raises(ei.IdentityFailure, match="CODE_REDEMPTION_FAILED"):
+        s.auth_code_sign_in(timeout_s=20)
+    q, tr = captured["authorize"], captured["token_request"]
+    assert q["code_challenge_method"] == "S256" and q["response_type"] == "code"
+    assert q["redirect_uri"].startswith("http://127.0.0.1:") and q["nonce"] and q["state"]
+    assert base64.urlsafe_b64encode(hashlib.sha256(tr["code_verifier"].encode()).digest()).rstrip(b"=").decode() == q["code_challenge"]
+    assert tr["code"] == "c0de" and tr["redirect_uri"] == q["redirect_uri"] and "client_secret" not in tr
+
+
+def test_auth_code_flow_rejects_state_mismatch(monkeypatch):
+    import threading, urllib.parse, urllib.request
+    s = ei.Session("alice", "client-id")
+    printed = []
+    monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a))))
+
+    def browser():
+        import time
+        for _ in range(200):
+            urls = [p.strip() for p in printed if p.strip().startswith("https://")]
+            if urls:
+                break
+            time.sleep(0.02)
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(urls[0]).query))
+        urllib.request.urlopen(q["redirect_uri"] + "/?" + urllib.parse.urlencode({"code": "c", "state": "forged"}))
+    threading.Thread(target=browser, daemon=True).start()
+    with pytest.raises(ei.IdentityFailure, match="STATE_MISMATCH"):
+        s.auth_code_sign_in(timeout_s=20)
