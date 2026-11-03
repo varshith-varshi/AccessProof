@@ -1,0 +1,12 @@
+2026-11-03T03:37:39Z release r22-least-privilege-e69ee0085e44 starting
+2026-11-03T03:37:40Z rehearsal: reusing pre-built release images
+2026-11-03T03:37:43Z could not determine target revision
+2026-11-03T03:38:14Z release r22-least-privilege-e69ee0085e44 starting
+2026-11-03T03:38:16Z rehearsal: reusing pre-built release images
+2026-11-03T03:38:18Z could not determine target revision
+2026-11-03T03:40:05Z release r22-least-privilege-e69ee0085e44 starting
+2026-11-03T03:40:06Z rehearsal: reusing pre-built release images
+2026-11-03T03:40:09Z images built; target DB revision u5e6f7a8b9c0
+2026-11-03T03:40:09Z backup verified (78 table-data entries)
+2026-11-03T03:40:12Z database at u5e6f7a8b9c0
+2026-11-03T03:40:38Z DEPLOYMENT VERIFIED: api/worker/web on r22-least-privilege-e69ee0085e44, db u5e6f7a8b9c0

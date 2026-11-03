@@ -1,0 +1,9 @@
+{
+  "current_user": "accessproof_app",
+  "superuser": false,
+  "bypassrls": false,
+  "owns_tables": false,
+  "tables_missing_policy": [],
+  "settable_bypass_policies": 0,
+  "tenant_tables_checked": 58
+}

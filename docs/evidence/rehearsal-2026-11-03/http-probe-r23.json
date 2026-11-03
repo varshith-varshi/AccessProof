@@ -1,0 +1,92 @@
+{
+ "ok": true,
+ "results": {
+  "sai:login": {
+   "pass": true,
+   "detail": 200
+  },
+  "contoso:login": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/auth/me": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/organization": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/sources": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/ai-applications": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/guards": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/protection/overview": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/audit": {
+   "pass": true,
+   "detail": 200
+  },
+  "GET /api/v1/current/dashboard": {
+   "pass": true,
+   "detail": 200
+  },
+  "own application visible": {
+   "pass": true,
+   "detail": [
+    "sai-rag"
+   ]
+  },
+  "write: rename workspace": {
+   "pass": true,
+   "detail": 200
+  },
+  "write: create guard": {
+   "pass": true,
+   "detail": 201
+  },
+  "owner reset preview": {
+   "pass": true,
+   "detail": 200
+  },
+  "cross-tenant read refused": {
+   "pass": true,
+   "detail": 403
+  },
+  "cross-tenant write refused": {
+   "pass": true,
+   "detail": 403
+  },
+  "contoso sees only contoso": {
+   "pass": true,
+   "detail": 200
+  },
+  "gateway heartbeat route fail-closed": {
+   "pass": true,
+   "detail": 422
+  },
+  "metrics served": {
+   "pass": true,
+   "detail": "200 357 series"
+  },
+  "metrics cross-tenant via read-only role (not false zeros)": {
+   "pass": true,
+   "detail": [
+    "accessproof_source_connection_count{status=\"not_configured\"} 0.0",
+    "accessproof_source_connection_count{status=\"error\"} 0.0",
+    "accessproof_source_connection_count{status=\"connected\"} 2.0",
+    "accessproof_source_connection_count{status=\"disconnected\"} 0.0"
+   ]
+  }
+ }
+}

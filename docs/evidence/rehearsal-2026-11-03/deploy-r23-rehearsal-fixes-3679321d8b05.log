@@ -1,0 +1,8 @@
+2026-11-03T03:47:23Z release r23-rehearsal-fixes-3679321d8b05 starting
+2026-11-03T03:47:23Z unexpected DB revision u5e6f7a8b9c0
+2026-11-03T03:47:32Z release r23-rehearsal-fixes-3679321d8b05 starting
+2026-11-03T03:47:34Z rehearsal: reusing pre-built release images
+2026-11-03T03:47:36Z images built; target DB revision u5e6f7a8b9c0
+2026-11-03T03:47:37Z backup verified (78 table-data entries)
+2026-11-03T03:47:39Z database at u5e6f7a8b9c0
+2026-11-03T03:48:05Z DEPLOYMENT VERIFIED: api/worker/web on r23-rehearsal-fixes-3679321d8b05, db u5e6f7a8b9c0

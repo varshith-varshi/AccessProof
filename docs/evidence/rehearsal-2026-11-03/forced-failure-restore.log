@@ -1,0 +1,8 @@
+2026-11-03T03:54:33Z app: reusing existing password
+2026-11-03T03:54:33Z worker: reusing existing password
+2026-11-03T03:54:33Z metrics: reusing existing password
+2026-11-03T03:54:34Z roles provisioned and verified
+already patched
+2026-11-03T03:54:52Z failure at line 123
+2026-11-03T03:54:52Z RESTORE: reverting to previous database credentials
+2026-11-03T03:55:10Z RESTORE complete: api/worker healthy on the pre-run credentials

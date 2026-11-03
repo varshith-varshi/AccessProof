@@ -1,0 +1,7 @@
+2026-11-03T03:54:05Z RECOVERY: API unhealthy at start; re-syncing role passwords from .env
+2026-11-03T03:54:05Z app: reusing existing password
+2026-11-03T03:54:05Z worker: reusing existing password
+2026-11-03T03:54:05Z metrics: reusing existing password
+2026-11-03T03:54:06Z roles provisioned and verified
+already patched
+2026-11-03T03:54:24Z LEAST-PRIVILEGE DATABASE ROLES ACTIVE: api=accessproof_app worker=accessproof_rls_admin metrics=accessproof_metrics

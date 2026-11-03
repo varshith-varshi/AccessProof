@@ -1,0 +1,6 @@
+api accessproof/api:r22-least-privilege-e69ee0085e44 Up 17 seconds (healthy)
+db postgres:17-alpine Up 19 minutes (healthy)
+redis redis:7-alpine Up 19 minutes (healthy)
+web accessproof/web-v2:r22-least-privilege-e69ee0085e44 Up Less than a second (health: starting)
+worker accessproof/worker:r22-least-privilege-e69ee0085e44 Up Less than a second
+Rolled back to: previous_api_image=accessproof/api:r22-least-privilege-e69ee0085e44 previous_web_image=accessproof/web-v2:r22-least-privilege-e69ee0085e44 previous_worker_image=accessproof/worker:r22-least-privilege-e69ee0085e44 

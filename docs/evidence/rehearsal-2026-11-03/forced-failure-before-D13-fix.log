@@ -1,0 +1,5 @@
+2026-11-03T03:48:47Z roles provisioned and verified
+already patched
+2026-11-03T03:49:05Z failure at line 98
+2026-11-03T03:49:05Z RESTORE: reverting to previous database credentials
+2026-11-03T03:53:07Z RESTORE complete (owner credentials)

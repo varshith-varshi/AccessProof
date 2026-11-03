@@ -1,0 +1,46 @@
+{
+  "provisioned_roles": [
+    "accessproof_app",
+    "accessproof_metrics",
+    "accessproof_rls_admin"
+  ],
+  "owner": "accessproof",
+  "database": "accessproof",
+  "verification": {
+    "accessproof_app": {
+      "current_user": "accessproof_app",
+      "superuser": false,
+      "bypassrls": false,
+      "owns_tables": false,
+      "tables_missing_policy": [],
+      "settable_bypass_policies": 0,
+      "tenant_tables_checked": 58,
+      "can_disable_rls": false,
+      "rows_visible_without_tenant": 0,
+      "ok": true
+    },
+    "accessproof_rls_admin": {
+      "current_user": "accessproof_rls_admin",
+      "superuser": false,
+      "bypassrls": false,
+      "owns_tables": false,
+      "tables_missing_policy": [],
+      "settable_bypass_policies": 0,
+      "tenant_tables_checked": 58,
+      "can_disable_rls": false,
+      "ok": true
+    },
+    "accessproof_metrics": {
+      "current_user": "accessproof_metrics",
+      "superuser": false,
+      "bypassrls": false,
+      "owns_tables": false,
+      "tables_missing_policy": [],
+      "settable_bypass_policies": 0,
+      "tenant_tables_checked": 58,
+      "can_disable_rls": false,
+      "can_write": false,
+      "ok": true
+    }
+  }
+}

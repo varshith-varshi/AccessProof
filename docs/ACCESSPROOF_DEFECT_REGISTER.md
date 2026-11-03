@@ -1,4 +1,4 @@
-# AccessProof defect register (2026-11-02)
+# AccessProof defect register (updated 2026-11-03)
 
 Severity scale from the mission brief: P0 disclosure/bypass, P1 broken core
 authorization, P2 Guard/Gateway integration, P3 onboarding/operations, P4 UI.
@@ -80,6 +80,119 @@ authorization, P2 Guard/Gateway integration, P3 onboarding/operations, P4 UI.
   unavailable and confusing.
 * **Fix:** bind `{}` first. Test `test_d04_…`.
 
+## Fixed in the SharePoint Production Protect mission (2026-11-03)
+
+Local verification only. Not deployed to production (see O-07).
+
+### P0-01 — Runtime database role was the PostgreSQL superuser; RLS was decorative (P0)
+* **Component:** `docker-compose.ec2.yml`, `migrations/`, `apps/api/accessproof_api/db_security.py`
+* **Root cause:** the API and worker connected as `accessproof`, which is the
+  superuser **and** owner of every table. Superusers bypass RLS, and owners
+  bypass non-forced RLS. Only 39 of the 58 tenant tables had a policy, and
+  none forced it. Tenant isolation therefore rested entirely on application
+  `WHERE` clauses.
+* **Fix:**
+  * Three least-privilege roles, `NOSUPERUSER NOBYPASSRLS`, owning nothing:
+    * `accessproof_app` (API, tenant-scoped).
+    * `accessproof_rls_admin` (worker; cross-tenant only through the policy predicate).
+    * `accessproof_metrics` (SELECT-only policy, for cross-tenant aggregates).
+  * Migration `t4d5e6f7a8b9` applies `ENABLE`+`FORCE` RLS and one canonical
+    predicate to all 58 tenant tables. The 13 bootstrap tables are
+    documented individually with a reason.
+  * `scripts/provision_database_roles.py` provisions the roles and then
+    verifies them **by connecting as each role**.
+  * `enable_least_privilege_db.sh` performs the production switch. It
+    requires `--approve-database-role-change`.
+* **Found by running as the restricted role:** about 184 tests failed until
+  tenant context was set at signup, Guard enrollment, runner registration,
+  OAuth/consent callbacks, pairing claim and Google webhook ingestion. Each
+  of these paths had silently relied on superuser visibility.
+* **Tests:** `tests/security/test_postgres_tenant_isolation.py`. The full
+  suite also runs on PostgreSQL with the API as `accessproof_app`.
+
+### D-05 — `provider_revision` columns were INTEGER; Microsoft revisions overflow (P1, fail-closed)
+* Found only on PostgreSQL, since SQLite has no width limit. Migration
+  `u5e6f7a8b9c0` widens six columns to BIGINT. Its downgrade refuses if any
+  value is above 2^31-1.
+
+### D-06 — Output sanitizer v1 bypassable (P1 exfiltration)
+* HTML-entity-encoded URLs in inline CSS and event handlers, protocol-relative
+  and backslash URLs, userinfo and IDN tricks all slipped past (8+ bypass
+  classes).
+* v2 (`packages/rag_core/output_safety.py`) does the following:
+  * Normalizes the text: NFKC, up to 3 rounds of entity decoding, and
+    stripping of invisible characters.
+  * Escapes every HTML tag opener outside code.
+  * Parses URLs WHATWG-style against a default-deny host allowlist.
+* Verified in a **real Chromium renderer** (`test_output_exfiltration_real_renderer.py`).
+
+### D-07 — Shared conversations trusted a caller-supplied participant list (P1)
+* A caller could omit a recipient. The Gateway now defaults to
+  `single_user`. In `roster_required` mode it accepts only a short-lived
+  Ed25519 roster signed by a pinned adapter key
+  (`packages/rag_core/roster.py`), and the verified participants must equal
+  the roster exactly.
+
+### D-08 — `/metrics` would report false-calm zeros under RLS (P3)
+* The tenant-scoped app role sees no rows without tenant context.
+  `/metrics` now reads through the SELECT-only `accessproof_metrics` role.
+  The rehearsal verified that cross-tenant counts are non-zero.
+
+### D-09 — Deploy/rollback revision check assumed hex IDs (P3, fail-safe)
+* `^[0-9a-f]{12}$` rejected `u5e6f7a8b9c0`, so the deploy aborted at
+  preflight. Now `^[0-9a-z]{12}$`. Found by the rehearsal.
+
+### D-10 — Role switch mounted password files the API user could not read (P3, fail-safe)
+* The files sat in a root-only 0700 directory, but the image runs as uid
+  10001. A dedicated uid-10001 `secrets/` directory is now the only mount.
+  Found by the rehearsal; the ERR trap restored correctly.
+
+### D-11 — Gate runner copied files into a read-only container rootfs (P3)
+* Inputs are now streamed over stdin (`--stdin-bundle`). In-memory evidence
+  is judged identically to a file, and this is tested.
+
+### D-12 — After the switch, every future migration would run as `accessproof_app` (P2 — next release outage)
+* `compose run api alembic …` inherits the api service's runtime URL.
+  The rehearsal proved that `accessproof_app` gets
+  `must be owner of table organizations` and
+  `permission denied for schema public`.
+* Deploy and rollback now migrate via `owner_alembic`, which passes the
+  owner URL through the environment and never in argv.
+
+### D-13 — Re-running the switch rotated passwords; a later failure locked the API out (P1 — outage)
+* The rehearsal forced a failure after the switch from a new release
+  directory. The fresh passwords had already been `ALTER`ed into the
+  database, and the restored `.env` held the old ones. The API crash-looped
+  on `password authentication failed`, yet the script printed "RESTORE
+  complete".
+* **Fix:**
+  * Existing passwords are reused from `.env`.
+  * Restore reports success only when api and worker are healthy;
+    otherwise it logs "RESTORE FAILED — ESCALATE" and exits 4.
+  * `RECOVERY=1` re-syncs a diverged host.
+* Re-verified: a forced failure now restores to a healthy API that is still
+  `accessproof_app`.
+
+### Production rehearsal (local stand-in, 2026-11-03)
+The stand-in is a production-shaped host:
+* Same compose file, same `/home/ubuntu/accessproof` layout, postgres:17,
+  redis, read-only API rootfs.
+* Seeded with two tenants on the r21 release.
+
+Sequence run:
+1. The real `deploy_on_ec2.sh` (r22).
+2. The real `enable_least_privilege_db.sh`.
+3. A 20-check HTTP probe as `accessproof_app`: login, reads, writes,
+   cross-tenant refusal (403), metrics.
+4. `run_security_gates.sh`.
+5. The r23 deploy *on top of* least privilege.
+6. A forced post-switch failure.
+7. `rollback_on_ec2.sh` from r23 to r22.
+
+Every probe passed 20/20 after each step. Gates A and I PASS when measured
+live. All other gates are honestly FAIL or BLOCKED (no real Entra,
+SharePoint, Guard or Gateway on the stand-in).
+
 ## Open (not fixable from code, or out of time) — carried forward
 
 | ID | Sev | Item | Status |
@@ -87,9 +200,12 @@ authorization, P2 Guard/Gateway integration, P3 onboarding/operations, P4 UI.
 | O-01 | P1 | No SharePoint source certificate exists; SharePoint Protect is blocked by design | **BLOCKED — external**: real Entra employee sign-in (Alice, Bob), authorized revoke/restore on the synthetic site, protected-route tests, then certifier issuance |
 | O-02 | P1 | Production Guard reports `0` verified OIDC identity mappings (per 2026-11-02 docs) | BLOCKED — requires employee OIDC on the tenant |
 | O-03 | P2 | Deployed Gateways predate D-02 and cannot heartbeat | Needs deploy + customer re-pair |
-| O-04 | P3 | No owner-approved **onboarding reset** endpoint exists | NOT_IMPLEMENTED; design in `ACCESSPROOF_ONBOARDING_VALIDATION.md` |
-| O-05 | P3 | No API to remove an AI application or change the selected chatbot other than re-pair | NOT_IMPLEMENTED |
+| O-04 | P3 | No owner-approved **onboarding reset** endpoint exists | **FIXED 2026-11-03** — owner-only preview/execute; archives (never deletes) applications; `test_application_archive_and_reset.py` |
+| O-05 | P3 | No API to remove an AI application or change the selected chatbot other than re-pair | **FIXED 2026-11-03** — `POST /api/v1/current/ai-applications/{id}/archive` (soft archive, `archived_at`), restore on re-create, UI Remove button |
 | O-06 | P3 | CI workflow is not in the published branch (credential could not upload it) | Owner action |
-| O-07 | P2 | Production deployment of D-01..D-04 | BLOCKED — no production access from this environment |
+| O-07 | P2 | Production deployment of D-01..D-04, P0-01 and D-05..D-13 | BLOCKED — no AWS credentials / production network path from this environment. Release rehearsed end-to-end on a production-shaped stand-in (above) |
 | O-08 | P3 | Revocation propagation latency has never been measured against the live tenant | BLOCKED with O-01 |
-| O-09 | P3 | `--adopt-existing` re-pairing rotates the Gateway heartbeat credential but (by design) never restarts containers, so an adopted Gateway shows DISCONNECTED until re-installed | Known limitation of D-02; fails safe (never shows a false CONNECTED) |
+| O-09 | P3 | `--adopt-existing` re-pairing rotates the Gateway heartbeat credential but (by design) never restarts containers, so an adopted Gateway shows DISCONNECTED until re-installed | **FIXED 2026-11-03** — adopt enables presence on the local installation; `test_existing_gateway_presence_adoption.py` |
+| O-10 | P1 | Independent certifier key does not exist yet; `ACCESSPROOF_SOURCE_CERTIFICATION_PUBLIC_KEYS_JSON` unset in production | BLOCKED — owner generates the key off-host (`scripts/issue_source_certificate.py keygen`) |
+| O-11 | P2 | No production platform adapter signs conversation rosters yet; Gateways must stay `single_user` | By design until a Teams/Slack adapter holds a pinned key |
+| O-12 | P1 | Production approval requires a human reviewer after all technical gates pass | Not automatable by design |
