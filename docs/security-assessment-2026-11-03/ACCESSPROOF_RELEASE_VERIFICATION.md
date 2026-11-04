@@ -189,3 +189,24 @@ Live (lab tenant, production control plane):
 * **Gate E still needs a live route challenge against a Gateway installed by the reference installer.** The lab Gateway was paired manually and has no installer manifest, so the agent cannot verify deployment hashes or egress isolation. That is the remaining engineering step before E and J can pass. Protect stays inactive.
 * **r33 `r33-d26-route-2ff237699756` deployed** (06:42→06:44Z, DEPLOYMENT VERIFIED). SQLite 1540 tests, 0 failed, 0 errors; PostgreSQL 1540 tests, 0 failed, 0 errors. Afterwards: roles kept, ACL and directory sync connected, 0 sync failures, Guard ready.
 * **Gates on r33 with the certificate evidence (06:46Z):** A, B, C, D, F, G, H, I **PASS**. E FAIL (`route_certified` MISSING: no live challenge yet). J FAIL (route challenge, cutover, Protect acknowledgement). Verdict **NOT VERIFIED**. Protect inactive.
+
+## Update 2026-11-04 09:37 UTC — r34 SECURITY BASELINE: Gate E verified, gates A–I PASS
+* **Lab deployment migrated to the reference installer.** The RAG, model and Guard run in one reference Compose project, and the Gateway is staged and applied by `accessproof_gateway.installer`. The agent's static isolation check reports `static_egress_isolated: true`. The live pipeline re-passed through it: Layer 1 10/10 plus 8 controls, RAG E2E 7/7.
+* **D-28 deployed in r34:** Protect requires an explicit owner approval recorded after the route certificate. Production SQLite 1544/0 and PostgreSQL 1544/0; staging probe 23/23.
+* **Route challenge (Gate E), run 10, challenge `4286f0b7-…`:**
+
+| Probe | Result |
+|---|---|
+| allow | 200; Layer 1 allow + Layer 2 allow |
+| deny | 403 `NO_AUTHORIZED_RESOURCES` |
+| tamper | 503 `SOURCE_CONTENT_ATTESTATION_FAILED` |
+| layer2_revoke | 503 `AUTHORIZATION_REVISION_CHANGED` (Layer 1 allowed; Alice's grant revoked in SharePoint while the model answer was held; Layer 2 blocked the same decision) |
+
+  Control plane `tested_awaiting_customer_cutover`, **6 Guard audit records matched**. Cutover then verified as `customer_cutover_verified`, **38 Guard audit records matched**.
+* **Earlier runs, kept as evidence:**
+  * Runs 1–4: timing mismatches with r34's 300 s sync cycle. Refused correctly by the agent, never accepted.
+  * Run 5: D-29 (submitted before the Guard uploaded its Layer 2 record).
+  * Run 7: verified, but the cutover nonce was not persisted.
+  * Runs 8–9: shot timing; one transient fixture-listing gap.
+  * The runner now holds requests through a lab model "hold" hook instead of freezing the container (freezing broke the Gateway's model connection and caused a 503 before Layer 2), persists the nonce at 0600, and waits for Guard audit delivery before submitting.
+* **Production gates (06:36 → 09:36Z):** A, B, C, D, **E**, F, G, H, I **PASS**. J FAIL only on `HUMAN_ACTIVATION_APPROVAL_REQUIRED` and `protect_acknowledged_by_guard` (which follows approval). **Protect is NOT active.** No further technical gate is open on r34.

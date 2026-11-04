@@ -1,0 +1,39 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T09:00:26.892298+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "acl_last_started_epoch": 1793783008.544992
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "b6008fc5c2573fb02bed75d4b24cc330e5c372991bb6585b78f8e662d6302adc",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "alice_grant_restored_at": "2026-11-04T09:04:07.766088+00:00"
+}

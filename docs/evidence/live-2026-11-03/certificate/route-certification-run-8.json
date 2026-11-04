@@ -1,0 +1,157 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T08:39:11.075182+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "acl_last_started_epoch": 1793781722.118637,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T08:42:41.465297+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "ffcef0c9-a5f3-4378-b9d8-60e141038d05",
+     "issued_at": "2026-11-04T08:46:48.602887+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T08:47:01.205086+00:00",
+     "model_held_at": "2026-11-04T08:47:01.332650+00:00",
+     "revision_at_hold": 826,
+     "model_released_at": "2026-11-04T08:47:25.897016+00:00",
+     "probe_failure": "RouteChallengeError: layer2_revoke returned unexpected status 200"
+    },
+    {
+     "challenge_id": "aca7a976-7de8-4ca2-a6a4-7166a9a774a7",
+     "issued_at": "2026-11-04T08:47:28.733811+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T08:47:31.607145+00:00",
+     "model_held_at": "2026-11-04T08:47:31.711257+00:00",
+     "revision_at_hold": 826,
+     "model_released_at": "2026-11-04T08:47:56.694825+00:00",
+     "probe_failure": "RouteChallengeError: layer2_revoke has no verified refusal reason"
+    }
+   ],
+   "probe_failure": "RouteChallengeError: layer2_revoke has no verified refusal reason"
+  },
+  {
+   "attempt": 2,
+   "acl_last_started_epoch": 1793782364.633299,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T08:53:18.716505+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "812fda37-7344-4197-8b60-49bb327f507e",
+     "issued_at": "2026-11-04T08:57:31.025234+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T08:57:39.234796+00:00",
+     "model_held_at": "2026-11-04T08:57:39.333244+00:00",
+     "revision_at_hold": 830,
+     "model_released_at": "2026-11-04T08:58:03.886219+00:00",
+     "probe_failure": "RouteChallengeError: layer2_revoke returned unexpected status 200"
+    },
+    {
+     "challenge_id": "d025a025-0011-41ac-b6ee-38d18717d386",
+     "issued_at": "2026-11-04T08:58:06.741210+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T08:58:12.000401+00:00",
+     "model_held_at": "2026-11-04T08:58:12.103587+00:00",
+     "revision_at_hold": 830,
+     "model_released_at": "2026-11-04T08:58:37.088773+00:00",
+     "probe_failure": "RouteChallengeError: layer2_revoke has no verified refusal reason"
+    }
+   ],
+   "probe_failure": "RouteChallengeError: layer2_revoke has no verified refusal reason"
+  },
+  {
+   "attempt": 3,
+   "acl_last_started_epoch": 1793783008.544992,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T09:03:58.692591+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "30f60ea6-4036-4907-89f9-b79b4b14f4e1",
+     "issued_at": "2026-11-04T09:08:14.398136+00:00",
+     "probe_failure": "RouteChallengeError: allow returned unexpected status 503"
+    }
+   ],
+   "probe_failure": "RouteChallengeError: allow returned unexpected status 503"
+  },
+  {
+   "attempt": 4,
+   "acl_last_started_epoch": 1793783347.175837,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T09:09:21.371319+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "8e0721b9-8758-44c2-a64a-ae9063996f61",
+     "issued_at": "2026-11-04T09:13:53.090449+00:00",
+     "probe_failure": "RouteChallengeError: allow returned unexpected status 503"
+    }
+   ],
+   "probe_failure": "RouteChallengeError: allow returned unexpected status 503"
+  },
+  {
+   "attempt": 5,
+   "acl_last_started_epoch": 1793783680.758446,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T09:14:52.006147+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "5b46c616-5e16-4245-918d-4cdf5e9dc7f4",
+     "issued_at": "2026-11-04T09:19:27.351235+00:00",
+     "probe_failure": "RouteChallengeError: allow returned unexpected status 503"
+    }
+   ],
+   "probe_failure": "RouteChallengeError: allow returned unexpected status 503"
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "b6008fc5c2573fb02bed75d4b24cc330e5c372991bb6585b78f8e662d6302adc",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "outcome": "CHALLENGE_NOT_VERIFIED",
+ "alice_grant_restored_at": "2026-11-04T09:19:28.043359+00:00"
+}

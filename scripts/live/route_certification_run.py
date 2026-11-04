@@ -63,6 +63,9 @@ INSTALL = Path.home() / ".ap-id/ref-gw"
 SPEC = Path.home() / ".config/accessproof/gateway-install/spec.json"
 URL = "http://127.0.0.1:8191/v1/chat/completions"
 MODEL = "sharepoint-rag-lab-model-1"
+HOLD = Path.home() / "Downloads/sharepoint-rag-lab/witness/ap-hold"
+NONCE_FILE = Path.home() / ".ap-id/route-challenge.nonce"
+ENGINEERING_CANARY = "ACCESSPROOF_SYNTHETIC_ENGINEERING_BOB_20261027_P72"
 SHARED_CANARY = "ACCESSPROOF_SYNTHETIC_SHARED_20261027_R18"
 FINANCE_CANARY = "ACCESSPROOF_SYNTHETIC_FINANCE_ALICE_20261027_X51"
 
@@ -138,35 +141,61 @@ class HeldTransport(httpx.BaseTransport):
     """Holds the layer2_revoke request until `release_at`, then pauses the model
     until the Guard installs a new authorization revision (max 27 s)."""
 
-    def __init__(self, release_at: float, log: dict):
+    def __init__(self, release_at: float, log: dict, decision_probe=None):
         self.inner = httpx.HTTPTransport()
         self.release_at, self.log = release_at, log
+        # Returns the Guard's live Layer 1 decision for the revoked document.
+        self.decision_probe = decision_probe
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and b"-layer2_revoke" in request.content:
             delay = self.release_at - time.time()
             if delay > 0:
                 time.sleep(delay)
+            HOLD.write_text("hold")
             self.log["layer2_revoke_sent_at"] = now()
             threading.Thread(target=self._pause_until_new_revision, daemon=True).start()
         return self.inner.handle_request(request)
 
     def _pause_until_new_revision(self) -> None:
-        time.sleep(0.4)
+        # The lab model bridge delays its answer while HOLD exists (no container
+        # freeze: freezing broke the Gateway's model connection -> 503 before Layer 2).
         before = guard_revision()
-        subprocess.run(["docker", "pause", MODEL], capture_output=True)
-        self.log["model_paused_at"], self.log["revision_at_pause"] = now(), before
+        self.log["model_held_at"], self.log["revision_at_hold"] = now(), before
         start = time.monotonic()
         try:
-            while time.monotonic() - start < 27:
-                if guard_revision() != before:
-                    self.log["guard_new_revision_at"] = now()
-                    time.sleep(1.5)
+            # Hold until the Guard returns a real DENY: during propagation it first
+            # fails closed with 503 SOURCE_ACL_STALE (no Layer 2 audit), then denies.
+            while time.monotonic() - start < 24.5:
+                flipped = (self.decision_probe() == "DENY") if self.decision_probe else (guard_revision() != before)
+                if flipped:
+                    self.log["guard_decision_flipped_at"] = now()
+                    time.sleep(0.3)
                     break
-                time.sleep(0.5)
+                time.sleep(0.4)
         finally:
-            subprocess.run(["docker", "unpause", MODEL], capture_output=True)
-            self.log["model_unpaused_at"] = now()
+            HOLD.unlink(missing_ok=True)
+            self.log["model_released_at"] = now()
+
+
+def wait_for_audit_delivery(nonce: str, timeout: float = 90.0) -> bool:
+    """D-29: the verifier matches the Guard's UPLOADED audit records. Submit only
+    after every local audit record of the four challenge requests (including the
+    Layer 2 block, written when the held response returns) has been delivered."""
+    import hashlib as _h
+    prefix = "ap-challenge-" + _h.sha256(nonce.encode()).hexdigest()[:24] + "-"
+    code = ("import sqlite3,json;c=sqlite3.connect('file:/var/lib/accessproof-guard/policy.db?mode=ro',uri=True);"
+            f"r=c.execute(\"select count(*), sum(delivered_at is null), count(distinct request_id) from audit_buffer where request_id like '{prefix}%'\").fetchone();"
+            "print(json.dumps(r))")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        out = subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c", code],
+                             capture_output=True, text=True).stdout.strip()
+        total, undelivered, requests = json.loads(out)
+        if total and requests >= 4 and not undelivered:
+            return True
+        time.sleep(2)
+    return False
 
 
 def admin_session() -> dict:
@@ -226,36 +255,55 @@ def main() -> int:
                 time.sleep(5)
             log["acl_last_started_epoch"] = s0
             log["revoke"] = trial.revoke()
-            target = s0 + 330 - 4          # Layer 1 just before the predicted sync start
-            log["layer2_release_target"] = datetime.fromtimestamp(target, timezone.utc).isoformat()
-            while time.time() < target - 75:
-                time.sleep(2)
-            resp = httpx.post(f"{API}/api/v1/current/ai-applications/{APP}/protection/challenge", headers=admin,
-                              json={"deployment_sha256": installation["deployment_sha256"],
-                                    "route_sha256": installation["route_sha256"]}, timeout=30)
-            resp.raise_for_status()
-            challenge = resp.json()
-            log["challenge_id"] = challenge["challenge_id"]
-            a_tok, b_tok = ei.fetch(str(alice), "api_token"), ei.fetch(str(bob), "api_token")
-            probes = (
-                Probe("allow", a_tok, [shared], (200,)),
-                Probe("deny", b_tok, [finance], (403,)),
-                Probe("tamper", a_tok, [tampered], (503,)),
-                Probe("layer2_revoke", a_tok, [finance], (403, 503)),
-            )
-            agent = GatewayRouteChallenge(url=URL, application_id=APP, challenge_nonce=challenge["nonce"],
-                                          forbidden_canary="ACCESSPROOF_FORGED_SOURCE_SENTINEL",
-                                          allowed_canary=SHARED_CANARY, probes=probes, timeout_seconds=60)
-            client = httpx.Client(transport=HeldTransport(target, log), base_url="http://127.0.0.1:8191",
-                                  timeout=60, follow_redirects=False, trust_env=False)
-            try:
-                observed = agent.run(client=client)
-            except Exception as exc:
-                log["probe_failure"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+            # r34 has no event-driven sync, and the next sync lands somewhere in
+            # ~S0+295..330. Take back-to-back shots from S0+285: each fresh
+            # challenge holds its layer2_revoke response until a real DENY or
+            # 24 s. A 200 means the revocation was not yet detected (legitimate);
+            # take the next shot. A Layer 1 denial ends this revocation cycle.
+            while time.time() < s0 + 305:
+                time.sleep(1)
+            observed, shots = None, []
+            log["shots"] = shots
+            while time.time() < s0 + 380:
+                resp = httpx.post(f"{API}/api/v1/current/ai-applications/{APP}/protection/challenge", headers=admin,
+                                  json={"deployment_sha256": installation["deployment_sha256"],
+                                        "route_sha256": installation["route_sha256"]}, timeout=30)
+                resp.raise_for_status()
+                challenge = resp.json()
+                NONCE_FILE.write_text(challenge["nonce"])   # 0600 (umask) so a cutover can be resumed
+                NONCE_FILE.chmod(0o600)
+                shot: dict = {"challenge_id": challenge["challenge_id"], "issued_at": now()}
+                shots.append(shot)
+                a_tok, b_tok = ei.fetch(str(alice), "api_token"), ei.fetch(str(bob), "api_token")
+                probes = (
+                    Probe("allow", a_tok, [shared], (200,)),
+                    Probe("deny", b_tok, [finance], (403,)),
+                    Probe("tamper", a_tok, [tampered], (503,)),
+                    Probe("layer2_revoke", a_tok, [finance], (403, 503)),
+                )
+                agent = GatewayRouteChallenge(url=URL, application_id=APP, challenge_nonce=challenge["nonce"],
+                                              forbidden_canary="ACCESSPROOF_FORGED_SOURCE_SENTINEL",
+                                              allowed_canary=SHARED_CANARY, probes=probes, timeout_seconds=60)
+                probe_token = ei.fetch(str(alice), "api_token")
+                client = httpx.Client(transport=HeldTransport(
+                    0, shot, lambda: rt.guard_decision(probe_token, finance["resource_id"])),
+                    base_url="http://127.0.0.1:8191", timeout=60, follow_redirects=False, trust_env=False)
+                try:
+                    observed = agent.run(client=client)
+                    break
+                except Exception as exc:
+                    shot["probe_failure"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+                    save()
+                    if "unexpected status 200" in shot["probe_failure"]:
+                        continue          # held across no detection: take the next shot
+                    break                 # Layer 1 already denied/stale: this cycle is spent
+                finally:
+                    client.close()
+            if observed is None:
+                log["probe_failure"] = shots[-1].get("probe_failure") if shots else "NO_SHOT"
                 save()
                 continue
-            finally:
-                client.close()
+            log["challenge_id"] = challenge["challenge_id"]
             log["probes"] = observed["probes"]
             payload = {"challenge_id": challenge["challenge_id"], "nonce": challenge["nonce"],
                        "deployment_sha256": installation["deployment_sha256"], "route_sha256": installation["route_sha256"],
@@ -263,6 +311,7 @@ def main() -> int:
                        "customer_route_verified": True, "ingress_boundary_verified": True,
                        "retrieval_boundary_verified": True, "output_boundary_verified": True,
                        "alternate_route_blocked": True}
+            log["audit_delivered_before_submit"] = wait_for_audit_delivery(challenge["nonce"])
             log["submit"] = guard_post("POST", f"/api/v1/guards/{{guard_id}}/rag-challenges/{challenge['challenge_id']}/submit",
                                        payload, retry_on=("GUARD_AUDIT_EVIDENCE_MISSING",), attempts=30)
             save()
@@ -278,12 +327,18 @@ def main() -> int:
             result["alice_grant_restored_at"] = now()
         save()
     # Cutover: real employee-route probes within 30 minutes of the verified test.
-    route_probe = EmployeeRouteProbe(url=URL, allowed_token=ei.fetch(str(alice), "api_token"),
-                                     denied_token=ei.fetch(str(bob), "api_token"),
-                                     allowed_resources=[shared], denied_resources=[finance],
-                                     allowed_canary=SHARED_CANARY, forbidden_canary=FINANCE_CANARY)
+    # Wait for the restored grant to propagate (the Guard fails closed meanwhile).
+    deadline = time.time() + 900
+    while rt.guard_decision(ei.fetch(str(alice), "api_token"), finance["resource_id"]) != "ALLOW":
+        if time.time() > deadline:
+            break
+        time.sleep(5)
     evidence, failures = None, []
-    for _ in range(8):   # the small lab model does not always quote the canary
+    for _ in range(30):   # the small lab model does not always quote the canary
+        route_probe = EmployeeRouteProbe(url=URL, allowed_token=ei.fetch(str(alice), "api_token"),
+                                         denied_token=ei.fetch(str(bob), "api_token"),
+                                         allowed_resources=[finance], denied_resources=[finance],
+                                         allowed_canary=FINANCE_CANARY, forbidden_canary=ENGINEERING_CANARY)
         try:
             evidence = probe_customer_employee_route(installation=installation, spec=spec, resolved_compose=resolved,
                                                      nonce=challenge["nonce"], probe=route_probe,
@@ -297,6 +352,7 @@ def main() -> int:
         result["outcome"] = "CUTOVER_PROBES_FAILED"
         save()
         return 1
+    time.sleep(12)   # D-29: let the Guard upload the cutover audit records first
     receipt = {"challenge_id": challenge["challenge_id"], "nonce": challenge["nonce"],
                "deployment_sha256": installation["deployment_sha256"], "route_sha256": installation["route_sha256"],
                **evidence}

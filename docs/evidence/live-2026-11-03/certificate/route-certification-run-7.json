@@ -1,0 +1,135 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T08:33:36.184719+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "acl_last_started_epoch": 1793781046.08274,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T08:33:43.173638+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "5003068d-7312-4ffc-848b-2692ffde70d8",
+     "issued_at": "2026-11-04T08:35:32.073971+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T08:35:34.248726+00:00",
+     "model_held_at": "2026-11-04T08:35:34.399084+00:00",
+     "revision_at_hold": 822,
+     "model_released_at": "2026-11-04T08:35:59.345382+00:00",
+     "probe_failure": "RouteChallengeError: layer2_revoke returned unexpected status 200"
+    },
+    {
+     "challenge_id": "93675435-3295-4358-a961-55fbf4657ed6",
+     "issued_at": "2026-11-04T08:36:03.679397+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T08:36:05.831172+00:00",
+     "model_held_at": "2026-11-04T08:36:05.922124+00:00",
+     "revision_at_hold": 822,
+     "model_released_at": "2026-11-04T08:36:30.930235+00:00"
+    }
+   ],
+   "challenge_id": "93675435-3295-4358-a961-55fbf4657ed6",
+   "probes": [
+    {
+     "name": "allow",
+     "request_id": "ap-challenge-c66d26ff6772798a5e781b68-allow",
+     "http_status": 200,
+     "response_sha256": "c29910ab738c7535f023ce0aba146aa1bc52e22ab458a25fc9440cb2b9953fb3",
+     "response_byte_count": 679,
+     "forbidden_content_observed": false,
+     "reason_code": null,
+     "decision": "allow",
+     "decision_id": "2e90f4aa-866e-4e54-af55-f2465bd638c0"
+    },
+    {
+     "name": "deny",
+     "request_id": "ap-challenge-c66d26ff6772798a5e781b68-deny",
+     "http_status": 403,
+     "response_sha256": "ab0993f217060ecbae59e368c116f2846cb5b2644ee1c368b42702b28d8eae52",
+     "response_byte_count": 103,
+     "forbidden_content_observed": false,
+     "reason_code": "NO_AUTHORIZED_RESOURCES",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "tamper",
+     "request_id": "ap-challenge-c66d26ff6772798a5e781b68-tamper",
+     "http_status": 503,
+     "response_sha256": "e148ddbca162cca7abab4c9bdb5cc5427599af448fc921a19f0da4e1e433a757",
+     "response_byte_count": 115,
+     "forbidden_content_observed": false,
+     "reason_code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "layer2_revoke",
+     "request_id": "ap-challenge-c66d26ff6772798a5e781b68-layer2_revoke",
+     "http_status": 503,
+     "response_sha256": "fe1a117188887e21ae72f97807fdc79b8d73bd4c78a0c6ecce31182d3c82a77f",
+     "response_byte_count": 119,
+     "forbidden_content_observed": false,
+     "reason_code": "AUTHORIZATION_REVISION_CHANGED",
+     "decision": null,
+     "decision_id": null
+    }
+   ],
+   "audit_delivered_before_submit": true,
+   "submit": {
+    "status": 202,
+    "body": {
+     "state": "tested_awaiting_customer_cutover",
+     "challenge_id": "93675435-3295-4358-a961-55fbf4657ed6",
+     "guard_audits_matched": 6,
+     "protection_ready": false,
+     "production_certification": false,
+     "pending_guard_acknowledgment": false
+    }
+   }
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "b6008fc5c2573fb02bed75d4b24cc330e5c372991bb6585b78f8e662d6302adc",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "alice_grant_restored_at": "2026-11-04T08:36:42.720662+00:00",
+ "cutover_probe_failures": [
+  "CustomerAgentError: Customer RAG allowed positive control did not succeed",
+  "CustomerAgentError: Customer RAG allowed positive control did not succeed",
+  "CustomerAgentError: Customer RAG allowed positive control did not succeed",
+  "CustomerAgentError: Customer RAG allowed positive control did not succeed",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result"
+ ],
+ "outcome": "CUTOVER_PROBES_FAILED"
+}
