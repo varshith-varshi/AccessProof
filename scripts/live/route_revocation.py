@@ -71,6 +71,33 @@ def _released(doc: str, s: dict) -> bool:
     return doc in s["answer_canaries"] or doc in s["model_reply_documents"]
 
 
+def judge_inflight(doc: str, requests: list[dict], phase: dict) -> dict:
+    """Judge in-flight revocation against the trial's own timestamps.
+
+    Before AccessProof detected the revocation (t2) the Guard legitimately
+    still allows: a release then is propagation latency, measured by the
+    trial, not an in-flight failure. FAIL = the document's content released
+    in a response that finished after detection. PASS needs at least one
+    straddling request (Layer 1 before t2, response after t2) that carried the
+    document into the model context and whose answer was withheld.
+    """
+    t2 = phase.get("t2_accessproof_detected")
+    ok = [r for r in requests if "error" not in r]
+    if not t2:
+        return {"requests": requests, "status": "NOT_OBSERVED", "reason": "revocation not detected in this phase"}
+    after = [r for r in ok if r["finished_at"] > t2]
+    leaked = [r for r in after if _released(doc, r)]
+    straddling = [r for r in after if r["started_at"] < t2 and doc in r["model_context_documents"]]
+    withheld = [r for r in straddling if r["http_status"] != 200 or not _released(doc, r)]
+    before = [r for r in ok if r["finished_at"] <= t2 and _released(doc, r)]
+    status = "FAIL" if leaked else ("PASS" if withheld else "NOT_OBSERVED")
+    return {"requests": requests, "reference_t2_accessproof_detected": t2,
+            "reference_t5_first_guard_denial": phase.get("t5_first_decision"),
+            "released_before_detection_propagation_window": len(before),
+            "straddling_requests": len(straddling), "straddling_withheld": len(withheld),
+            "released_after_detection": len(leaked), "status": status}
+
+
 class RouteProbe:
     def __init__(self, fetch_token, doc: str):
         self.fetch_token, self.doc = fetch_token, doc
@@ -104,24 +131,12 @@ class RouteProbe:
         self._thread = threading.Thread(target=loop, daemon=True)
         self._thread.start()
 
-    def stop_inflight(self) -> None:
+    def stop_inflight(self, phase: dict | None = None) -> None:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=120)
         subprocess.run(["docker", "unpause", MODEL], capture_output=True)
-        straddling = [r for r in self._inflight if "error" not in r and self.doc in r["model_context_documents"]
-                      and r["http_status"] != 200]
-        leaked = [r for r in self._inflight if "error" not in r and _released(self.doc, r)]
-        allowed_before = [r for r in self._inflight if "error" not in r and r["http_status"] == 200]
-        if leaked:
-            status = "FAIL"
-        elif straddling:
-            status = "PASS"
-        else:
-            status = "NOT_OBSERVED"  # no request happened to straddle the acknowledgement
-        self.results["E2E-09"] = {"requests": self._inflight, "straddling_withheld": len(straddling),
-                                  "released_after_revocation": len(leaked),
-                                  "allowed_before_acknowledgement": len(allowed_before), "status": status}
+        self.results["E2E-09"] = judge_inflight(self.doc, self._inflight, phase or {})
 
     def after_stable_denial(self) -> None:
         s = _ask(self.fetch_token(), self.question)

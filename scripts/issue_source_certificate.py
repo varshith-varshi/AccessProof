@@ -9,6 +9,9 @@ private key; the API only ever receives the public key.
           --source-id ... --profile ... --scope-digest ... [--days 7]
                                         refuse unless every required live check
                                         PASSED; print a signed record
+  scope   --organization-id ... --source-id ...
+                                        print only the non-secret profile and
+                                        scope digest to certify (DATABASE_URL)
   import  --record RECORD.json          verify with the API's pinned public
                                         keys and the source's CURRENT scope,
                                         then upsert (DATABASE_URL); rolls back
@@ -124,6 +127,32 @@ def cmd_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scope(args: argparse.Namespace) -> int:
+    """Print ONLY the source's certification profile and scope digest (both
+    non-secret; the digest is a SHA-256 over stable identifiers). Run where the
+    API runs (DATABASE_URL + secret key); prints no identifiers or secrets."""
+    from sqlalchemy import select
+
+    from apps.api.accessproof_api.app import _secret_box
+    from apps.api.accessproof_api.db import SessionLocal, SourceConnection, set_tenant_context
+    from apps.api.accessproof_api.source_certification import _source_scope
+
+    with SessionLocal() as db:
+        set_tenant_context(db, args.organization_id)
+        source = db.scalar(select(SourceConnection).where(
+            SourceConnection.id == args.source_id, SourceConnection.organization_id == args.organization_id))
+        if source is None:
+            print("source not found in that organization", file=sys.stderr)
+            return 2
+        scope = _source_scope(source, json.loads(_secret_box.decrypt(source.encrypted_credentials or "")))
+        db.rollback()
+    if scope is None:
+        print("SCOPE_NOT_CERTIFIABLE (provider/profile identifiers incomplete)", file=sys.stderr)
+        return 2
+    print(json.dumps({"profile": scope[0], "scope_digest": scope[1]}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -139,10 +168,13 @@ def main(argv: list[str] | None = None) -> int:
     issue.add_argument("--profile", required=True)
     issue.add_argument("--scope-digest", required=True)
     issue.add_argument("--days", type=int, default=7)
+    scope = sub.add_parser("scope")
+    scope.add_argument("--organization-id", required=True)
+    scope.add_argument("--source-id", required=True)
     imp = sub.add_parser("import")
     imp.add_argument("--record", type=Path, required=True)
     args = parser.parse_args(argv)
-    return {"keygen": cmd_keygen, "issue": cmd_issue, "import": cmd_import}[args.command](args)
+    return {"keygen": cmd_keygen, "issue": cmd_issue, "scope": cmd_scope, "import": cmd_import}[args.command](args)
 
 
 if __name__ == "__main__":

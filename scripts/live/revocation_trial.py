@@ -340,7 +340,7 @@ def main() -> int:
             result["phases"].append(t.measure(item, "DENY", t0, a.budget_seconds, "revoke"))
         finally:
             if probe:
-                probe.stop_inflight()
+                probe.stop_inflight(result["phases"][-1] if result["phases"] else None)
                 save()
         if probe and result["phases"][-1]["completed"]:
             probe.after_stable_denial()
