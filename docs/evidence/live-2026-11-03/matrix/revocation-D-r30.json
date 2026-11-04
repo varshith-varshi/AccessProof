@@ -1,0 +1,151 @@
+{
+ "schema": "accessproof.revocation_trial/v1",
+ "trial": "D",
+ "document": "delete_canary_alice.txt",
+ "item_id": "012JSJ74VJZYFNKMOORVGZPXWCCQVDE3BW",
+ "baseline": {
+  "sharepoint_effective_view": true,
+  "guard": "ALLOW",
+  "accessproof_allows": true,
+  "revision": 758
+ },
+ "phases": [
+  {
+   "phase": "revoke",
+   "want": "DENY",
+   "t0_initiated": "2026-11-04T05:05:39.350274+00:00",
+   "t1_source_confirmed": "2026-11-04T05:05:47.251194+00:00",
+   "t2_accessproof_detected": "2026-11-04T05:09:41.893663+00:00",
+   "t3_revision_updated": "2026-11-04T05:06:07.829883+00:00",
+   "t4_guard_acknowledged": "2026-11-04T05:06:07.929241+00:00",
+   "t5_first_decision": "2026-11-04T05:09:54.417877+00:00",
+   "t6_stable_decision": "2026-11-04T05:10:57.163034+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 7.9,
+    "t2_accessproof_detected": 242.5,
+    "t3_revision_updated": 28.5,
+    "t4_guard_acknowledged": 28.6,
+    "t5_first_decision": 255.1,
+    "t6_stable_decision": 317.8
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T05:05:55.133482+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:06:07.941504+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:06:20.743256+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:06:33.863803+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:06:46.621136+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:06:59.617896+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:07:12.307459+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:07:25.078409+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:07:37.851008+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:07:50.421506+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:08:03.264372+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:08:15.696335+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:08:28.177485+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:08:40.985808+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:08:54.640260+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:09:07.453918+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:09:20.264340+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:09:33.086541+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T05:09:45.650285+00:00",
+     "decision": "HTTP_503:SOURCE_ACL_STALE"
+    },
+    {
+     "at": "2026-11-04T05:09:54.417862+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:03.207806+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:12.056388+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:20.885110+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:30.029936+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:39.199183+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:48.047213+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T05:10:57.163010+00:00",
+     "decision": "DENY"
+    }
+   ],
+   "completed": true
+  }
+ ],
+ "revoke": {
+  "trial": "D",
+  "document": "delete_canary_alice.txt",
+  "at": "2026-11-04T05:05:39.350277+00:00",
+  "kind": "delete",
+  "item": "012JSJ74VJZYFNKMOORVGZPXWCCQVDE3BW"
+ }
+}

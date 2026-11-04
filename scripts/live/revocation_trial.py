@@ -360,6 +360,8 @@ def main() -> int:
             except Exception as exc:
                 result["restore_measure_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
             save()
+    if a.trial == "D":
+        RECOVERY.unlink(missing_ok=True)  # a deletion has nothing to restore
     body = save()
     Path(a.out).write_text(body)
     print(json.dumps({"trial": a.trial, "sha256": hashlib.sha256(body.encode()).hexdigest(),
