@@ -1,0 +1,368 @@
+{
+ "schema": "accessproof.revocation_trial/v1",
+ "trial": "A",
+ "document": "finance_alice.txt",
+ "item_id": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP",
+ "baseline": {
+  "sharepoint_effective_view": true,
+  "guard": "ALLOW",
+  "accessproof_allows": true,
+  "revision": 15
+ },
+ "phases": [
+  {
+   "phase": "revoke",
+   "want": "DENY",
+   "t0_initiated": "2026-11-04T21:53:48.799596+00:00",
+   "t1_source_confirmed": "2026-11-04T21:53:56.224757+00:00",
+   "t2n_notification_received": "2026-11-04T21:54:21.144212+00",
+   "t2_accessproof_detected": "2026-11-04T21:54:38.896479+00:00",
+   "t3_revision_updated": "2026-11-04T21:54:42.667288+00:00",
+   "t4_guard_acknowledged": "2026-11-04T21:54:42.759986+00:00",
+   "t5_first_decision": "2026-11-04T21:54:44.121738+00:00",
+   "t6_stable_decision": "2026-11-04T21:55:51.908741+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 7.4,
+    "t2n_notification_received": 32.3,
+    "t2_accessproof_detected": 50.1,
+    "t3_revision_updated": 53.9,
+    "t4_guard_acknowledged": 54.0,
+    "t5_first_decision": 55.3,
+    "t6_stable_decision": 123.1
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T21:54:09.083744+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:54:26.060786+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:54:44.121721+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:54:53.885206+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:55:03.831870+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:55:13.283673+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:55:22.734784+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:55:32.421724+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:55:41.936374+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:55:51.908725+00:00",
+     "decision": "DENY"
+    }
+   ],
+   "completed": true
+  },
+  {
+   "phase": "restore (E)",
+   "want": "ALLOW",
+   "t0_initiated": "2026-11-04T21:57:15.499857+00:00",
+   "t1_source_confirmed": "2026-11-04T21:57:23.389900+00:00",
+   "t2n_notification_received": "2026-11-04T21:57:46.826866+00",
+   "t2_accessproof_detected": "2026-11-04T21:58:18.519087+00:00",
+   "t3_revision_updated": "2026-11-04T21:58:22.250457+00:00",
+   "t4_guard_acknowledged": "2026-11-04T21:58:22.351829+00:00",
+   "t5_first_decision": "2026-11-04T21:58:23.414256+00:00",
+   "t6_stable_decision": "2026-11-04T21:59:33.282372+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 7.9,
+    "t2n_notification_received": 31.3,
+    "t2_accessproof_detected": 63.0,
+    "t3_revision_updated": 66.8,
+    "t4_guard_acknowledged": 66.9,
+    "t5_first_decision": 67.9,
+    "t6_stable_decision": 137.8
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T21:57:35.533273+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:57:52.663940+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:58:09.832314+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T21:58:23.414240+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:58:34.022774+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:58:43.738496+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:58:53.526966+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:59:03.887558+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:59:13.642666+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:59:23.178967+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T21:59:33.282349+00:00",
+     "decision": "ALLOW"
+    }
+   ],
+   "completed": true
+  }
+ ],
+ "route": {
+  "E2E-08-pre": {
+   "baseline_cached_route_status": 401,
+   "baseline_cached_route_detail": "EMPLOYEE_TOKEN_REQUIRED",
+   "protected_first": {
+    "started_at": "2026-11-04T21:53:38.832267+00:00",
+    "finished_at": "2026-11-04T21:53:43.577913+00:00",
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "67a4918e-da17-41c6-8566-8a4c0f38df76",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "18e2a6038550e1618852cfc6a47336aed5f670a96b73dd378f2fe36881fc8431",
+    "answer_canaries": [
+     "finance_alice.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "finance_alice.txt"
+    ]
+   },
+   "protected_repeat": {
+    "started_at": "2026-11-04T21:53:43.578479+00:00",
+    "finished_at": "2026-11-04T21:53:48.799380+00:00",
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "52947ef6-8172-47f6-a92d-13b2db95ab01",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "43618e43d4356ca8a568a5353200e9895ed9dde685eb170f5929f6a630bc6d8b",
+    "answer_canaries": [
+     "finance_alice.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "finance_alice.txt"
+    ]
+   },
+   "pre_revocation_answer_sha256": "18e2a6038550e1618852cfc6a47336aed5f670a96b73dd378f2fe36881fc8431",
+   "status": "PASS"
+  },
+  "E2E-09": {
+   "requests": [
+    {
+     "started_at": "2026-11-04T21:53:49.988916+00:00",
+     "finished_at": "2026-11-04T21:54:14.230903+00:00",
+     "http_status": 200,
+     "gateway_decision": "allow",
+     "gateway_decision_id": "c70e726d-7219-460c-87d1-610a5c1c68ce",
+     "detail": null,
+     "cache_hit": false,
+     "answer_sha256": "1a126f6bc716421292a080427e070bb7220413476556188a8e76cad66fc4c79b",
+     "answer_canaries": [],
+     "model_calls": 1,
+     "model_context_documents": [
+      "finance_alice.txt",
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "model_reply_documents": []
+    },
+    {
+     "started_at": "2026-11-04T21:54:14.231372+00:00",
+     "finished_at": "2026-11-04T21:54:38.818614+00:00",
+     "http_status": 503,
+     "gateway_decision": null,
+     "gateway_decision_id": null,
+     "detail": "AUTHORIZATION_REVISION_CHANGED",
+     "cache_hit": null,
+     "answer_sha256": null,
+     "answer_canaries": [],
+     "model_calls": 1,
+     "model_context_documents": [
+      "finance_alice.txt",
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "model_reply_documents": []
+    },
+    {
+     "started_at": "2026-11-04T21:54:38.819356+00:00",
+     "finished_at": "2026-11-04T21:55:03.052295+00:00",
+     "http_status": 200,
+     "gateway_decision": "allow",
+     "gateway_decision_id": "682686cc-5ccb-46e0-a722-c32da3d1d467",
+     "detail": null,
+     "cache_hit": false,
+     "answer_sha256": "3a8e0131ba0bf93b28ba82f939d60e51cf3abafc12a76b96239500fb455c1122",
+     "answer_canaries": [],
+     "model_calls": 1,
+     "model_context_documents": [
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "model_reply_documents": []
+    },
+    {
+     "started_at": "2026-11-04T21:55:03.052608+00:00",
+     "finished_at": "2026-11-04T21:55:26.534072+00:00",
+     "http_status": 200,
+     "gateway_decision": "allow",
+     "gateway_decision_id": "fd7edb6a-89fc-458b-b167-30aaf035babe",
+     "detail": null,
+     "cache_hit": false,
+     "answer_sha256": "85f03ab198b3c719eb88d93fdd04e800a7f6c92ab62c38cc3b83c27597945257",
+     "answer_canaries": [],
+     "model_calls": 1,
+     "model_context_documents": [
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "model_reply_documents": []
+    },
+    {
+     "started_at": "2026-11-04T21:55:26.534520+00:00",
+     "finished_at": "2026-11-04T21:55:49.364354+00:00",
+     "http_status": 200,
+     "gateway_decision": "allow",
+     "gateway_decision_id": "76016916-ac12-47c2-8234-980e2c1c2c46",
+     "detail": null,
+     "cache_hit": false,
+     "answer_sha256": "6aaf815c1ce46ef0557e46c67816a01e0e7b63acf292345d25a5b62aca1e253d",
+     "answer_canaries": [],
+     "model_calls": 1,
+     "model_context_documents": [
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "model_reply_documents": []
+    },
+    {
+     "started_at": "2026-11-04T21:55:49.364680+00:00",
+     "finished_at": "2026-11-04T21:56:13.141996+00:00",
+     "http_status": 200,
+     "gateway_decision": "allow",
+     "gateway_decision_id": "57fa75f2-c26a-44d0-b9b2-9245ab47dcb3",
+     "detail": null,
+     "cache_hit": false,
+     "answer_sha256": "80805792f6e34c724e9c57bc13c768c92c0f7e9ace0e2037537ad7c0d94844f1",
+     "answer_canaries": [],
+     "model_calls": 1,
+     "model_context_documents": [
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "model_reply_documents": []
+    }
+   ],
+   "reference_t2_accessproof_aware": "2026-11-04T21:54:21.144212+00:00",
+   "reference_t2n_notification_received": "2026-11-04T21:54:21.144212+00:00",
+   "reference_t2_accessproof_detected": "2026-11-04T21:54:38.896479+00:00",
+   "withheld_details": [
+    "AUTHORIZATION_REVISION_CHANGED"
+   ],
+   "reference_t5_first_guard_denial": "2026-11-04T21:54:44.121738+00:00",
+   "released_before_detection_propagation_window": 0,
+   "straddling_requests": 1,
+   "straddling_withheld": 1,
+   "released_after_detection": 0,
+   "status": "PASS"
+  },
+  "E2E-07": {
+   "observed": {
+    "started_at": "2026-11-04T21:56:13.143421+00:00",
+    "finished_at": "2026-11-04T21:56:44.314296+00:00",
+    "http_status": 503,
+    "gateway_decision": null,
+    "gateway_decision_id": null,
+    "detail": "GUARD_REQUEST_FAILED",
+    "cache_hit": null,
+    "answer_sha256": null,
+    "answer_canaries": [],
+    "model_calls": 0,
+    "model_context_documents": [],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  "E2E-08": {
+   "post_revocation_repeat": {
+    "started_at": "2026-11-04T21:56:44.314692+00:00",
+    "finished_at": "2026-11-04T21:57:15.499560+00:00",
+    "http_status": 503,
+    "gateway_decision": null,
+    "gateway_decision_id": null,
+    "detail": "GUARD_REQUEST_FAILED",
+    "cache_hit": null,
+    "answer_sha256": null,
+    "answer_canaries": [],
+    "model_calls": 0,
+    "model_context_documents": [],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  }
+ },
+ "revoke": {
+  "trial": "A",
+  "document": "finance_alice.txt",
+  "at": "2026-11-04T21:53:48.799599+00:00",
+  "kind": "direct",
+  "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+ },
+ "restored_at": "2026-11-04T21:57:15.937133+00:00"
+}

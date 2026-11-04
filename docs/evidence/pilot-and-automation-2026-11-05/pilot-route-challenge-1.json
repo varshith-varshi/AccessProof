@@ -1,0 +1,85 @@
+{
+ "schema": "accessproof.remote_route_challenge_run/v1",
+ "started_at": "2026-11-04T22:00:30.316164+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "challenge_id": "6ae75112-7ea0-4c26-882b-61401d3735b0",
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T22:00:33.033163+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "revoked_at": "2026-11-04T22:00:34.299653+00:00",
+   "layer2_revoke_sent_at": "2026-11-04T22:00:59.137443+00:00",
+   "model_held_at": "2026-11-04T22:00:59.137800+00:00",
+   "guard_decision_flipped_at": "2026-11-04T22:01:14.429863+00:00",
+   "model_released_at": "2026-11-04T22:01:14.730232+00:00",
+   "probes": [
+    {
+     "name": "allow",
+     "request_id": "ap-challenge-25fc0f7b807e651f477393cd-allow",
+     "http_status": 200,
+     "response_sha256": "655a292846292a3c92a3f4949460733a7424220483e451b6d479e63cb579db8e",
+     "response_byte_count": 1324,
+     "forbidden_content_observed": false,
+     "reason_code": null,
+     "decision": "allow",
+     "decision_id": "7d3df75f-c95b-42f1-9fa0-9cc264950e26"
+    },
+    {
+     "name": "deny",
+     "request_id": "ap-challenge-25fc0f7b807e651f477393cd-deny",
+     "http_status": 403,
+     "response_sha256": "844b46202e2594783004f40214870b1a3a72bc79a2ad4b95d0b23b4c99b62739",
+     "response_byte_count": 103,
+     "forbidden_content_observed": false,
+     "reason_code": "NO_AUTHORIZED_RESOURCES",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "tamper",
+     "request_id": "ap-challenge-25fc0f7b807e651f477393cd-tamper",
+     "http_status": 503,
+     "response_sha256": "629ff259ed0dd56e2c7942a5e4309a22491397ffc52dc35e50ce6b51ea9f924f",
+     "response_byte_count": 115,
+     "forbidden_content_observed": false,
+     "reason_code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "layer2_revoke",
+     "request_id": "ap-challenge-25fc0f7b807e651f477393cd-layer2_revoke",
+     "http_status": 503,
+     "response_sha256": "57f644533fae803b8e9dba4c9a1781ea5c9e655ca686ac6bc734c3096507618a",
+     "response_byte_count": 119,
+     "forbidden_content_observed": false,
+     "reason_code": "AUTHORIZATION_REVISION_CHANGED",
+     "decision": null,
+     "decision_id": null
+    }
+   ],
+   "audit_delivered_before_submit": true,
+   "submit": {
+    "status": 202,
+    "body": {
+     "state": "tested_awaiting_customer_cutover",
+     "challenge_id": "6ae75112-7ea0-4c26-882b-61401d3735b0",
+     "guard_audits_matched": 6,
+     "protection_ready": false,
+     "production_certification": false,
+     "pending_guard_acknowledgment": false
+    }
+   }
+  }
+ ],
+ "organization_id": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+ "application_id": "pilot-hr-rag",
+ "outcome": "ROUTE_CHALLENGE_VERIFIED",
+ "alice_grant_restored_at": "2026-11-04T22:01:27.221834+00:00",
+ "finished_at": "2026-11-04T22:01:27.221845+00:00"
+}

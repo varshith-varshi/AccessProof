@@ -1,0 +1,7 @@
+2026-11-04T21:52:05.621272+00:00 evidence: effective_matrix
+2026-11-04T21:52:10.036213+00:00 evidence: layer1_matrix
+2026-11-04T21:52:17.056026+00:00 evidence: rag_e2e
+2026-11-04T21:53:26.424708+00:00 evidence: revocation_route_trial
+2026-11-04T21:59:43.876548+00:00 evidence: build_evidence
+2026-11-04T21:59:49.441680+00:00 import: Imported. This satisfies only the Microsoft certificate gate; all other activation checks still apply.
+2026-11-04T21:59:49.441799+00:00 RENEWED certified_at=2026-11-04T21:59:43+00:00 expires_at=2026-12-04T21:59:43+00:00 evidence=7f194f87abe8

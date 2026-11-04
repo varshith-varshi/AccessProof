@@ -1,0 +1,157 @@
+{
+ "schema": "accessproof.buffered_release/v1",
+ "observed_at": "2026-11-04T21:53:26.424482+00:00",
+ "results": [
+  {
+   "test": "E2E-01",
+   "gateway_decision_id": "fbc5d25c-6678-4237-ace3-85e7ffe0ffa3",
+   "layer1": [
+    {
+     "decision_id": "fbc5d25c-6678-4237-ace3-85e7ffe0ffa3",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T21:52:17.470336+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "fbc5d25c-6678-4237-ace3-85e7ffe0ffa3",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T21:52:23.708161+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-02",
+   "gateway_decision_id": "9da6dbe6-08dd-4e51-bb65-94433b2fd82b",
+   "layer1": [
+    {
+     "decision_id": "9da6dbe6-08dd-4e51-bb65-94433b2fd82b",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T21:52:24.863745+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "9da6dbe6-08dd-4e51-bb65-94433b2fd82b",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T21:52:26.343911+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-03",
+   "gateway_decision_id": "9900262c-7545-4047-bc9f-bf4bc75d4cad",
+   "layer1": [
+    {
+     "decision_id": "9900262c-7545-4047-bc9f-bf4bc75d4cad",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T21:52:27.500764+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "9900262c-7545-4047-bc9f-bf4bc75d4cad",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T21:52:30.806198+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-04",
+   "gateway_decision_id": "9585e58f-df8b-4e3c-b3a7-cc0a687fe20c",
+   "layer1": [
+    {
+     "decision_id": "9585e58f-df8b-4e3c-b3a7-cc0a687fe20c",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T21:52:31.989472+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "9585e58f-df8b-4e3c-b3a7-cc0a687fe20c",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T21:52:36.743294+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-05",
+   "gateway_decision_id": "503379df-b1b1-4a82-8372-89505a09e7ce",
+   "layer1": [
+    {
+     "decision_id": "503379df-b1b1-4a82-8372-89505a09e7ce",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T21:52:37.890122+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "503379df-b1b1-4a82-8372-89505a09e7ce",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T21:52:43.714892+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-06",
+   "gateway_decision_id": "c060852c-3b8f-46b6-967c-d58fd4635d4d",
+   "layer1": [
+    {
+     "decision_id": "c060852c-3b8f-46b6-967c-d58fd4635d4d",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T21:52:44.863456+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "c060852c-3b8f-46b6-967c-d58fd4635d4d",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T21:52:51.028764+00:00",
+     "authorization_revision": 15
+    }
+   ],
+   "pass": true
+  }
+ ],
+ "pass": true
+}

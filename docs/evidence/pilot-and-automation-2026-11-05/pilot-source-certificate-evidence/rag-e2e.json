@@ -1,0 +1,215 @@
+{
+ "schema": "accessproof.rag_e2e/v1",
+ "generated_at": "2026-11-04T21:53:26.253325+00:00",
+ "results": [
+  {
+   "test_identifier": "E2E-01",
+   "timestamp": "2026-11-04T21:52:17.270319+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "finance_alice.txt",
+   "question": "finance",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "fbc5d25c-6678-4237-ace3-85e7ffe0ffa3",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "ae0fd11c0c8e400d7653fae6a1f8057175ef2c0b5285092f8a8cb4bec4772fe9",
+    "answer_canaries": [
+     "finance_alice.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "finance_alice.txt"
+    ]
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-02",
+   "timestamp": "2026-11-04T21:52:24.732534+00:00",
+   "employee_identity_reference": "bob",
+   "document_reference": "finance_alice.txt",
+   "question": "finance",
+   "expected_decision": "DENY",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "9da6dbe6-08dd-4e51-bb65-94433b2fd82b",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "645f9c8e337fada5419bc10964e7db298c9d0d01c2d7977304079ba46ff387a1",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "engineering_bob.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-03",
+   "timestamp": "2026-11-04T21:52:27.390857+00:00",
+   "employee_identity_reference": "bob",
+   "document_reference": "engineering_bob.txt",
+   "question": "engineering",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "9900262c-7545-4047-bc9f-bf4bc75d4cad",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "af49942d1533145cab76d64e559ca689b73b393274085c47c748cd22d117d081",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "engineering_bob.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-04",
+   "timestamp": "2026-11-04T21:52:31.859540+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "engineering_bob.txt",
+   "question": "engineering",
+   "expected_decision": "DENY",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "9585e58f-df8b-4e3c-b3a7-cc0a687fe20c",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "ee6b2c1eb5d8d1f89edc2ed8537bc77c9914cacf9d70c3d85d9a6abe1b6e0a66",
+    "answer_canaries": [
+     "finance_alice.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "finance_alice.txt"
+    ]
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-05",
+   "timestamp": "2026-11-04T21:52:37.764473+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "shared_control.txt",
+   "question": "shared",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "503379df-b1b1-4a82-8372-89505a09e7ce",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "bc93be100adccd467558ac69e71e5ac7578dfa74763654a205ad707b711c59d8",
+    "answer_canaries": [
+     "shared_control.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "shared_control.txt"
+    ]
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-06",
+   "timestamp": "2026-11-04T21:52:44.741507+00:00",
+   "employee_identity_reference": "bob",
+   "document_reference": "shared_control.txt",
+   "question": "shared",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "c060852c-3b8f-46b6-967c-d58fd4635d4d",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "af01e4a3c15109bdf4f39a60392b5496e197f1401931290c235a0679382e4fa8",
+    "answer_canaries": [
+     "shared_control.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "engineering_bob.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "shared_control.txt"
+    ]
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-11",
+   "timestamp": "2026-11-04T21:52:52.052697+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "finance_alice.txt (content altered, original signature)",
+   "expected_decision": "DENY",
+   "observed": {
+    "http_status": 503,
+    "gateway_decision": null,
+    "gateway_decision_id": null,
+    "detail": {
+     "code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "request_id": "cd1fd6d5-be56-448f-a856-70c1fdce2018"
+    },
+    "cache_hit": null,
+    "answer_sha256": null,
+    "answer_canaries": [],
+    "model_calls": 0,
+    "model_context_documents": [],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-10",
+   "timestamp": "2026-11-04T21:52:55.627093+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "finance_alice.txt",
+   "expected_decision": "FAIL_CLOSED",
+   "observed": {
+    "http_status": 503,
+    "gateway_decision": null,
+    "gateway_decision_id": null,
+    "detail": "GUARD_REQUEST_FAILED",
+    "cache_hit": null,
+    "answer_sha256": null,
+    "answer_canaries": [],
+    "model_calls": 0,
+    "model_context_documents": [],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  }
+ ]
+}

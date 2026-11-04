@@ -1,0 +1,194 @@
+{
+ "schema": "accessproof.layer1_guard_matrix/v3",
+ "content_versions": "as indexed by the lab RAG (Graph eTag)",
+ "guard_image": "accessproof-guard-r35:a2f5973",
+ "generated_at": "2026-11-04T21:52:11.803808+00:00",
+ "token": "Entra v2 user-delegated access token for the RAG API (scp=access_as_user); identity via automatic directory_verified binding",
+ "results": [
+  {
+   "actor": "alice",
+   "document": "finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "a1d04602-62c7-4239-ace6-890e5c276f50",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.597356+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "engineering_bob.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "2d473e3e-5fd6-48b0-b77d-740dff98abf1",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.610342+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "shared_control.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "4b98f840-2431-404f-82ea-9cb57ba22dc9",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.620941+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "group_finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "8f77604e-dc92-4a76-bbf6-b2ec3873291d",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.632268+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "inherited_finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "b5338648-6d2d-420c-996b-d672936d4234",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.645292+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "88bc1288-63a3-44a1-9d07-ee8ef05f53ee",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.697765+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "engineering_bob.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "f19e6c4e-c149-4eab-be6b-1de4fa990e83",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.708593+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "shared_control.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "61bcd120-199b-4dad-bcc1-7ed9716aee73",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.720282+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "group_finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "60895329-9eec-4c89-8544-c3ea1d3ab170",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.731061+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "inherited_finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "8283047c-b5ec-46ea-b628-1b05a246cf82",
+   "policy_version": 22,
+   "authorization_revision": 15,
+   "pass": true,
+   "at": "2026-11-04T21:52:11.742277+00:00"
+  }
+ ],
+ "negative_controls": [
+  {
+   "actor": "alice",
+   "control": "stale_content_version_denied",
+   "http_status": 200,
+   "detail": [
+    "SOURCE_CONTENT_VERSION_STALE"
+   ],
+   "pass": true,
+   "at": "2026-11-04T21:52:11.659264+00:00"
+  },
+  {
+   "actor": "alice",
+   "control": "missing_content_version_denied",
+   "http_status": 200,
+   "detail": [
+    "SOURCE_CONTENT_VERSION_REQUIRED"
+   ],
+   "pass": true,
+   "at": "2026-11-04T21:52:11.671290+00:00"
+  },
+  {
+   "actor": "alice",
+   "control": "id_token_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN",
+   "pass": true,
+   "at": "2026-11-04T21:52:11.678884+00:00"
+  },
+  {
+   "actor": "alice",
+   "control": "tampered_signature_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_TOKEN_INVALID",
+   "pass": true,
+   "at": "2026-11-04T21:52:11.687090+00:00"
+  },
+  {
+   "actor": "bob",
+   "control": "stale_content_version_denied",
+   "http_status": 200,
+   "detail": [
+    "SOURCE_CONTENT_VERSION_STALE"
+   ],
+   "pass": true,
+   "at": "2026-11-04T21:52:11.754448+00:00"
+  },
+  {
+   "actor": "bob",
+   "control": "missing_content_version_denied",
+   "http_status": 200,
+   "detail": [
+    "SOURCE_CONTENT_VERSION_REQUIRED"
+   ],
+   "pass": true,
+   "at": "2026-11-04T21:52:11.768020+00:00"
+  },
+  {
+   "actor": "bob",
+   "control": "id_token_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN",
+   "pass": true,
+   "at": "2026-11-04T21:52:11.778732+00:00"
+  },
+  {
+   "actor": "bob",
+   "control": "tampered_signature_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_TOKEN_INVALID",
+   "pass": true,
+   "at": "2026-11-04T21:52:11.787901+00:00"
+  }
+ ],
+ "pass": true
+}

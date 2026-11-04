@@ -1,0 +1,8 @@
+release=r38e-enforce-e30e287-e30e2871c46f sha256=102cf95cbe697af84dc6b266976edcbdbab9a4daa2543285041b4c7f361f58a3
+SSM command 16e1faea-a63b-4584-a472-c6b2f7ab34a4
+/home/ubuntu/accessproof-releases/r38e-enforce-e30e287-e30e2871c46f/artifact.tar: OK
+2026-11-04T21:47:55Z release r38e-enforce-e30e287-e30e2871c46f starting
+2026-11-04T21:49:37Z images built; target DB revision x8c9d0e1f2a3
+2026-11-04T21:49:38Z backup verified (79 table-data entries)
+2026-11-04T21:49:41Z database at x8c9d0e1f2a3
+2026-11-04T21:50:10Z DEPLOYMENT VERIFIED: api/worker/web on r38e-enforce-e30e287-e30e2871c46f, db x8c9d0e1f2a3

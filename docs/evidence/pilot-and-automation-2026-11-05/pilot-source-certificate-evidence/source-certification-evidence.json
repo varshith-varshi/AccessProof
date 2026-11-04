@@ -1,0 +1,121 @@
+{
+ "schema": "accessproof.source_certification_evidence/v1",
+ "organization_id": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+ "source_id": "4eb6863f-297a-4681-b913-30c48f9f916a",
+ "profile": "sharepoint_list_item_effective",
+ "scope_digest": "49e4f99278742c8fdee33a09d1d4a647f760515123d39a3d15f64ce0985cfe1e",
+ "checks": [
+  {
+   "code": "PROVIDER_EFFECTIVE_PERMISSION_MATRIX",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/sharepoint-effective-matrix.json",
+   "artifact_sha256": "00f1dbf16fd2acadafdae572d4d864103803ed756a866a026c1f651ed7b818d1",
+   "observed_at": "2026-11-04T21:52:09.959663+00:00",
+   "detail": "SharePoint GetUserEffectivePermissions per employee and item"
+  },
+  {
+   "code": "EMPLOYEE_OIDC_POSITIVE_IDENTITY",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/layer1.json",
+   "artifact_sha256": "cbfb3448029dd63f5b86c452cb65297bf091991ca52a41793f5b27c424568b8e",
+   "observed_at": "2026-11-04T21:52:11.787901+00:00",
+   "detail": "Alice: real Entra delegated API token verified by the Guard; ID token and tampered signature rejected"
+  },
+  {
+   "code": "EMPLOYEE_OIDC_SECOND_IDENTITY",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/layer1.json",
+   "artifact_sha256": "cbfb3448029dd63f5b86c452cb65297bf091991ca52a41793f5b27c424568b8e",
+   "observed_at": "2026-11-04T21:52:11.787901+00:00",
+   "detail": "Bob: distinct second employee, same checks"
+  },
+  {
+   "code": "IDENTITY_MAPPING_IMMUTABLE_OBJECT_ID",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/identity-bindings.json",
+   "artifact_sha256": "2929bd02938a391381ea63fe2c32af152844473404d2af7dc215fb2207ccb913",
+   "observed_at": "2026-11-04T21:52:17.055804+00:00",
+   "detail": "oid -> source principal, directory-verified, no email/UPN"
+  },
+  {
+   "code": "INHERITED_AND_GROUP_PERMISSIONS",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/layer1.json",
+   "artifact_sha256": "cbfb3448029dd63f5b86c452cb65297bf091991ca52a41793f5b27c424568b8e",
+   "observed_at": "2026-11-04T21:52:11.787901+00:00",
+   "detail": "group-derived and inherited grants allow Alice, deny Bob"
+  },
+  {
+   "code": "PROVIDER_REVOKE_OBSERVED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/revocation-A-route.json",
+   "artifact_sha256": "a033fc524b29e02829975053c6ce637b7ed8eede0f76ff05ca4d564509a2afb4",
+   "observed_at": "2026-11-04T21:55:51.908741+00:00",
+   "detail": "direct grant removed; SharePoint and Guard both deny"
+  },
+  {
+   "code": "PROVIDER_RESTORE_OBSERVED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/revocation-A-route.json",
+   "artifact_sha256": "a033fc524b29e02829975053c6ce637b7ed8eede0f76ff05ca4d564509a2afb4",
+   "observed_at": "2026-11-04T21:59:33.282372+00:00",
+   "detail": "grant restored; Guard allows again"
+  },
+  {
+   "code": "GATEWAY_ROUTE_AUTHORIZED_RELEASE",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/rag-e2e.json",
+   "artifact_sha256": "140d763cf8f8bf755547aaa725e3b859ec90ed80e442786580805e9e766890b1",
+   "observed_at": "2026-11-04T21:52:55.627093+00:00",
+   "detail": "authorized documents reached the model and the answer was released"
+  },
+  {
+   "code": "GATEWAY_ROUTE_UNAUTHORIZED_DENIED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/rag-e2e.json",
+   "artifact_sha256": "140d763cf8f8bf755547aaa725e3b859ec90ed80e442786580805e9e766890b1",
+   "observed_at": "2026-11-04T21:52:55.627093+00:00",
+   "detail": "unauthorized documents never reached the model (context witness)"
+  },
+  {
+   "code": "PROVENANCE_TAMPER_REJECTED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/rag-e2e.json",
+   "artifact_sha256": "140d763cf8f8bf755547aaa725e3b859ec90ed80e442786580805e9e766890b1",
+   "observed_at": "2026-11-04T21:52:52.052697+00:00",
+   "detail": "altered content with original attestation refused, 0 model calls"
+  },
+  {
+   "code": "GATEWAY_POST_REVOCATION_DENIED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/revocation-A-route.json",
+   "artifact_sha256": "a033fc524b29e02829975053c6ce637b7ed8eede0f76ff05ca4d564509a2afb4",
+   "observed_at": "2026-11-04T21:56:44.314296+00:00",
+   "detail": "after stable denial the protected route never sent the document to the model"
+  },
+  {
+   "code": "GATEWAY_INFLIGHT_REVOCATION_DENIED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/revocation-A-route.json",
+   "artifact_sha256": "a033fc524b29e02829975053c6ce637b7ed8eede0f76ff05ca4d564509a2afb4",
+   "observed_at": "2026-11-04T21:55:51.908741+00:00",
+   "detail": "straddling request withheld by Layer 2 recheck"
+  },
+  {
+   "code": "CACHED_ANSWER_REUSE_DENIED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/revocation-A-route.json",
+   "artifact_sha256": "a033fc524b29e02829975053c6ce637b7ed8eede0f76ff05ca4d564509a2afb4",
+   "observed_at": "2026-11-04T21:57:15.499560+00:00",
+   "detail": "cached baseline route unreachable; protected answers never cached; pre-revocation answer not reused"
+  },
+  {
+   "code": "BUFFERED_RELEASE_VERIFIED",
+   "status": "PASS",
+   "artifact": "docs/evidence/certificate-renewals/20261104T215205Z/buffered-release.json",
+   "artifact_sha256": "7a73d27f2d3622058f10b03aaab065f9f24d029a20cff21fb507782fd897fd83",
+   "observed_at": "2026-11-04T21:53:26.424482+00:00",
+   "detail": "every released answer followed a Guard Layer 2 allow for the same decision"
+  }
+ ]
+}

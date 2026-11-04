@@ -1,0 +1,18 @@
+# OWNER-INSTALLED (Claude may not open ingress tunnels). Keeps the cross-server
+# validation tunnel to the staging Linux RAG host up over AWS SSM (no inbound rules):
+#   staging 127.0.0.1:18443 -> lab Gateway 8443 ; lab 28187/28188 -> staging RAG routes.
+# Each (re)connect pushes a 60-second EC2 Instance Connect key (nothing persisted on the host).
+# Install:  cp accessproof-remote-rag-tunnel.service ~/.config/systemd/user/ &&
+#           systemctl --user daemon-reload && systemctl --user enable --now accessproof-remote-rag-tunnel
+[Unit]
+Description=AccessProof cross-server RAG validation tunnel (SSH over SSM)
+After=network-online.target
+
+[Service]
+ExecStartPre=%h/.local/bin/aws ec2-instance-connect send-ssh-public-key --instance-id i-0e6d2256a1e5a6f67 --instance-os-user ubuntu --ssh-public-key file://%h/.ap-id/remote-gw/ssh_ed25519.pub
+ExecStart=/usr/bin/ssh -F %h/.ap-id/remote-gw/ssh_config -N -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ControlMaster=no -R 127.0.0.1:18443:127.0.0.1:8443 -L 127.0.0.1:28187:127.0.0.1:8187 -L 127.0.0.1:28188:127.0.0.1:8188 ap-staging
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target
