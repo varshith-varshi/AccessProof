@@ -105,3 +105,38 @@ Live (lab tenant, production control plane):
 * SharePoint's own effective-permission matrix 10/10; AccessProof agrees on every cell.
 * Protected RAG E2E-01..06, 10, 11: 8/8 pass after the D-22 Guard fix; model-context witness shows denied documents never reached the model.
 * Revocation A **FAILED before D-23** (no detection in ~26 min); fixed in r28 and to be re-measured.
+
+## Update 2026-11-04 04:35 UTC — r29 and r30 deployed (D-24, D-25: SharePoint ACL sync recovery)
+| Release | Commit | Deploy SSM | DB | Result |
+|---|---|---|---|---|
+| `r29-delta-resync-b1ee8c7d4fcc` | `b1ee8c7` | `31156872-…` 03:34→03:36Z | `w7a8b9c0d1e2` | DEPLOYMENT VERIFIED; ACL cursor **still degraded** (`ACL_SYNC_INCOMPLETE`) — see D-25 |
+| `r30b-d25-resync-a4f8020dc663` | `a4f8020` | 04:02→04:04Z | `w7a8b9c0d1e2` | DEPLOYMENT VERIFIED; ACL cursor `connected` at 04:04:18Z, 0 failures since |
+
+* **D-25:** `bounded_idempotent_request` calls `raise_for_status()`, so Graph's 410 surfaced as `httpx.HTTPStatusError` inside `_request`. The D-24 `status_code == 410` check after it was unreachable. The D-24 test had faked `acl_delta_page` entirely; new tests drive the real adapter through an HTTP mock transport and fail without the fix. The worker now logs an ACLSyncError's cause type.
+* **Automatic recovery observed in production:** the cursor had been degraded since 2026-11-03 19:13:59Z. It resynchronized the whole approved subtree on the first r30 cycle (revision 1007→1008, 7 resources, no spurious grant changes) without operator action.
+* The first `r30-…` attempt was refused by the deploy preflight (7 GB free, 8 GB required) before any change. Unused Docker build cache older than 24 h was pruned (1.9 GB) and the same commit shipped as `r30b-…`.
+* **Tests:**
+  * r29 full suites: SQLite 1493 tests, 0 failed, 0 errors, 10 skipped (exit 0, JUnit). PostgreSQL 17 as `accessproof_app`: 1493 tests, 0 failed.
+  * r30 (two-file change): unit, security and contract 1324 tests, 0 failed, 0 errors. Affected adapter and worker tests: 109, 0 failed.
+  * The earlier 10 SQLite OIDC failures came from non-hermetic real DNS lookups in two integration tests, reproduced exactly by forcing DNS failure and fixed in `b1ee8c7`. A DNS-down audit still shows 9 tests that need DNS: 8 resolve `localhost` for real local TCP, and 1 webhook test resolves a public hostname. All pass with normal DNS.
+* **Staging (accessproof_app):**
+  * r29 and r30 rehearsed with DEPLOYMENT VERIFIED; security probe 23/23 on each (22 PASS plus the RT-04 observation), 0 API and 0 worker errors.
+  * Rollback rehearsal r30→r29 kept `accessproof_app` / `accessproof_rls_admin` and the API healthy (D-15 verified again).
+* **Live on r30, real Entra delegated API tokens (scp=access_as_user):**
+  * Layer 1 Guard matrix 10/10, plus 4 negative controls: ID token → 401, tampered signature → 401.
+  * Protected RAG E2E-01..06, 10, 11: 8/8.
+  * Buffered release: all 6 released answers had a Guard Layer 2 allow for the same decision.
+* **Revocation on r30** (seconds from t0; t6 = 5 consecutive denials spanning ≥60 s):
+
+| Trial | t1 source | t2 detected | t3 revision | t4 Guard ack | t5 first denial | t6 stable |
+|---|---|---|---|---|---|---|
+| A direct grant | 8.0 | 78.6 | 82.3 | 82.4 | 83.3 | 152.3 |
+| E restore of A | 7.4 | 259.8 | 263.5 | 263.6 | 274.2 (allow) | 342.6 |
+| A (route run) | 8.1 | 201.8 | 151.1* | 151.2* | 226.2 | 295.2 |
+| E restore (route run) | 7.1 | 228.8 | 232.8 | 232.9 | 243.9 (allow) | 312.6 |
+
+  \* That revision change was unrelated (it preceded detection); t5 is the authoritative enforcement time. Detection is bounded by the 300 s ACL sync interval, so expect up to about 5 minutes from source change to denial.
+* **F in-flight:** a request that passed Layer 1 under revision 746 had its answer withheld by **Guard Layer 2 at 04:21:32Z (`AUTHORIZATION_REVISION_CHANGED`, revision 747)**. 0 responses containing the document were released after detection. The harness's first in-run verdict (FAIL) counted three releases that finished before AccessProof detected the revocation; those are propagation latency. The rule was corrected and the original counts are kept in the evidence.
+* **G cache:** the cached baseline route returns 503 `UNPROTECTED_BASELINE_DISABLED`; protected answers are never cached (`cache_hit:false` on repeats); after revocation the pre-revocation answer is not returned.
+* **E2E-07:** after stable denial, the protected route never sent the document to the model.
+* **Security gates on r30 (read-only, 04:11Z):** PASS A infrastructure, B identity, F Layer 1. FAIL C (no independent certificate yet), D and E (Guard not ready, which waits on C), I (runtime DB role is still the owner `accessproof`), J (activation). BLOCKED G and H (they require certified evidence). Verdict: **NOT VERIFIED**. Protect remains inactive.
