@@ -187,3 +187,5 @@ Live (lab tenant, production control plane):
   * The agent timeout is configurable.
   * 48 route and challenge tests pass. PostgreSQL 17 as `accessproof_app`: 1540 tests, 0 failed, 0 errors. Staging rehearsal and probe 23/23.
 * **Gate E still needs a live route challenge against a Gateway installed by the reference installer.** The lab Gateway was paired manually and has no installer manifest, so the agent cannot verify deployment hashes or egress isolation. That is the remaining engineering step before E and J can pass. Protect stays inactive.
+* **r33 `r33-d26-route-2ff237699756` deployed** (06:42→06:44Z, DEPLOYMENT VERIFIED). SQLite 1540 tests, 0 failed, 0 errors; PostgreSQL 1540 tests, 0 failed, 0 errors. Afterwards: roles kept, ACL and directory sync connected, 0 sync failures, Guard ready.
+* **Gates on r33 with the certificate evidence (06:46Z):** A, B, C, D, F, G, H, I **PASS**. E FAIL (`route_certified` MISSING: no live challenge yet). J FAIL (route challenge, cutover, Protect acknowledgement). Verdict **NOT VERIFIED**. Protect inactive.
