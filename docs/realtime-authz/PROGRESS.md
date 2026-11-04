@@ -15,9 +15,11 @@ The r34 / Gate E certification runs from the main worktree; this work never touc
 - [x] Freshness contract and operations guide (665ce22)
 - [x] Metrics (4ebed4d)
 - [x] Full regression on 665ce22: SQLite 1572 tests, 0 failed, 0 errors; PostgreSQL 17 (`accessproof_app`) 1572 tests, 0 failed, 0 errors
-- [ ] Integrate r34 production fixes (branch is based on 727733e = r34, so nothing is missing; verify at merge time)
-- [ ] Staging
-- [ ] Live validation (needs a public HTTPS receiver, so it needs owner approval to deploy)
+
+- [x] Staging (rt1/rt1b): probe 23/23, receiver end to end under row-level security, rollback to r34 verified
+- [x] Integrated r34 baseline (c0947ca); all r34 fix commits present
+- [x] Release plan (RELEASE_PLAN.md), awaiting owner approval
+- [ ] Live validation and benchmark (after approved deployment)
 
 ## Audit findings (2026-11-04)
 1. **Discovery today:** polling only for Microsoft. The worker checks every 30 s (`ACCESSPROOF_SOURCE_SYNC_CHECK_SECONDS`) whether ACL sync is due (300 s since last success) and runs a Graph drive delta with the `deltashowremovedasdeleted, deltatraversepermissiongaps, deltashowsharingchanges` preferences (D-23). D-24/D-25 cover 410 resync; D-27 covers deleted descendants. An hourly bounded reconciliation also runs (`ACCESSPROOF_MICROSOFT_ACL_RECONCILE_SECONDS=3600`).
