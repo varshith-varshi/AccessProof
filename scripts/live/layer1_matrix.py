@@ -44,10 +44,27 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def ask(token: str, actor: str, resource_id: str) -> tuple[int, dict]:
+def indexed_versions() -> dict[str, str]:
+    """Document versions exactly as the lab RAG indexed them (what a real RAG sends)."""
+    code = ("import sqlite3,json;c=sqlite3.connect('file:/data/index.db?mode=ro',uri=True);"
+            "print(json.dumps(dict(c.execute('select doc_id, max(version) from chunks group by doc_id').fetchall())))")
+    out = subprocess.run(["docker", "exec", "sharepoint-rag-lab-rag-1", "python", "-c", code],
+                         capture_output=True, text=True, check=True).stdout
+    return json.loads(out)
+
+
+VERSIONS: dict[str, str] = {}
+UNSET = object()
+
+
+def ask(token: str, actor: str, resource_id: str, version: object = UNSET) -> tuple[int, dict]:
+    ref = {"source_id": SRC, "resource_id": resource_id}
+    v = VERSIONS.get(resource_id) if version is UNSET else version
+    if v is not None:
+        ref["content_version"] = v
     r = httpx.post(GUARD, timeout=20, headers={"Authorization": "Bearer " + token},
                    json={"application_id": APP, "request_id": f"l1-{actor}-{time.time_ns()}",
-                         "resources": [{"source_id": SRC, "resource_id": resource_id}]})
+                         "resources": [ref]})
     body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     return r.status_code, body
 
@@ -66,6 +83,7 @@ def main() -> int:
         _drive, items = ei.item_refs(h)
     fixtures = json.load(open(os.path.expanduser("~/.config/accessproof/lab-fixtures.json")))
     items["inherited_finance_alice.txt"] = fixtures["inherited_file_id"]
+    VERSIONS.update(indexed_versions())
     rows, controls = [], []
     for actor, expected in EXPECT.items():
         sock = f"{a.sockets}/{actor}.sock"
@@ -79,6 +97,17 @@ def main() -> int:
                          "authorization_revision": body.get("authorization_revision"), "pass": got == want, "at": now()})
             print(f"{actor:5s} {doc:28s} expected {want:5s} guard {got:5s} {'PASS' if got == want else 'FAIL'}")
         doc = next(d for d, w in expected.items() if w == "ALLOW")
+        # Cached-chunk freshness controls: the same authorized document with an
+        # older or absent content version must be refused (fail closed).
+        for kind, version, reason in (("stale_content_version_denied", "\"{00000000-0000-0000-0000-000000000000},1\"",
+                                       "SOURCE_CONTENT_VERSION_STALE"),
+                                      ("missing_content_version_denied", None, "SOURCE_CONTENT_VERSION_REQUIRED")):
+            status, body = ask(token, actor, items[doc], version)
+            got = [d.get("reason") for d in body.get("denied", [])]
+            ok = status == 200 and not body.get("allowed") and reason in got
+            controls.append({"actor": actor, "control": kind, "http_status": status, "detail": got or body.get("detail"),
+                             "pass": ok, "at": now()})
+            print(f"{actor:5s} control {kind:28s} {got} {'PASS' if ok else 'FAIL'}")
         for kind, tok in (("id_token_rejected", ei.fetch(sock, "id_token")), ("tampered_signature_rejected", tamper(token))):
             status, body = ask(tok, actor, items[doc])
             ok = status == 401
@@ -87,7 +116,7 @@ def main() -> int:
             print(f"{actor:5s} control {kind:28s} HTTP {status} {'PASS' if ok else 'FAIL'}")
     image = subprocess.run(["docker", "inspect", "-f", "{{.Config.Image}}", "accessproof-guard"],
                            capture_output=True, text=True).stdout.strip()
-    out = {"schema": "accessproof.layer1_guard_matrix/v2", "guard_image": image, "generated_at": now(),
+    out = {"schema": "accessproof.layer1_guard_matrix/v3", "content_versions": "as indexed by the lab RAG (Graph eTag)", "guard_image": image, "generated_at": now(),
            "token": "Entra v2 user-delegated access token for the RAG API (scp=access_as_user); "
                     "identity via automatic directory_verified binding",
            "results": rows, "negative_controls": controls,
