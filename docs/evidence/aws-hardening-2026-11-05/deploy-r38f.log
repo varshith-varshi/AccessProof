@@ -1,0 +1,8 @@
+release=r38f-hardening-b1dcf70-b1dcf7054060 sha256=58f6cefb48dd72bbae4b9f2f74d56e6bd984cff6c4802babbdb6971544f3ddc7
+SSM command 03d8100f-82f6-4b3b-92dc-c7ac9544275e
+/home/ubuntu/accessproof-releases/r38f-hardening-b1dcf70-b1dcf7054060/artifact.tar: OK
+2026-11-04T23:40:36Z release r38f-hardening-b1dcf70-b1dcf7054060 starting
+2026-11-04T23:42:13Z images built; target DB revision x8c9d0e1f2a3
+2026-11-04T23:42:14Z backup verified (79 table-data entries)
+2026-11-04T23:42:17Z database at x8c9d0e1f2a3
+2026-11-04T23:42:45Z DEPLOYMENT VERIFIED: api/worker/web on r38f-hardening-b1dcf70-b1dcf7054060, db x8c9d0e1f2a3
