@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apps.api.accessproof_api.db import AIApplication, RemoteRouteCertificate
-from apps.gateway.accessproof_gateway import remote_route_certification as rrc
+from packages.crypto import remote_route_certificate as rrc
 from packages.crypto.source_certificate import load_public_keys
 
 ATTESTATION_STALE_AFTER = timedelta(hours=24)

@@ -172,3 +172,13 @@ def test_new_certificate_for_same_route_supersedes(env):
     second = cert(env, framework_version="2"); rre.import_certificate(db, row, second); db.commit()
     st = rre.status(db, row)
     assert st["certified"] and sorted(r["state"] for r in st["routes"]) == ["SUPERSEDED", "VALID"]
+
+
+def test_api_enforcement_does_not_depend_on_gateway_package():
+    """The production API image ships packages/ and apps/api only (r38 defect)."""
+    import ast
+    from pathlib import Path
+    for mod in ("apps/api/accessproof_api/remote_route_enforcement.py", "apps/api/accessproof_api/production_gates.py"):
+        tree = ast.parse(Path(mod).read_text())
+        imported = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
+        assert not [m for m in imported if m.startswith("apps.gateway")], mod
