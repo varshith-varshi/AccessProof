@@ -168,3 +168,22 @@ Live (lab tenant, production control plane):
   * Fix: `51f4204`, reproduced and verified against the real lab drive. Unit/security/contract 1354/0; staging rehearsal and probe 23/23.
   * **The production deploy was refused by the disk preflight (7 GB free, 8 GB required). Freeing space was blocked by this session's safety controls, so operator action is needed.**
   * The document-update freshness trial could not complete for the same reason (`pass:false`). It did record that no stale chunk reached the model (the route failed closed throughout).
+
+## Update 2026-11-04 06:40 UTC — r32 deployed (D-27), freshness trial PASS, D-26 implemented
+* **Disk:** the operator pruned build cache older than 6 h (5.3 GB reclaimed, 11 GB free).
+* **r32 `r32b-d27-deleted-51f42048d777`** (06:10→06:12Z, DEPLOYMENT VERIFIED):
+  * The Microsoft ACL cursor **recovered automatically at 06:12:09Z** on the first cycle; 0 sync failures since.
+  * Roles still `accessproof_app` / `accessproof_rls_admin`; certifier trust intact.
+  * Guard `ready:true`.
+  * The `r32-…` directory from the disk-refused attempt was left in place; the deploy used a fresh label.
+* **Live document-update freshness trial on r32: PASS** (`document-update-freshness-r32.json`). The r31 attempt, which failed under D-27, is kept unchanged.
+  * t0, synthetic edit: 06:13:07Z.
+  * t2, lab re-index to the new version: 06:14:53Z. From then until t1, chunks at the new version were refused because the Guard did not know that version yet; the document was kept out of model context.
+  * t1, Guard installs the new version: 06:18:04Z. From then on the old version is refused (`SOURCE_CONTENT_VERSION_STALE`), and the document was served at the new version at 06:18:07Z.
+  * Before t1 (≈ 5 min, the ACL sync interval) the old version was still served: bounded staleness, as documented.
+* **D-26 implemented (ADR-0008), r33 candidate `2ff2376`:**
+  * The route fingerprint binds configuration only; a Guard policy rollback invalidates the certificate.
+  * The `layer2_revoke` outcome must equal the Guard-audited reason (403 `LAYER2_ACCESS_REVOKED` or 503 `AUTHORIZATION_REVISION_CHANGED`).
+  * The agent timeout is configurable.
+  * 48 route and challenge tests pass. PostgreSQL 17 as `accessproof_app`: 1540 tests, 0 failed, 0 errors. Staging rehearsal and probe 23/23.
+* **Gate E still needs a live route challenge against a Gateway installed by the reference installer.** The lab Gateway was paired manually and has no installer manifest, so the agent cannot verify deployment hashes or egress isolation. That is the remaining engineering step before E and J can pass. Protect stays inactive.
