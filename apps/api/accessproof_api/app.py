@@ -29,6 +29,7 @@ import gzip
 import asyncio
 from dataclasses import asdict
 import hashlib
+import logging
 import os
 import secrets
 import time
@@ -37,7 +38,7 @@ from threading import Lock
 from uuid import uuid4
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import delete, func, or_, select
@@ -250,7 +251,7 @@ from apps.api.accessproof_api.observability import (
     logger,
 )
 from apps.api.accessproof_api.retention import apply_retention, get_or_create_policy
-from apps.api.accessproof_api.event_sync import NotificationRejected, accept_google_notification
+from apps.api.accessproof_api.event_sync import NotificationRejected, accept_google_notification, accept_microsoft_notifications
 from apps.api.accessproof_api.authorization_revision import (
     AUTHORIZATION_REVISION_SCHEMA,
     REVISION_LIMITATIONS,
@@ -945,6 +946,56 @@ def guard_permission_events(actor: Actor = Depends(require(Permission.AUDIT_READ
     set_tenant_context(db, organization_id)
     rows = db.scalars(select(GuardPermissionEvent).where(GuardPermissionEvent.organization_id == organization_id).order_by(GuardPermissionEvent.received_at.desc()).limit(100)).all()
     return [{"id": r.id, "source_id": r.source_id, "provider": r.provider, "subject_id": r.subject_id, "resource_id": r.resource_id, "change_type": r.change_type, "provider_revision": r.provider_revision, "status": r.processing_status, "dedupe_key": r.dedupe_key, "error_code": r.error_code, "policy_id": r.policy_id} for r in rows]
+
+
+@app.post("/api/v1/provider-events/microsoft")
+async def microsoft_graph_event_notification(request: Request, db: OrmSession = Depends(get_db)) -> Response:
+    """Microsoft Graph change and lifecycle notifications (hints only).
+
+    No user authentication: Microsoft calls it. Each item is authenticated by
+    subscription id + per-subscription clientState secret + tenant + resource
+    scope (event_sync.accept_microsoft_notifications), journaled, and then a
+    worker fetches AUTHORITATIVE state from Microsoft. The payload never
+    becomes authorization data.
+    """
+    token = request.query_params.get("validationToken")
+    if token is not None:
+        # Subscription/lifecycle URL validation: echo the token as plain text.
+        if not token or len(token) > 4096:
+            raise HTTPException(400, "INVALID_VALIDATION_TOKEN")
+        return PlainTextResponse(token, status_code=200)
+    content_length = request.headers.get("content-length")
+    try:
+        if content_length is not None and int(content_length) > 1_000_000:
+            raise HTTPException(413, "NOTIFICATION_TOO_LARGE")
+    except ValueError:
+        raise HTTPException(400, "INVALID_CONTENT_LENGTH")
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > 1_000_000:
+            raise HTTPException(413, "NOTIFICATION_TOO_LARGE")
+        chunks.append(chunk)
+    try:
+        payload = json.loads(b"".join(chunks) or b"null")
+    except ValueError:
+        raise HTTPException(400, "INVALID_NOTIFICATION_JSON")
+    try:
+        events, rejected = accept_microsoft_notifications(db, payload, decrypt_token=_secret_box.decrypt)
+        db.commit()
+    except NotificationRejected as exc:
+        db.rollback()
+        raise HTTPException(400, str(exc)) from exc
+    except Exception:
+        db.rollback()
+        # Retryable: Microsoft redelivers, so an accepted hint is never lost.
+        raise HTTPException(503, "NOTIFICATION_ENQUEUE_UNAVAILABLE")
+    for code in rejected:
+        logging.getLogger("accessproof.provider_events").warning("microsoft_notification_rejected code=%s", code)
+    if not events:
+        raise HTTPException(401, "NO_AUTHENTICATED_NOTIFICATIONS")
+    return Response(status_code=202)
 
 
 @app.post("/api/v1/provider-events/google-drive", status_code=204)

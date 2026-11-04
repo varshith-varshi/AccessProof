@@ -57,6 +57,8 @@ ACL_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_ACL_SYNC_SECONDS", "300"))
 SOURCE_SYNC_CHECK_SECONDS = max(10, int(os.getenv("ACCESSPROOF_SOURCE_SYNC_CHECK_SECONDS", "30")))
 SOURCE_SYNC_FAILURE_BACKOFF_SECONDS = max(60, int(os.getenv("ACCESSPROOF_SOURCE_SYNC_FAILURE_BACKOFF_SECONDS", "60")))
 GOOGLE_WATCH_CALLBACK_URL = os.getenv("ACCESSPROOF_GOOGLE_WATCH_CALLBACK_URL", "").strip()
+MICROSOFT_NOTIFICATION_URL = os.getenv("ACCESSPROOF_MICROSOFT_NOTIFICATION_URL", "").strip()
+MICROSOFT_SUBSCRIPTION_CHECK_SECONDS = max(60, int(os.getenv("ACCESSPROOF_MICROSOFT_SUBSCRIPTION_CHECK_SECONDS", "900")))
 GOOGLE_WATCH_CHECK_SECONDS = max(60, int(os.getenv("ACCESSPROOF_GOOGLE_WATCH_CHECK_SECONDS", "900")))
 ACL_RECONCILE_SECONDS = max(
     300,
@@ -560,16 +562,35 @@ async def process_provider_event(event_id: str) -> None:
             db.commit()
             return
         credentials = json.loads(box.decrypt(source.encrypted_credentials)) if source.encrypted_credentials else {}
+    event_type = str(event.event_type or "")
+    subscription_row_id = str(event.subscription_id)
+    received_at = event.received_at
     try:
-        # The event is only a wake-up signal. ACL sync resumes the durable
-        # provider cursor and fetches authoritative state before policy changes.
+        # The event is only a wake-up signal. The worker re-reads AUTHORITATIVE
+        # provider state (ACL delta / directory) before any policy changes.
+        if event_type.startswith("lifecycle:"):
+            from apps.worker.accessproof_worker.graph_subscriptions import handle_lifecycle
+            outcome = await handle_lifecycle(subscription_row_id, event_type.split(":", 1)[1], box=box,
+                                             refresh_credentials=refresh_source_credentials_if_needed)
+            logger.info("graph_lifecycle_processed outcome=%s", outcome)
+        channel = (subscription.channel_type if subscription is not None else "acl") or "acl"
         with SessionLocal() as db:
             source = db.get(SourceConnection, event.source_id)
             if source is None:
                 raise ACLSyncError("SOURCE_BINDING_MISMATCH")
             credentials = await refresh_source_credentials_if_needed(db, source, credentials)
-            await synchronize_acls(db, source, credentials, max_pages=50)
+            if channel == "directory":
+                # Group membership / account state changed: authoritative
+                # directory re-read; membership changes flow through the Guard
+                # pipeline into effective access and a new revision.
+                await synchronize_directory(db, source, credentials)
+            else:
+                await synchronize_acls(db, source, credentials, max_pages=50)
             db.commit()
+        if received_at is not None:
+            seen = received_at if received_at.tzinfo else received_at.replace(tzinfo=timezone.utc)
+            logger.info("provider_event_reconciled channel=%s seconds_since_receipt=%.3f", channel,
+                        (datetime.now(timezone.utc) - seen).total_seconds())
         with SessionLocal() as db:
             event = db.get(ProviderEventJournal, event_id)
             subscription = db.get(ProviderEventSubscription, event.subscription_id) if event else None
@@ -902,6 +923,30 @@ async def reconcile_known_source_acls() -> int:
     return completed
 
 
+async def maintain_microsoft_subscriptions() -> int:
+    """Opt-in Graph change notifications for connected Microsoft sources."""
+    if not MICROSOFT_NOTIFICATION_URL:
+        return 0
+    from apps.worker.accessproof_worker.graph_subscriptions import (
+        MICROSOFT_SOURCE_PROVIDERS, ensure_microsoft_subscriptions, validate_callback_url as valid_graph_url,
+    )
+    if not valid_graph_url(MICROSOFT_NOTIFICATION_URL):
+        logger.error("microsoft_notification_invalid_callback_configuration")
+        return 0
+    with SessionLocal() as db:
+        source_ids = [s.id for s in db.scalars(select(SourceConnection).where(SourceConnection.status == "connected"))
+                      if s.provider.lower() in MICROSOFT_SOURCE_PROVIDERS]
+    changed = 0
+    for source_id in source_ids:
+        try:
+            stats = await ensure_microsoft_subscriptions(source_id, callback_url=MICROSOFT_NOTIFICATION_URL, box=box,
+                                                         refresh_credentials=refresh_source_credentials_if_needed)
+            changed += stats["created"] + stats["renewed"] + stats["retired"]
+        except Exception as exc:
+            logger.warning("microsoft_subscription_maintenance_failed source_id=%s error=%s", source_id, type(exc).__name__)
+    return changed
+
+
 async def maintain_google_watches() -> int:
     """Register/renew watch channels when an administrator opted in."""
     if not GOOGLE_WATCH_CALLBACK_URL:
@@ -935,6 +980,7 @@ async def main() -> None:
     last_acl_sync = datetime.min.replace(tzinfo=timezone.utc)
     last_acl_reconcile = datetime.min.replace(tzinfo=timezone.utc)
     last_google_watch = datetime.min.replace(tzinfo=timezone.utc)
+    last_microsoft_subscriptions = datetime.min.replace(tzinfo=timezone.utc)
     while True:
         did_work = False
         now = datetime.now(timezone.utc)
@@ -955,6 +1001,10 @@ async def main() -> None:
             if await reconcile_known_source_acls():
                 did_work = True
             last_acl_reconcile = now
+        if (now - last_microsoft_subscriptions).total_seconds() >= MICROSOFT_SUBSCRIPTION_CHECK_SECONDS:
+            if await maintain_microsoft_subscriptions():
+                did_work = True
+            last_microsoft_subscriptions = now
         if (now - last_google_watch).total_seconds() >= GOOGLE_WATCH_CHECK_SECONDS:
             if await maintain_google_watches():
                 did_work = True
