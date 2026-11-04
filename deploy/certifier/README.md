@@ -20,7 +20,7 @@ If anything fails, the current certificate stays in place. The run exits non-zer
 `FAILED` line in `~/.ap-id/certificate-renewal.log`. The 10-day lead leaves time to fix the problem by hand.
 
 Validity: production r35 accepts up to **14 days**. r36 (commit 71e34cf, not yet deployed)
-raises the maximum to **30 days**. The service pins `--days 14` for r35. After r36 is deployed, change it to `--days 30`.
+raises the maximum to **30 days**. Production r37 accepts 30 days; the service uses `--days 30` and renews when 10 or fewer days remain.
 
 Prerequisites while it runs: the employee test sessions (`scripts/live/start_employee_sessions.sh`)
 must be up, AWS SSM access must work, and the certifier key must exist. If any of these is missing, renewal fails closed.
