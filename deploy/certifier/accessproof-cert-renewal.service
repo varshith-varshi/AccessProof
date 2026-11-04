@@ -11,6 +11,6 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=%h/Projects/AccessProof-realtime
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/env -u PYTHONPATH %h/.local/bin/uv run --extra dev python -u scripts/certifier/renew_source_certificate.py --renew-days 10
+ExecStart=/usr/bin/env -u PYTHONPATH %h/.local/bin/uv run --extra dev python -u scripts/certifier/renew_source_certificate.py --renew-days 10 --days 14
 TimeoutStartSec=3h
 NoNewPrivileges=yes
