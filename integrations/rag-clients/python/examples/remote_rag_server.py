@@ -169,7 +169,8 @@ def main() -> int:
                                         attestation_keys=cfg["attestation_keys"], cache_path=a.evidence_cache,
                                         interval_seconds=a.evidence_interval)
         index.subscriber = subscriber
-        subscriber.refresh_once()
+        # Never block startup on the network: a verified cache serves immediately;
+        # without one the route fails closed (503) until the first refresh succeeds.
         subscriber.start()
     else:
         index = KeywordIndex(a.index)
