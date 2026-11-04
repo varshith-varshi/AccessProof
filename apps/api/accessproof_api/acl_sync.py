@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -420,6 +421,11 @@ def _known_descendants(db: Session, source: SourceConnection, ancestor: GuardRes
             if row.id in seen:
                 continue
             seen.add(row.id)
+            # D-27: a descendant already recorded as deleted has no provider
+            # item left to re-read (Graph 404s); its grants were revoked when
+            # the deletion was processed. Re-reading it failed every later sync.
+            if json.loads(row.metadata_json or "{}").get("deleted"):
+                continue
             descendants.append(row)
             pending.append(row.id)
             if len(descendants) > limit:
@@ -721,6 +727,7 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                 if not file_id:
                     continue
                 changes += 1
+                prefetched_permissions: list[dict[str, Any]] | None = None
                 removed = bool(change.get("removed") or change.get("deleted") or (
                     provider == "microsoft365" and change.get("@removed")
                 ))
@@ -762,7 +769,19 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                     if removed and existing_resource is None:
                         continue
                     if not removed:
-                        in_boundary = await adapter.is_inside_boundary(file_id)
+                        try:
+                            in_boundary = await adapter.is_inside_boundary(file_id)
+                            if in_boundary:
+                                prefetched_permissions = await adapter.permissions_snapshot(file_id)
+                        except httpx.HTTPStatusError as exc:
+                            # D-27: Graph itemNotFound means the item is gone (deleted
+                            # or no longer visible to the source): revoke, do not fail
+                            # the whole sync. Any other provider error still fails closed.
+                            if exc.response is None or exc.response.status_code != 404:
+                                raise
+                            if existing_resource is None:
+                                continue
+                            in_boundary, removed = True, True
                         if not in_boundary and existing_resource is None:
                             continue
                         if not in_boundary:
@@ -799,7 +818,8 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                             if _event(db, source=source, provider=provider, resource=resource, subject_id=subject_id, change_type="grant_revoke", revision=revision, mutation={"grant_key": grant.grant_key, "scope": grant.scope, "snapshot_complete": True}, stable=f"{source.id}:{file_id}:{grant.grant_key}:{subject_id}:{revision}:revoke"):
                                 events += 1
                     continue
-                permissions = await adapter.permissions_snapshot(file_id)
+                permissions = (prefetched_permissions if prefetched_permissions is not None
+                               else await adapter.permissions_snapshot(file_id))
                 current_keys: set[str] = set()
                 for permission in permissions:
                     if not _permission_authorizes_read(permission, provider, _now()):
