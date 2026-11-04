@@ -19,7 +19,11 @@ The r34 / Gate E certification runs from the main worktree; this work never touc
 - [x] Staging (rt1/rt1b): probe 23/23, receiver end to end under row-level security, rollback to r34 verified
 - [x] Integrated r34 baseline (c0947ca); all r34 fix commits present
 - [x] Release plan (RELEASE_PLAN.md), awaiting owner approval
-- [ ] Live validation and benchmark (after approved deployment)
+- [x] r35 deployed to production (10:39Z); notifications enabled (10:49Z); no Microsoft permission added
+- [x] Live Phase 4: Layer 1 10/10 + 8 controls, E2E 8/8, revocation A/B/C/D + restore, in-flight Layer 2, Gate E route + cutover, document freshness, gates A-I PASS
+- [x] Benchmark: notification -> Guard median 9.89 s, max 11.35 s (n=12); source change -> enforcement ~37-52 s (r34: 40-843 s)
+- [ ] Owner: human acceptance + Protect activation (D-28)
+- [ ] Re-issue source certificate before 2026-11-11
 
 ## Audit findings (2026-11-04)
 1. **Discovery today:** polling only for Microsoft. The worker checks every 30 s (`ACCESSPROOF_SOURCE_SYNC_CHECK_SECONDS`) whether ACL sync is due (300 s since last success) and runs a Graph drive delta with the `deltashowremovedasdeleted, deltatraversepermissiongaps, deltashowsharingchanges` preferences (D-23). D-24/D-25 cover 410 resync; D-27 covers deleted descendants. An hourly bounded reconciliation also runs (`ACCESSPROOF_MICROSOFT_ACL_RECONCILE_SECONDS=3600`).

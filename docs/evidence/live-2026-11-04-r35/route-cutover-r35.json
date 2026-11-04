@@ -1,0 +1,39 @@
+{
+ "challenge_id": "78dcc344-3c46-4112-a306-aefdda547d5b",
+ "started_at": "2026-11-04T11:22:42.799770+00:00",
+ "failures": [
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result"
+ ],
+ "evidence": {
+  "tamper_request_id": "ap-cutover-1d8674660b12598b48a9f63d-tamper",
+  "tamper_http_status": 503,
+  "tamper_response_sha256": "ed6e29a1ebcf1adf58ae82657b068a8e6494db87e80509a9bbde5bcad67cbb15",
+  "tamper_reason_code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+  "application_request_id": "ap-cutover-1d8674660b12598b48a9f63d",
+  "application_http_status": 200,
+  "application_response_sha256": "c454d30aab31095a168d8a70705762acb08bf47d43f077d50a1b1924320af3c0",
+  "decision_id": "fcf6e458-b3bf-4ac0-ab41-e88a1ee004aa",
+  "forbidden_canary_observed": false,
+  "gateway_route_enforced": true,
+  "negative_request_id": "ap-cutover-1d8674660b12598b48a9f63d-deny",
+  "negative_http_status": 403,
+  "negative_response_sha256": "dc94ae832735c78730de8353986d82e39a5820a2ff125f37672f5413472a141e",
+  "negative_reason_code": "NO_AUTHORIZED_RESOURCES",
+  "negative_forbidden_canary_observed": false
+ },
+ "cutover": {
+  "status": 202,
+  "body": {
+   "state": "customer_cutover_verified",
+   "challenge_id": "78dcc344-3c46-4112-a306-aefdda547d5b",
+   "guard_audits_matched": 68,
+   "guard_acknowledgment_required": true,
+   "protection_ready": false,
+   "production_certification": false
+  }
+ },
+ "outcome": "CUTOVER_VERIFIED",
+ "finished_at": "2026-11-04T11:23:17.631394+00:00"
+}

@@ -1,0 +1,115 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T11:09:48.293919+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "challenge_id": "37f29fb5-9494-490a-ba47-cb3a97861843",
+   "layer2_revoke_sent_at": "2026-11-04T11:09:59.489403+00:00",
+   "model_held_at": "2026-11-04T11:09:59.612904+00:00",
+   "revision_at_hold": 874,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T11:10:00.613012+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "revoked_at": "2026-11-04T11:10:02.076528+00:00",
+   "probe_failure": "RouteChallengeError: layer2_revoke returned unexpected status 200",
+   "model_released_at": "2026-11-04T11:10:26.943899+00:00"
+  },
+  {
+   "attempt": 2,
+   "challenge_id": "c3d2ca2c-1c77-4e8a-b51c-74feb67aff93",
+   "layer2_revoke_sent_at": "2026-11-04T11:10:29.816401+00:00",
+   "model_held_at": "2026-11-04T11:10:29.994507+00:00",
+   "revision_at_hold": 874,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T11:10:30.994631+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "revoked_at": "2026-11-04T11:10:32.383727+00:00",
+   "guard_decision_flipped_at": "2026-11-04T11:10:45.437290+00:00",
+   "model_released_at": "2026-11-04T11:10:45.737556+00:00",
+   "probes": [
+    {
+     "name": "allow",
+     "request_id": "ap-challenge-64845fcca743d806f4bd6c1d-allow",
+     "http_status": 200,
+     "response_sha256": "6b94135b4ac4ba67edc259b16865c4783b62606b45b13d2edad5ca3c0bce265c",
+     "response_byte_count": 638,
+     "forbidden_content_observed": false,
+     "reason_code": null,
+     "decision": "allow",
+     "decision_id": "668c8787-4ed0-41b1-a235-882d6a268015"
+    },
+    {
+     "name": "deny",
+     "request_id": "ap-challenge-64845fcca743d806f4bd6c1d-deny",
+     "http_status": 403,
+     "response_sha256": "44e220347ed3cf135204d75cee1f7691235e176036657b6d8b23d0e2c160223e",
+     "response_byte_count": 103,
+     "forbidden_content_observed": false,
+     "reason_code": "NO_AUTHORIZED_RESOURCES",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "tamper",
+     "request_id": "ap-challenge-64845fcca743d806f4bd6c1d-tamper",
+     "http_status": 503,
+     "response_sha256": "7c203e4d607a8f971691f475452b672bda57dd6efbd0b180215e4922d7d467bf",
+     "response_byte_count": 115,
+     "forbidden_content_observed": false,
+     "reason_code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "layer2_revoke",
+     "request_id": "ap-challenge-64845fcca743d806f4bd6c1d-layer2_revoke",
+     "http_status": 503,
+     "response_sha256": "508a136758e9b91eae3e69ad3bd314afa9f180b5bd1f000c26bdce04fec66283",
+     "response_byte_count": 119,
+     "forbidden_content_observed": false,
+     "reason_code": "AUTHORIZATION_REVISION_CHANGED",
+     "decision": null,
+     "decision_id": null
+    }
+   ]
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "ce5d2d854646055d2be723d014792c4dd64d4ebfaff10705a04e5605813da42f",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "alice_grant_restored_at": "2026-11-04T11:10:50.459085+00:00"
+}

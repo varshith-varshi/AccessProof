@@ -1,0 +1,143 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T11:10:52.225456+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "challenge_id": "78dcc344-3c46-4112-a306-aefdda547d5b",
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T11:11:35.446023+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "revoked_at": "2026-11-04T11:11:37.324672+00:00",
+   "layer2_revoke_sent_at": "2026-11-04T11:12:00.284682+00:00",
+   "model_held_at": "2026-11-04T11:12:00.418524+00:00",
+   "revision_at_hold": 876,
+   "guard_decision_flipped_at": "2026-11-04T11:12:21.655134+00:00",
+   "model_released_at": "2026-11-04T11:12:21.955332+00:00",
+   "probes": [
+    {
+     "name": "allow",
+     "request_id": "ap-challenge-1d8674660b12598b48a9f63d-allow",
+     "http_status": 200,
+     "response_sha256": "14c3221e99ba9d26362b11e9613dd8530d7087d18caf2b6ebadd31587b533811",
+     "response_byte_count": 952,
+     "forbidden_content_observed": false,
+     "reason_code": null,
+     "decision": "allow",
+     "decision_id": "77b1dd44-f3ad-4c2d-b380-ba44ab5ab62a"
+    },
+    {
+     "name": "deny",
+     "request_id": "ap-challenge-1d8674660b12598b48a9f63d-deny",
+     "http_status": 403,
+     "response_sha256": "9e005a0ff51ee5efb1a1e3ab70ceb4d30de27d2e16f8cd56ea14264803e985c0",
+     "response_byte_count": 103,
+     "forbidden_content_observed": false,
+     "reason_code": "NO_AUTHORIZED_RESOURCES",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "tamper",
+     "request_id": "ap-challenge-1d8674660b12598b48a9f63d-tamper",
+     "http_status": 503,
+     "response_sha256": "f823dc33928313c905793231aaf1cdf93a14b0f148e46941ddd6cee54620e114",
+     "response_byte_count": 115,
+     "forbidden_content_observed": false,
+     "reason_code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "layer2_revoke",
+     "request_id": "ap-challenge-1d8674660b12598b48a9f63d-layer2_revoke",
+     "http_status": 503,
+     "response_sha256": "14b85ebe1893a8f83725443a50e0c1da672a360d2c8ed4d03262cda9351dab51",
+     "response_byte_count": 119,
+     "forbidden_content_observed": false,
+     "reason_code": "AUTHORIZATION_REVISION_CHANGED",
+     "decision": null,
+     "decision_id": null
+    }
+   ],
+   "audit_delivered_before_submit": true,
+   "submit": {
+    "status": 202,
+    "body": {
+     "state": "tested_awaiting_customer_cutover",
+     "challenge_id": "78dcc344-3c46-4112-a306-aefdda547d5b",
+     "guard_audits_matched": 6,
+     "protection_ready": false,
+     "production_certification": false,
+     "pending_guard_acknowledgment": false
+    }
+   }
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "ce5d2d854646055d2be723d014792c4dd64d4ebfaff10705a04e5605813da42f",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "alice_grant_restored_at": "2026-11-04T11:12:37.287812+00:00",
+ "cutover_probe_failures": [
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Customer RAG allowed positive control did not succeed",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result"
+ ],
+ "outcome": "CUTOVER_PROBES_FAILED"
+}
