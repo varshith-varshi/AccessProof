@@ -435,6 +435,10 @@ def _known_descendants(db: Session, source: SourceConnection, ancestor: GuardRes
 
 def _event(db: Session, *, source: SourceConnection, provider: str, resource: GuardResource, subject_id: str, change_type: str, revision: int, mutation: dict[str, Any], stable: str) -> bool:
     dedupe = hashlib.sha256(stable.encode()).hexdigest()[:120]
+    # D-32: the session runs with autoflush=False, so an event queued earlier in
+    # THIS sync is invisible to the query below unless flushed first. A new
+    # organization's first full snapshot can produce the same event twice.
+    db.flush()
     if db.scalar(select(GuardPermissionEvent.id).where(
         GuardPermissionEvent.organization_id == source.organization_id,
         GuardPermissionEvent.dedupe_key == dedupe,

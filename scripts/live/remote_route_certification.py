@@ -469,7 +469,7 @@ def run_route_probes(o: Observer, a, results: list[dict]) -> None:
     leaks = [x for x in probes + [no_auth] if x["raw_chunk_text_in_response"] or x["canary_in_response"]
              or (x["http_status"] == 200)]
     calls = len(rag.witness_since(start))
-    gw_unsigned = o.rag_exec(_GW_UNSIGNED, {"ca": a.rag_ca_path, "gw": "https://" + GW_NAME + ":8443",
+    gw_unsigned = o.rag_exec(_GW_UNSIGNED, {"ca": a.rag_ca_path, "gw": a.rag_gateway_url,
                                             "paths": [CHAT, "/v1/snapshots/chat/completions", "/v1/cache/authorize",
                                                       "/v1/responses/authorize", "/v1/anything"]})
     gw_ok = gw_unsigned is not None and all(v == 401 for k, v in gw_unsigned.items() if k.startswith("/v1")) \
@@ -497,23 +497,32 @@ def wait_ready(timeout=60) -> bool:
     return False
 
 
-def run_fail_closed(o: Observer, results: list[dict]) -> None:
-    # Gateway unreachable from the RAG host.
-    cut = docker("network", "disconnect", EDGE_NET, GATEWAY)
+def run_fail_closed(o: Observer, results: list[dict], outage: str = "edge-network") -> None:
+    # Gateway unreachable from the RAG host (network cut for a co-located lab RAG;
+    # Gateway stopped for a RAG on another server).
+    if outage == "stop":
+        cut = docker("stop", GATEWAY)
+    else:
+        cut = docker("network", "disconnect", EDGE_NET, GATEWAY)
     try:
         s = o.ask("alice", "finance", timeout=90) if cut else None
     finally:
-        restored = docker("network", "connect", "--alias", GW_NAME, EDGE_NET, GATEWAY)
+        restored = (docker("start", GATEWAY) and wait_ready()) if outage == "stop" else \
+            docker("network", "connect", "--alias", GW_NAME, EDGE_NET, GATEWAY)
     ok = (s is not None and s["http_status"] == 503 and s["model_calls"] == 0 and not s["answer_canaries"]
           and not s["raw_chunk_text_in_response"]) if cut and restored else None
     results.append(check("FAIL_CLOSED_GATEWAY_UNAVAILABLE", ok, {"probe": {"network_cut": cut, "restored": restored},
                                                                   "witness": [s] if s else []}))
-    # Guard unreachable from the Gateway.
-    cut = docker("network", "disconnect", GUARD_NET, GATEWAY)
+    # Guard unreachable from the Gateway. For a RAG on another server the Gateway's
+    # published port rides the Guard network, so the Guard itself is stopped instead.
+    cut = docker("stop", GUARD) if outage == "stop" else docker("network", "disconnect", GUARD_NET, GATEWAY)
     try:
         s = o.ask("alice", "finance", timeout=90) if cut else None
     finally:
-        restored = docker("network", "connect", GUARD_NET, GATEWAY) and wait_ready()
+        if outage == "stop":
+            restored = docker("start", GUARD) and wait_ready(180)
+        else:
+            restored = docker("network", "connect", GUARD_NET, GATEWAY) and wait_ready()
     gw = o.gateway_audit().get(s["request_id"], []) if s else []
     ok = (s is not None and s["http_status"] == 503 and s["model_calls"] == 0 and not s["answer_canaries"]
           and gw and gw[-1]["http_status"] >= 500) if cut and restored else None
@@ -631,6 +640,8 @@ def main() -> int:
     p.add_argument("--route-url", required=True)
     p.add_argument("--rag-exec", required=True, help='command prefix that runs python on the RAG host, e.g. "docker exec -i NAME python"')
     p.add_argument("--rag-ca-path", default="/cfg/ca.pem", help="Gateway CA path ON the RAG host")
+    p.add_argument("--rag-gateway-url", default="https://" + GW_NAME + ":8443", help="Gateway URL as seen FROM the RAG host")
+    p.add_argument("--gateway-outage", choices=["edge-network", "stop"], default="edge-network")
     p.add_argument("--source-evidence", default=str(ROOT.parent / "AccessProof-realtime/docs/evidence/certificate-renewals/20261104T122734Z/source-certification-evidence.json"))
     p.add_argument("--out")
     p.add_argument("--issue", action="store_true", help="sign the result with ~/.ap-id/route-certifier.key")
@@ -663,7 +674,7 @@ def main() -> int:
     run_basic(o, results, ctx)
     run_gateway_attacks(o, results)
     run_route_probes(o, a, results)
-    run_fail_closed(o, results)
+    run_fail_closed(o, results, a.gateway_outage)
     if not a.skip_revocation:
         run_revocation(o, results, ctx)
     run_audit_match(o, results)
