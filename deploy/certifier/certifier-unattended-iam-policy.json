@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "TunnelKeyPushStagingOnly", "Effect": "Allow", "Action": "ec2-instance-connect:SendSSHPublicKey",
+     "Resource": "arn:aws:ec2:eu-north-1:102076848988:instance/i-0e6d2256a1e5a6f67",
+     "Condition": {"StringEquals": {"ec2:osuser": "ubuntu"}}},
+    {"Sid": "TunnelSessionStagingOnly", "Effect": "Allow", "Action": "ssm:StartSession",
+     "Resource": ["arn:aws:ec2:eu-north-1:102076848988:instance/i-0e6d2256a1e5a6f67",
+                  "arn:aws:ssm:eu-north-1::document/AWS-StartSSHSession"]},
+    {"Sid": "OwnSessions", "Effect": "Allow", "Action": ["ssm:TerminateSession", "ssm:ResumeSession"],
+     "Resource": "arn:aws:ssm:*:102076848988:session/${aws:userid}-*"},
+    {"Sid": "CertifierCommandsProductionAndStaging", "Effect": "Allow", "Action": "ssm:SendCommand",
+     "Resource": ["arn:aws:ec2:eu-north-1:102076848988:instance/i-0c11427d4d9c1b438",
+                  "arn:aws:ec2:eu-north-1:102076848988:instance/i-0e6d2256a1e5a6f67",
+                  "arn:aws:ssm:eu-north-1::document/AWS-RunShellScript"]},
+    {"Sid": "ReadCommandResults", "Effect": "Allow", "Action": ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"],
+     "Resource": "*"}
+  ]
+}

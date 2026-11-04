@@ -1,0 +1,29 @@
+# Continuous trusted-ingestion evidence refresh: REFERENCE organization
+# (sharepoint-rag-staging). Existing refresher, existing lab ingestion signing key
+# and bindings; publishes signed manifests to ~/.ap-id/ingestion/published and
+# resumes the existing manifest sequence. Attestation TTL (30 min) and fail-closed
+# behaviour are unchanged. The non-blocking flock guarantees ONE refresher per
+# source: a second instance exits immediately.
+#
+# Install (owner):
+#   cp accessproof-ingestion-refresher-reference.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now accessproof-ingestion-refresher-reference
+#   loginctl enable-linger "$USER"      # start at boot without a login session
+[Unit]
+Description=AccessProof trusted-ingestion refresher (reference organization)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/AccessProof-universal
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/flock --nonblock --conflict-exit-code 75 %h/.ap-id/ingestion/.refresher.lock /home/white-devil/NeuralMatrix-Paperclip/lab/accessproof/.venv/bin/python -u scripts/live/evidence_refresher_lab.py --interval 480
+Restart=always
+RestartSec=30
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

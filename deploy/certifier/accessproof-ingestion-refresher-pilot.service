@@ -1,0 +1,32 @@
+# Continuous trusted-ingestion evidence refresh: PILOT organization (pilot-hr-rag),
+# with the pilot's OWN ingestion signing key and binding. Existing refresher;
+# resumes the pilot manifest sequence in ~/.ap-id/pilot/ingestion/published.
+# Attestation TTL and fail-closed behaviour unchanged. One instance per source (flock).
+#
+# Install (owner):
+#   cp accessproof-ingestion-refresher-pilot.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now accessproof-ingestion-refresher-pilot
+[Unit]
+Description=AccessProof trusted-ingestion refresher (pilot organization)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/AccessProof-universal
+Environment=PYTHONUNBUFFERED=1
+Environment=AP_INGESTION_HOME=%h/.ap-id/pilot/ingestion
+Environment=AP_BIND_TENANT_ID=0fb98b25-bd7d-445e-a192-4ff8ee730760
+Environment=AP_BIND_APPLICATION_ID=pilot-hr-rag
+Environment=AP_BIND_SOURCE_ID=4eb6863f-297a-4681-b913-30c48f9f916a
+Environment=AP_BIND_ATTESTATION_KEY_FILE=%h/.ap-id/pilot/ingestion/source-signing.key
+Environment=AP_BIND_ATTESTATION_KEY_ID=pilot-ingestion-1
+ExecStart=/usr/bin/flock --nonblock --conflict-exit-code 75 %h/.ap-id/pilot/ingestion/.refresher.lock /home/white-devil/NeuralMatrix-Paperclip/lab/accessproof/.venv/bin/python -u scripts/live/evidence_refresher_lab.py --interval 480 --publish-dir %h/.ap-id/pilot/ingestion/published
+Restart=always
+RestartSec=30
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
