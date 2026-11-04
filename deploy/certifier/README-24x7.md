@@ -12,22 +12,36 @@
 * **Containers:** every lab and pilot container uses `--restart unless-stopped`, and Docker is enabled at boot.
 * **Logs:** journald (`journalctl --user -u <unit>`). The refresher logs event names, sequence numbers, expiry and error types only, never credentials.
 
-## Required manual action: a non-interactive AWS identity
+## Unattended AWS authentication (IAM Roles Anywhere; owner runs the setup once)
 
-The tunnel, the route attestation (production import via SSM) and the certificate renewals call AWS.
-The current credentials are a console `aws login` session for the **root** account. They expire, and they must not be used unattended.
+* **No IAM user and no access keys.** The certifier host authenticates with an X.509 certificate.
+  Claude generated `~/.ap-id/rolesanywhere/{ca.pem,host.pem}` and `host.key` (0600) on this host; the keys are never printed.
+* AWS returns **1-hour** credentials, refreshed automatically by `aws_signing_helper` (v1.4.0, in `~/.local/bin`)
+  through `credential_process` in the `accessproof-certifier` CLI profile.
+* **Role `accessproof-certifier`:**
+  * Assumable only through Roles Anywhere, only from trust anchor `accessproof-certifier-host-ca`, and only with certificate subject `CN=accessproof-certifier-host, OU=certifier`.
+  * Inline policy `certifier-unattended-iam-policy.json` grants exactly the calls the services make, all in `eu-north-1`:
+    * Instance Connect key push to the staging host (`ubuntu` user only);
+    * an SSH session over SSM to the staging host;
+    * terminating or resuming only its own `accessproof-certifier-*` sessions;
+    * `AWS-RunShellScript` on the production and staging instances only;
+    * reading command results.
+  * There are no IAM, EC2, S3 or deploy permissions.
+* **Remaining privilege:** `AWS-RunShellScript` on production is root-equivalent there. A later hardening step is to replace it with dedicated SSM documents for status, import, attest and read-only SQL.
 
-Create a dedicated IAM identity with `certifier-unattended-iam-policy.json` and give it to the certifier host. That policy allows:
-* staging SSH-over-SSM and the Instance Connect key push;
-* `AWS-RunShellScript` on the production and staging instances;
-* reading command results.
-
-Then point the CLI at it, for example:
+Run once, while signed in with `aws login`:
 
 ```
-aws configure --profile accessproof-certifier          # access key of the dedicated IAM user
-# then add to each unit:  Environment=AWS_PROFILE=accessproof-certifier
-systemctl --user daemon-reload
+bash deploy/certifier/setup_unattended_aws_identity.sh
 ```
 
-(Better still is IAM Roles Anywhere with a host certificate, which avoids static keys.) `AWS-RunShellScript` on production is powerful; a later hardening step is to replace it with dedicated SSM documents for the gates, import and attest operations.
+It:
+1. creates (or reuses) the trust anchor, role, inline policy and profile;
+2. writes the CLI profile and checks that `sts get-caller-identity` returns the role;
+3. adds `AWS_PROFILE=accessproof-certifier` drop-ins to the tunnel, route-attestation and both renewal services;
+4. restarts the tunnel.
+
+Certificate lifetimes:
+* The host certificate expires **2027-11-04**; re-issue it from the local CA before then.
+* The CA expires **2028-11-03**.
+* Revoke access at any time by disabling the trust anchor or profile in IAM Roles Anywhere.
