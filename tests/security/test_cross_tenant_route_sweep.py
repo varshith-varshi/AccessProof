@@ -31,6 +31,9 @@ REVIEWED_VALIDATION_FIRST_ROUTES = {
     "PATCH /api/v1/current/ai-applications/{application_id}/mode",
     "PATCH /api/v1/current/identity-mappings/{mapping_id}",
     "PATCH /api/v1/organization/members/{membership_id}",
+    # D-28: body validated first (422); then owner-session-only and an
+    # organization-scoped lookup (404 for another tenant's application).
+    "POST /api/v1/current/ai-applications/{application_id}/protection/approve",
     "POST /api/v1/current/ai-applications/{application_id}/protection/challenge",
     "POST /api/v1/current/ai-applications/{application_id}/verification",
     "POST /api/v1/current/ai-applications/{application_id}/verification-approvals",

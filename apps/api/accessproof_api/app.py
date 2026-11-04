@@ -3653,7 +3653,38 @@ def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[
     if row.adapter_type == "accessproof-gateway":
         # D-02: an old installation record is not a running Gateway.
         checks.append(gateway_presence.activation_check(db, row))
+    approved = _human_activation_approved(db, row)
+    checks.append({
+        "code": "HUMAN_ACTIVATION_APPROVAL_REQUIRED", "ok": approved,
+        "reason": None if approved else
+        "An organization owner must explicitly approve Protect activation after the route is certified.",
+    })
     return checks
+
+
+def _human_activation_approved(db: OrmSession, row: AIApplication) -> bool:
+    """D-28: Protect is never activated by automation alone.
+
+    Requires an owner's explicit approval recorded AFTER the latest verified
+    customer cutover of the currently certified route; any later re-test or
+    re-certification requires a new approval. Machines cannot create it.
+    """
+    cutover = db.scalar(select(RAGRouteChallenge.cutover_at).where(
+        RAGRouteChallenge.organization_id == row.organization_id,
+        RAGRouteChallenge.application_row_id == row.id,
+        RAGRouteChallenge.status == "cutover_verified",
+        RAGRouteChallenge.cutover_at.is_not(None),
+    ).order_by(RAGRouteChallenge.cutover_at.desc()).limit(1))
+    if cutover is None or not _valid_route_certificate(db, row):
+        return False
+    return db.scalar(select(AuditEvent.id).where(
+        AuditEvent.organization_id == row.organization_id,
+        AuditEvent.action == "PROTECT_ACTIVATION_APPROVED",
+        AuditEvent.target_type == "ai_application",
+        AuditEvent.target_id == row.id,
+        AuditEvent.actor_user_id.is_not(None),
+        AuditEvent.created_at >= cutover,
+    ).limit(1)) is not None
 
 
 def _activation_status(db: OrmSession, row: AIApplication) -> dict[str, Any]:
@@ -4700,6 +4731,49 @@ def latest_current_reference_rag_challenge(
         "certified_for_reference_route": _valid_route_certificate(db, row),
         "production_certification": False,
     }
+
+
+@app.post("/api/v1/current/ai-applications/{application_id}/protection/approve", status_code=201)
+def approve_protect_activation(
+    application_id: str,
+    payload: dict[str, Any],
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """D-28: explicit, owner-only human approval for Protect activation.
+
+    Accepted only from an interactive OWNER session (never an API key or a
+    machine), only after the route certificate is valid, and only with the
+    exact confirmation text. It approves; the Guard acknowledgment and every
+    other activation check still apply.
+    """
+    if actor.api_key_scopes is not None or actor.membership.role != Role.OWNER.value:
+        raise HTTPException(403, "OWNER_SESSION_REQUIRED")
+    if not isinstance(payload, dict) or set(payload) != {"confirm_text", "reviewer"}:
+        raise HTTPException(422, "INVALID_APPROVAL")
+    reviewer = payload.get("reviewer")
+    if not isinstance(reviewer, str) or not 3 <= len(reviewer.strip()) <= 200:
+        raise HTTPException(422, "REVIEWER_NAME_REQUIRED")
+    if payload.get("confirm_text") != f"APPROVE PROTECT {application_id}":
+        raise HTTPException(422, "CONFIRMATION_TEXT_MISMATCH")
+    row = db.scalar(select(AIApplication).where(
+        AIApplication.organization_id == actor.membership.organization_id,
+        AIApplication.application_id == application_id,
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(404, "AI application not found")
+    if not _valid_route_certificate(db, row):
+        raise HTTPException(409, "ROUTE_CERTIFICATE_REQUIRED_BEFORE_APPROVAL")
+    pending = [c["code"] for c in _automatic_activation_checklist(db, row)
+               if not c["ok"] and c["code"] != "HUMAN_ACTIVATION_APPROVAL_REQUIRED"]
+    if pending:
+        raise HTTPException(409, {"code": "ACTIVATION_CHECKS_INCOMPLETE", "pending": pending})
+    _audit(db, actor, row.organization_id, "PROTECT_ACTIVATION_APPROVED", "ai_application", row.id, {
+        "reviewer": reviewer.strip(), "route_certificate": describe_route_certificate(db, row).get("certificate_id"),
+    })
+    db.commit()
+    return {"state": "approved_awaiting_guard_ack", "application_id": application_id,
+            "guard_acknowledgment_required": True}
 
 
 @app.post("/api/v1/guards/{guard_id}/rag-challenges/{challenge_id}/submit", status_code=202)
