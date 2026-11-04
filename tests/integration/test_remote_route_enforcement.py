@@ -113,7 +113,12 @@ def test_configuration_change_attestation_invalidates_and_blocks_reimport(env):
     assert not st["certified"] and st["routes"][0]["state"] == "INVALIDATED"
     assert "rag_runtime_config_sha256" in st["routes"][0]["reason"]
     with pytest.raises(rre.RemoteRouteError, match="PREVIOUSLY_INVALIDATED"):
-        rre.import_certificate(db, row, c)
+        rre.import_certificate(db, row, c)                       # the same (old) certificate stays refused
+    # Configuration reverted and a NEW full certification run issued afterwards: importable.
+    fresh = cert(env, now=datetime.now(timezone.utc) + timedelta(seconds=5))
+    assert fresh["fingerprint"] == c["fingerprint"]
+    rre.import_certificate(db, row, fresh, now=datetime.now(timezone.utc) + timedelta(seconds=6)); db.commit()
+    assert rre.status(db, row, now=datetime.now(timezone.utc) + timedelta(seconds=7))["certified"]
 
 
 def test_attestation_forgery_staleness_and_replay(env):
@@ -138,6 +143,8 @@ def test_stale_attestation_expiry_and_revocation_fail(env):
     assert rre.status(db, row, now=datetime.now(timezone.utc) + timedelta(days=8))["routes"][0]["state"] in ("EXPIRED", "ATTESTATION_STALE")
     rre.revoke(db, row, c["fingerprint"]); db.commit()
     assert rre.status(db, row)["routes"][0]["state"] == "REVOKED"
+    with pytest.raises(rre.RemoteRouteError, match="REVOKED_BY_OWNER"):
+        rre.import_certificate(db, row, cert(env, now=datetime.now(timezone.utc) + timedelta(seconds=5)))
 
 
 def test_certifier_trust_not_configured_means_not_certified(env, monkeypatch):

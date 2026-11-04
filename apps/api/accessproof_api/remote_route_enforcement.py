@@ -83,8 +83,17 @@ def import_certificate(db: Session, row: AIApplication, cert: dict, *, now: date
         RemoteRouteCertificate.organization_id == row.organization_id,
         RemoteRouteCertificate.application_row_id == row.id,
         RemoteRouteCertificate.fingerprint == cert["fingerprint"]))
-    if existing is not None and existing.status in ("invalidated", "revoked"):
-        raise RemoteRouteError("CONFIGURATION_PREVIOUSLY_INVALIDATED")   # a new certification run gives a new cert
+    if existing is not None and existing.status == "revoked":
+        raise RemoteRouteError("CERTIFICATE_REVOKED_BY_OWNER")          # owner revocation is permanent per binding
+    if existing is not None and existing.status == "invalidated":
+        # A configuration change invalidated this binding. Reverting to it requires a
+        # NEW full certification run, issued after the invalidating observation.
+        try:
+            invalidated_at = _parse(json.loads(existing.last_attestation_json or "{}").get("observed_at"))
+        except RemoteRouteError:
+            invalidated_at = now
+        if issued <= invalidated_at:
+            raise RemoteRouteError("CONFIGURATION_PREVIOUSLY_INVALIDATED")
     # One active certificate per route URL: older ones for the same route are superseded.
     for old in db.scalars(select(RemoteRouteCertificate).where(
             RemoteRouteCertificate.organization_id == row.organization_id,

@@ -26,6 +26,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import os
 import shlex
 import socket
 import ssl
@@ -60,14 +61,19 @@ def _load(name: str):
 
 
 ei, rag, rt = _load("employee_identity"), _load("rag_e2e"), _load("revocation_trial")
+for _attr, _env in (("APP", "AP_RT_APP"), ("SOURCE", "AP_RT_SOURCE"), ("GUARD_URL", "AP_RT_GUARD_URL")):
+    if os.environ.get(_env):
+        setattr(rt, _attr, os.environ[_env])
 
-GW_DIR = Path.home() / ".ap-id/remote-gw"
+# Defaults = the lab remote Gateway; overridable for another organization's stack (e.g. a fresh pilot).
+GW_DIR = Path(os.environ.get("AP_GW_DIR", str(Path.home() / ".ap-id/remote-gw")))
 HOLD = Path.home() / "Downloads/sharepoint-rag-lab/witness/ap-hold"
-GUARD = "accessproof-guard"
-GATEWAY = "ap-remote-gateway"
+GUARD = os.environ.get("AP_GUARD_CONTAINER", "accessproof-guard")
+GATEWAY = os.environ.get("AP_GATEWAY_CONTAINER", "ap-remote-gateway")
 GW_NAME = "ap-gateway.lab.internal"
-GW_LOCAL = ("127.0.0.1", 8443)
-EDGE_NET, GUARD_NET = "ap-remote-edge", "sharepoint-rag-lab_guard-internal"
+GW_LOCAL = ("127.0.0.1", int(os.environ.get("AP_GW_PORT", "8443")))
+EDGE_NET = os.environ.get("AP_EDGE_NET", "ap-remote-edge")
+GUARD_NET = os.environ.get("AP_GUARD_NET", "sharepoint-rag-lab_guard-internal")
 CHAT = "/v1/chat/completions"
 CRED_RE = (r"(OPENAI|ANTHROPIC|AZURE_OPENAI|GEMINI|GOOGLE_API_KEY|COHERE|MISTRAL|GROQ|TOGETHER|HUGGINGFACE|HF_TOKEN|"
            r"OLLAMA|BEDROCK|VERTEX|LLM_|MODEL_(API|KEY|TOKEN|URL|ENDPOINT|BASE))")
@@ -482,7 +488,25 @@ def run_route_probes(o: Observer, a, results: list[dict]) -> None:
                           "witness": {"model_calls_during_probes": calls}, "leaks": [x["path"] for x in leaks]}))
 
 
+def guard_reachable_from_gateway(timeout=120) -> bool:
+    """Restoration check for an application in its certification window, where
+    /health/ready is false by design: the Gateway can reach the Guard again."""
+    deadline = time.time() + timeout
+    code = ("import urllib.request,sys;u=sys.argv[1]\ntry:\n urllib.request.urlopen(u+'/health',timeout=5);print('ok')\n"
+            "except Exception as e:print('no')")
+    guard_url = next((e.split("=", 1)[1] for e in json.loads(docker_out("inspect", GATEWAY, "--format", "{{json .Config.Env}}"))
+                      if e.startswith("ACCESSPROOF_GATEWAY_GUARD_URL=")), "")
+    while time.time() < deadline:
+        r = subprocess.run(["docker", "exec", GATEWAY, "python", "-c", code, guard_url], capture_output=True, text=True, timeout=30)
+        if r.stdout.strip() == "ok":
+            return True
+        time.sleep(3)
+    return False
+
+
 def wait_ready(timeout=60) -> bool:
+    if os.environ.get("AP_RESTORE_CHECK") == "guard-reachable":
+        return guard_reachable_from_gateway(timeout)
     ctx = ssl.create_default_context(cafile=str(GW_DIR / "ca.pem"))
     deadline = time.time() + timeout
     while time.time() < deadline:

@@ -39,7 +39,12 @@ from dotenv import dotenv_values  # noqa: E402
 from packages.rag_core.evidence_refresher import (EvidencePublisher, EvidenceRefresher, RefreshPolicy,  # noqa: E402
                                                   permissions_fingerprint)
 
-HOME = Path.home() / ".ap-id/ingestion"
+HOME = Path(os.environ.get("AP_INGESTION_HOME", str(Path.home() / ".ap-id/ingestion")))
+# Optional customer binding (e.g. a fresh pilot organization with its OWN ingestion key):
+# the source is still re-read live every cycle; chunks are re-attested for this binding.
+PILOT = {k: os.environ.get(v) for k, v in (("tenant", "AP_BIND_TENANT_ID"), ("app", "AP_BIND_APPLICATION_ID"),
+                                          ("source", "AP_BIND_SOURCE_ID"), ("key", "AP_BIND_ATTESTATION_KEY_FILE"),
+                                          ("kid", "AP_BIND_ATTESTATION_KEY_ID"))}
 CRED = Path.home() / ".config/accessproof/entra-client-secret.json"
 SITE = "https://graph.microsoft.com/v1.0/sites/neuralmatrix093.sharepoint.com:/sites/AccessProof-Validation-20261027"
 
@@ -102,13 +107,32 @@ def adapter():
     docs = [{"resource_id": d["item_id"], "content_version": d["version"], "name": d["name"]} for d in payload["documents"]]
     chunks = [{"resource_id": c["doc_id"], "chunk_id": c["chunk_id"], "content_version": c["version"],
                "content": c["text"], "content_attestation": c["attestation"]} for c in payload["signed_chunks"]]
+    if PILOT["tenant"]:
+        from packages.rag_core.attestation import ContentBinding, SourceAttestationSigner
+        signer = SourceAttestationSigner(key_id=PILOT["kid"], private_key=_pilot_key())
+        for c in chunks:
+            c["content_attestation"] = signer.issue(ContentBinding(
+                tenant_id=PILOT["tenant"], application_id=PILOT["app"], source_id=PILOT["source"],
+                resource_id=c["resource_id"], chunk_id=c["chunk_id"], content_version=c["content_version"],
+                content=c["content"]), ttl_seconds=1800)
     return {"documents": docs, "chunks": chunks, "permissions": permission_fingerprints([d["resource_id"] for d in docs])}
+
+
+def _pilot_key() -> Ed25519PrivateKey:
+    path = Path(PILOT["key"])
+    if path.stat().st_mode & 0o077:
+        raise SystemExit("ingestion signing key must be 0600")
+    return Ed25519PrivateKey.from_private_bytes(path.read_bytes())
 
 
 def build(interval: float, publish_dir: Path) -> EvidenceRefresher:
     conf = dotenv_values(LAB / ".env")
     src_key = serialization.load_pem_private_key((LAB / "secrets/source_signing.pem").read_bytes(), password=None)
     tenant, app_id, source = conf["LAB_TENANT_ID"], conf["LAB_APPLICATION_ID"], conf["LAB_SOURCE_ID"]
+    att_keys = {conf["LAB_ATTESTATION_KEY_ID"]: src_key.public_key()}
+    if PILOT["tenant"]:
+        tenant, app_id, source = PILOT["tenant"], PILOT["app"], PILOT["source"]
+        att_keys = {PILOT["kid"]: _pilot_key().public_key()}
     events = HOME / "events.jsonl"
 
     def on_event(ev: dict) -> None:
@@ -118,7 +142,7 @@ def build(interval: float, publish_dir: Path) -> EvidenceRefresher:
     return EvidenceRefresher(
         adapter=adapter, publisher=EvidencePublisher(publish_dir, tenant, app_id, source),
         tenant_id=tenant, application_id=app_id, source_id=source,
-        attestation_keys={conf["LAB_ATTESTATION_KEY_ID"]: src_key.public_key()},
+        attestation_keys=att_keys,
         manifest_key=manifest_key(), manifest_key_id="lab-ingestion-manifest-1",
         policy=RefreshPolicy(interval_seconds=interval, attestation_ttl_seconds=1800),
         health_path=HOME / "health.json", on_event=on_event)
