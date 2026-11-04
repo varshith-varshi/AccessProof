@@ -247,7 +247,7 @@ class Trial:
     def measure(self, item: str, want: str, t0: float, budget_s: int, phase: str) -> dict:
         """Poll until Guard decisions are stably `want` (DENY after revoke, ALLOW after restore)."""
         provider_ok = "DENY" if want == "DENY" else "ALLOW"
-        ts: dict[str, str | None] = {k: None for k in ("t1_source_confirmed", "t2_accessproof_detected",
+        ts: dict[str, str | None] = {k: None for k in ("t1_source_confirmed", "t2n_notification_received", "t2_accessproof_detected",
                                                          "t3_revision_updated", "t4_guard_acknowledged",
                                                          "t5_first_decision", "t6_stable_decision")}
         rev_before = ap_revision()
@@ -263,6 +263,14 @@ class Trial:
                 view = sharepoint_effective_view(self.doc)
                 if ("ALLOW" if view else "DENY") == provider_ok and listed in (None, want == "ALLOW"):
                     ts["t1_source_confirmed"] = now()
+            if ts["t2n_notification_received"] is None:
+                # r35+: first AUTHENTICATED Microsoft notification journaled for
+                # this source after t0 (provider-side delivery, measured separately).
+                first = ssm_sql("select coalesce(min(received_at)::text,'') from provider_event_journal where source_id='"
+                                + SOURCE + "' and provider='microsoft365' and received_at >= to_timestamp("
+                                + str(t0) + ")")
+                if first.strip():
+                    ts["t2n_notification_received"] = first.strip().replace(" ", "T")
             if ts["t2_accessproof_detected"] is None and ap_effective_allows(self.doc) == (want == "ALLOW"):
                 ts["t2_accessproof_detected"] = now()
             rev = ap_revision()
