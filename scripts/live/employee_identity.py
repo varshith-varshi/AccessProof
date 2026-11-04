@@ -287,7 +287,12 @@ def serve(args) -> int:
     end = time.monotonic() + args.max_hours * 3600
     try:
         while time.monotonic() < end:
-            session.refresh_if_needed()
+            try:
+                session.refresh_if_needed()
+            except httpx.TransportError as exc:
+                # A transient network/DNS failure must not end the session; the
+                # current tokens stay valid until expiry and refresh is retried.
+                print(f"REFRESH_RETRY {type(exc).__name__}", flush=True)
             time.sleep(30)
     finally:
         server.shutdown()
