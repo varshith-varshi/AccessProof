@@ -116,7 +116,10 @@ class Session:
         redirect = f"http://127.0.0.1:{server.server_address[1]}"
         url = f"{LOGIN}{TENANT}/oauth2/v2.0/authorize?" + urlencode({
             "client_id": self.client_id, "response_type": "code", "redirect_uri": redirect,
-            "response_mode": "query", "scope": SCOPES, "state": state, "nonce": nonce,
+            # Also request the RAG API scope so the employee (or an admin, if the
+            # tenant requires admin approval) consents once, on Microsoft's page.
+            "response_mode": "query", "scope": f"{SCOPES} api://{self.client_id}/{API_SCOPE_NAME}",
+            "state": state, "nonce": nonce,
             "code_challenge": challenge, "code_challenge_method": "S256",
             "login_hint": f"{self.actor}@{UPN_DOMAIN}", "prompt": "select_account",
         })
