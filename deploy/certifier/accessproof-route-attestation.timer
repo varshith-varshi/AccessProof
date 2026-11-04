@@ -1,0 +1,10 @@
+[Unit]
+Description=Remote route attestation twice daily (stale after 24 h without one)
+
+[Timer]
+OnCalendar=*-*-* 05,17:23:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

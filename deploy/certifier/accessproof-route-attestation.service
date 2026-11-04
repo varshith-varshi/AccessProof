@@ -1,0 +1,15 @@
+# Daily verification of production-certified remote RAG routes (certifier host).
+# Live attestation of each route's binding (configuration change => production
+# INVALIDATES the certificate); full re-certification only when <= 2 days remain.
+# An unobservable route is not attested and fails closed (ATTESTATION_STALE).
+[Unit]
+Description=AccessProof remote route attestation / re-certification
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/AccessProof-universal
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/env -u PYTHONPATH %h/.local/bin/uv run --extra dev python -u scripts/certifier/remote_route_attestation.py
+TimeoutStartSec=2h
+NoNewPrivileges=yes
