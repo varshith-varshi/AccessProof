@@ -1,0 +1,16 @@
+# Automatic SharePoint source-certificate renewal on the OFFLINE CERTIFIER HOST.
+# Runs the full independent procedure: fresh live evidence (< 72 h, collected
+# in this run), scope + signing-key checks, issuance, import, verification.
+# It never re-signs old evidence; any failed check leaves the current
+# certificate in place and exits non-zero (visible in `systemctl --user status`).
+[Unit]
+Description=AccessProof source certificate renewal (fresh evidence)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/AccessProof-realtime
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/env -u PYTHONPATH %h/.local/bin/uv run --extra dev python -u scripts/certifier/renew_source_certificate.py --renew-days 10
+TimeoutStartSec=3h
+NoNewPrivileges=yes

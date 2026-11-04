@@ -1,0 +1,107 @@
+{
+ "schema": "accessproof.sharepoint_effective_matrix/v1",
+ "method": "SharePoint REST ListItem.GetUserEffectivePermissions (app-only certificate)",
+ "results": [
+  {
+   "actor": "alice",
+   "object_id": "67b731fb-c51c-4344-bbd2-63d5bf77a5d5",
+   "document": "finance_alice.txt",
+   "list_item_id": 2,
+   "expected_view": true,
+   "sharepoint_effective_view": true,
+   "pass": true,
+   "at": "2026-11-04T12:25:02.375664+00:00"
+  },
+  {
+   "actor": "alice",
+   "object_id": "67b731fb-c51c-4344-bbd2-63d5bf77a5d5",
+   "document": "engineering_bob.txt",
+   "list_item_id": 3,
+   "expected_view": false,
+   "sharepoint_effective_view": false,
+   "pass": true,
+   "at": "2026-11-04T12:25:02.608633+00:00"
+  },
+  {
+   "actor": "alice",
+   "object_id": "67b731fb-c51c-4344-bbd2-63d5bf77a5d5",
+   "document": "shared_control.txt",
+   "list_item_id": 4,
+   "expected_view": true,
+   "sharepoint_effective_view": true,
+   "pass": true,
+   "at": "2026-11-04T12:25:02.780925+00:00"
+  },
+  {
+   "actor": "alice",
+   "object_id": "67b731fb-c51c-4344-bbd2-63d5bf77a5d5",
+   "document": "group_finance_alice.txt",
+   "list_item_id": 5,
+   "expected_view": true,
+   "sharepoint_effective_view": true,
+   "pass": true,
+   "at": "2026-11-04T12:25:02.989396+00:00"
+  },
+  {
+   "actor": "alice",
+   "object_id": "67b731fb-c51c-4344-bbd2-63d5bf77a5d5",
+   "document": "inherited_finance_alice.txt",
+   "list_item_id": 7,
+   "expected_view": true,
+   "sharepoint_effective_view": true,
+   "pass": true,
+   "at": "2026-11-04T12:25:03.165226+00:00"
+  },
+  {
+   "actor": "bob",
+   "object_id": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "document": "finance_alice.txt",
+   "list_item_id": 2,
+   "expected_view": false,
+   "sharepoint_effective_view": false,
+   "pass": true,
+   "at": "2026-11-04T12:25:03.318826+00:00"
+  },
+  {
+   "actor": "bob",
+   "object_id": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "document": "engineering_bob.txt",
+   "list_item_id": 3,
+   "expected_view": true,
+   "sharepoint_effective_view": true,
+   "pass": true,
+   "at": "2026-11-04T12:25:03.605537+00:00"
+  },
+  {
+   "actor": "bob",
+   "object_id": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "document": "shared_control.txt",
+   "list_item_id": 4,
+   "expected_view": true,
+   "sharepoint_effective_view": true,
+   "pass": true,
+   "at": "2026-11-04T12:25:03.816350+00:00"
+  },
+  {
+   "actor": "bob",
+   "object_id": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "document": "group_finance_alice.txt",
+   "list_item_id": 5,
+   "expected_view": false,
+   "sharepoint_effective_view": false,
+   "pass": true,
+   "at": "2026-11-04T12:25:03.983600+00:00"
+  },
+  {
+   "actor": "bob",
+   "object_id": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "document": "inherited_finance_alice.txt",
+   "list_item_id": 7,
+   "expected_view": false,
+   "sharepoint_effective_view": false,
+   "pass": true,
+   "at": "2026-11-04T12:25:04.172187+00:00"
+  }
+ ],
+ "pass": true
+}

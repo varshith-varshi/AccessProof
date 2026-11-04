@@ -76,6 +76,13 @@ def _released(doc: str, s: dict) -> bool:
     return doc in s["answer_canaries"] or doc in s["model_reply_documents"]
 
 
+def _norm(ts: str | None) -> str | None:
+    """'...+00' (truncated offset) -> '...+00:00' so timestamps compare as strings."""
+    if ts and ts.endswith("+00"):
+        return ts + ":00"
+    return ts
+
+
 def judge_inflight(doc: str, requests: list[dict], phase: dict) -> dict:
     """Judge in-flight revocation against the trial's own timestamps.
 
@@ -86,17 +93,29 @@ def judge_inflight(doc: str, requests: list[dict], phase: dict) -> dict:
     straddling request (Layer 1 before t2, response after t2) that carried the
     document into the model context and whose answer was withheld.
     """
-    t2 = phase.get("t2_accessproof_detected")
+    t2_detected = phase.get("t2_accessproof_detected")
+    # r35: a provider change notification (t2n) already makes the source
+    # fail closed (SOURCE_ACL_STALE) before the delta resync completes (t2).
+    # AccessProof's awareness starts at the EARLIER of the two; using it makes
+    # the leak window larger (stricter) and lets a straddle be observed at all.
+    t2n = _norm(phase.get("t2n_notification_received"))
+    t2 = min(x for x in (t2n, _norm(t2_detected)) if x) if (t2n or t2_detected) else None
     ok = [r for r in requests if "error" not in r]
     if not t2:
         return {"requests": requests, "status": "NOT_OBSERVED", "reason": "revocation not detected in this phase"}
     after = [r for r in ok if r["finished_at"] > t2]
-    leaked = [r for r in after if _released(doc, r)]
+    # Released = delivered to the employee (HTTP 200 carrying the document).
+    # A withheld response (403/503) may still list the document in the model's
+    # witness reply: the model generated it, the Gateway did not release it.
+    leaked = [r for r in after if r["http_status"] == 200 and _released(doc, r)]
     straddling = [r for r in after if r["started_at"] < t2 and doc in r["model_context_documents"]]
     withheld = [r for r in straddling if r["http_status"] != 200 or not _released(doc, r)]
     before = [r for r in ok if r["finished_at"] <= t2 and _released(doc, r)]
     status = "FAIL" if leaked else ("PASS" if withheld else "NOT_OBSERVED")
-    return {"requests": requests, "reference_t2_accessproof_detected": t2,
+    return {"requests": requests, "reference_t2_accessproof_aware": t2,
+            "reference_t2n_notification_received": t2n,
+            "reference_t2_accessproof_detected": t2_detected,
+            "withheld_details": [r.get("detail") for r in withheld],
             "reference_t5_first_guard_denial": phase.get("t5_first_decision"),
             "released_before_detection_propagation_window": len(before),
             "straddling_requests": len(straddling), "straddling_withheld": len(withheld),

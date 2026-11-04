@@ -15,7 +15,6 @@ revocation_trial.py and the route challenge.
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import importlib.util
 import json

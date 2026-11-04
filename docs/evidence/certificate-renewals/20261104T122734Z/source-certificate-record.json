@@ -1,0 +1,11 @@
+{
+  "organization_id": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+  "source_id": "2fa9562b-b765-4098-bebf-222ea53ec667",
+  "provider_profile": "sharepoint_list_item_effective",
+  "scope_digest": "c63d3b9068ef80001053567bb281f428e1033e0ebb09dd9193113af5e198a584",
+  "evidence_digest": "a4e6f676f71426fc2ee05beaff5edef23abad69033eb2bd4f6fc4406eb994d87",
+  "verifier_version": "provider-live-v2-ed25519",
+  "certified_at": "2026-11-04T12:33:48+00:00",
+  "expires_at": "2026-11-18T12:33:48+00:00",
+  "signature": "ed25519:ap-certifier-2026-11:UkCzT-NaAoZAVR6aZ3s86Pt_nDa5n7LDAgIYhUvFsqZ6JtM3VKiyU5T1IWZcs5mol_6YtSPLGpXfeGmmo8mRBA"
+}
