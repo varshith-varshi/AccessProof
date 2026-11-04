@@ -36,6 +36,8 @@ from packages.rag_core.output_safety import OutputLinkPolicy, sanitize_answer
 from packages.rag_core.roster import RosterError, RosterVerifier
 from packages.rag_core.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
 from packages.demo_cache.trusted_snapshot import load_snapshot, SnapshotInvalid
+from packages.rag_core.request_signing import SignatureError
+from .remote_access import PROTECTED_PREFIXES, RemoteAccess
 from .model_adapters import ModelAdapter, ModelProtocolError, selected_adapter
 from .presence import PresenceReporter, PresenceSettings
 
@@ -772,6 +774,7 @@ def create_app(
     settings: GatewaySettings | None = None, *, client: httpx.Client | None = None,
     model_adapter: ModelAdapter | None = None,
     presence: PresenceReporter | None = None,
+    remote: "RemoteAccess | None" = None,
 ) -> FastAPI:
     resolved = settings or GatewaySettings.from_env()
     service = GatewayService(resolved, client=client, model_adapter=model_adapter)
@@ -823,6 +826,8 @@ def create_app(
         title="AccessProof RAG Security Gateway", docs_url=None, redoc_url=None,
         lifespan=lifespan,
     )
+    # Fail closed at startup: remote exposure without TLS + client keys refuses to run.
+    remote_access = remote or RemoteAccess.from_env()
 
     @app.middleware("http")
     async def limit_request_bytes(request: Any, call_next: Any) -> Any:
@@ -841,6 +846,26 @@ def create_app(
                 return JSONResponse(status_code=413, content={"detail": "REQUEST_TOO_LARGE"})
             chunks.append(chunk)
         request._body = b"".join(chunks)  # Starlette cached body for downstream JSON parsing.
+        if remote_access.remote and request.url.path.startswith(PROTECTED_PREFIXES):
+            # Cross-host exposure: authenticate the calling APPLICATION over the
+            # exact bytes (and the employee token) before any processing.
+            try:
+                client_id = remote_access.check(
+                    method=request.method, path=request.url.path,
+                    headers={k.lower(): v for k, v in request.headers.items()} | {
+                        "X-AccessProof-Client": request.headers.get("x-accessproof-client", ""),
+                        "X-AccessProof-Timestamp": request.headers.get("x-accessproof-timestamp", ""),
+                        "X-AccessProof-Nonce": request.headers.get("x-accessproof-nonce", ""),
+                        "X-AccessProof-Signature": request.headers.get("x-accessproof-signature", ""),
+                    },
+                    body=request._body,
+                )
+            except SignatureError as exc:
+                code = str(exc)
+                status = 429 if code == "CLIENT_RATE_LIMITED" else 401
+                return JSONResponse(status_code=status, content={"detail": code},
+                                    headers={"Cache-Control": "no-store"})
+            request.state.accessproof_client = client_id
         response = await call_next(request)
         # Do not let a browser/CDN save an authorized employee-specific answer,
         # including cache-release and non-streamed response paths.
@@ -852,6 +877,12 @@ def create_app(
     @app.get("/health/live")
     def live() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/health/exposure")
+    def exposure() -> dict[str, str]:
+        # Discloses only the security mode, never client ids or keys.
+        return {"exposure": remote_access.exposure, "tls": remote_access.tls,
+                "client_authentication": "required" if remote_access.remote else "local-network-only"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, str]:
