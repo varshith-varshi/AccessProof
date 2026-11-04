@@ -19,7 +19,6 @@ Only synthetic canary presence, hashes, HTTP statuses and timestamps are kept.
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 import threading
 import time
 from pathlib import Path
@@ -49,19 +48,25 @@ except urllib.error.HTTPError as e:
 '''
 
 
+HOLD = Path.home() / "Downloads/sharepoint-rag-lab/witness/ap-hold"
+
+
 def _ask(token: str, question: str, *, pause: bool = False) -> dict:
+    """``pause`` holds the model answer with the lab bridge's hold marker
+    (connection stays healthy; freezing the container broke the Gateway's model
+    connection and produced 503s before Layer 2)."""
     start, t_start = rag.witness_lines(), rag.now()
-    unpause = None
+    release = None
     if pause:
-        subprocess.run(["docker", "pause", MODEL], check=True, capture_output=True)
-        unpause = threading.Timer(PAUSE_SECONDS, lambda: subprocess.run(["docker", "unpause", MODEL], capture_output=True))
-        unpause.start()
+        HOLD.write_text("hold")
+        release = threading.Timer(PAUSE_SECONDS, lambda: HOLD.unlink(missing_ok=True))
+        release.start()
     try:
         resp = rag.exec_in_rag(rag._CALL, {"q": rag.Q[question], "t": token})
     finally:
-        if unpause is not None:
-            unpause.join()
-            subprocess.run(["docker", "unpause", MODEL], capture_output=True)  # idempotent safety
+        if release is not None:
+            release.join()
+            HOLD.unlink(missing_ok=True)
     time.sleep(1)
     s = rag.summarize(resp, rag.witness_since(start))
     return {"started_at": t_start, "finished_at": rag.now(), **s}
@@ -135,7 +140,7 @@ class RouteProbe:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=120)
-        subprocess.run(["docker", "unpause", MODEL], capture_output=True)
+        HOLD.unlink(missing_ok=True)
         self.results["E2E-09"] = judge_inflight(self.doc, self._inflight, phase or {})
 
     def after_stable_denial(self) -> None:

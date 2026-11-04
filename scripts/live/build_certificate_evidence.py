@@ -24,10 +24,23 @@ sys.path.insert(0, str(ROOT))
 from packages.crypto.source_certificate import EVIDENCE_SCHEMA, REQUIRED_CHECKS  # noqa: E402
 
 M = ROOT / "docs/evidence/live-2026-11-03/matrix"
+# Standard names inside a fresh evidence directory (--dir); the legacy r30 set
+# keeps its original names when --dir is not given.
+FRESH = {
+    "sharepoint-effective-matrix.json": "sharepoint-effective-matrix.json",
+    "layer1-guard-apitoken-r30.json": "layer1.json",
+    "identity-bindings-r30.json": "identity-bindings.json",
+    "revocation-A-r30.json": "revocation-A-route.json",
+    "rag-e2e-apitoken-r30.json": "rag-e2e.json",
+    "revocation-A-route-FG-r30.json": "revocation-A-route.json",
+    "buffered-release-r30.json": "buffered-release.json",
+}
+_FRESH_DIR: Path | None = None
 
 
 def load(name: str) -> tuple[dict, str]:
-    raw = (M / name).read_bytes()
+    path = (_FRESH_DIR / FRESH[name]) if _FRESH_DIR is not None else (M / name)
+    raw = path.read_bytes()
     return json.loads(raw), hashlib.sha256(raw).hexdigest()
 
 
@@ -39,7 +52,8 @@ def checks() -> list[dict]:
     out: list[dict] = []
 
     def add(code: str, ok: bool, artifact: str, sha: str, observed_at: str, detail: str) -> None:
-        out.append({"code": code, "status": "PASS" if ok else "FAIL", "artifact": f"docs/evidence/live-2026-11-03/matrix/{artifact}",
+        where = str((_FRESH_DIR / FRESH[artifact]).relative_to(ROOT)) if _FRESH_DIR is not None else f"docs/evidence/live-2026-11-03/matrix/{artifact}"
+        out.append({"code": code, "status": "PASS" if ok else "FAIL", "artifact": where,
                     "artifact_sha256": sha, "observed_at": observed_at, "detail": detail})
 
     eff, eff_sha = load("sharepoint-effective-matrix.json")
@@ -110,7 +124,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     for name in ("organization-id", "source-id", "profile", "scope-digest", "out"):
         p.add_argument(f"--{name}", required=True)
+    p.add_argument("--dir", help="fresh evidence directory with standard artifact names")
     a = p.parse_args()
+    global _FRESH_DIR
+    _FRESH_DIR = Path(a.dir).resolve() if a.dir else None
     found = checks()
     evidence = {"schema": EVIDENCE_SCHEMA, "organization_id": a.organization_id, "source_id": a.source_id,
                 "profile": a.profile, "scope_digest": a.scope_digest, "checks": found}

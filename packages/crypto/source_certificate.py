@@ -29,7 +29,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 VERIFIER_VERSION = "provider-live-v2-ed25519"
 EVIDENCE_SCHEMA = "accessproof.source_certification_evidence/v1"
 SIGNATURE_PREFIX = "ed25519"
-MAX_VALIDITY = timedelta(days=14)
+# A certificate attests that the provider-live profile of ONE exact source
+# scope was verified end to end. Evidence must be < MAX_EVIDENCE_AGE at
+# issuance; validity is only the buffer if rolling renewal (every ~3 weeks,
+# fresh evidence each time) fails. Continuous ACL/directory freshness is
+# enforced separately and is not extended by this value.
+MAX_VALIDITY = timedelta(days=30)
 MAX_EVIDENCE_AGE = timedelta(hours=72)
 _KEY_ID = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -207,7 +212,7 @@ def validate_evidence(
 def issue_certificate(
     evidence: Mapping[str, Any], *, organization_id: str, source_id: str, profile: str,
     scope_digest: str, private_key: Ed25519PrivateKey, key_id: str,
-    validity: timedelta = timedelta(days=7), now: datetime | None = None,
+    validity: timedelta = timedelta(days=30), now: datetime | None = None,
 ) -> dict[str, str]:
     """Certifier-only issuance; returns a record for operator import."""
     if validity <= timedelta(0) or validity > MAX_VALIDITY:

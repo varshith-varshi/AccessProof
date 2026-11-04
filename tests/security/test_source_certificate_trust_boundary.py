@@ -178,7 +178,13 @@ def test_issuer_refuses_missing_check_and_scope_mismatch():
         issue_certificate(full, organization_id="org", source_id="src",
                           profile="sharepoint_list_item_effective", scope_digest="d" * 64,
                           private_key=Ed25519PrivateKey.generate(), key_id="k",
-                          validity=timedelta(days=30))
+                          validity=timedelta(days=31))
+    # 30 days is the maximum (rolling renewal with fresh evidence; see MAX_VALIDITY).
+    record = issue_certificate(full, organization_id="org", source_id="src",
+                               profile="sharepoint_list_item_effective", scope_digest="d" * 64,
+                               private_key=Ed25519PrivateKey.generate(), key_id="k",
+                               validity=timedelta(days=30))
+    assert record["expires_at"] > record["certified_at"]
 
 
 def test_api_package_never_imports_signing():
@@ -205,3 +211,18 @@ def test_certifier_cli_keygen_is_private_and_issue_refuses_empty_evidence(tmp_pa
                              "--organization-id", "o", "--source-id", "s", "--profile", "p",
                              "--scope-digest", "d"], capture_output=True, text=True)
     assert result.returncode == 2 and "NOT ISSUED" in result.stderr and result.stdout == ""
+
+
+def test_stale_evidence_is_refused_even_with_long_validity():
+    """Longer validity never relaxes evidence freshness (72 h at issuance)."""
+    from datetime import datetime, timezone
+    from packages.crypto.source_certificate import MAX_EVIDENCE_AGE, REQUIRED_CHECKS, EVIDENCE_SCHEMA
+    old = (datetime.now(timezone.utc) - MAX_EVIDENCE_AGE - timedelta(minutes=1)).isoformat()
+    evidence = {"schema": EVIDENCE_SCHEMA, "organization_id": "org", "source_id": "src",
+                "profile": "sharepoint_list_item_effective", "scope_digest": "d" * 64,
+                "checks": [{"code": c, "status": "PASS", "artifact_sha256": "a" * 64, "observed_at": old}
+                           for c in REQUIRED_CHECKS]}
+    with pytest.raises(CertificateError, match="STALE"):
+        issue_certificate(evidence, organization_id="org", source_id="src",
+                          profile="sharepoint_list_item_effective", scope_digest="d" * 64,
+                          private_key=Ed25519PrivateKey.generate(), key_id="k", validity=timedelta(days=30))

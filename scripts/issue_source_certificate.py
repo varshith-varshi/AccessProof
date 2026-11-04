@@ -167,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
     issue.add_argument("--source-id", required=True)
     issue.add_argument("--profile", required=True)
     issue.add_argument("--scope-digest", required=True)
-    issue.add_argument("--days", type=int, default=7)
+    issue.add_argument("--days", type=int, default=30)
     scope = sub.add_parser("scope")
     scope.add_argument("--organization-id", required=True)
     scope.add_argument("--source-id", required=True)

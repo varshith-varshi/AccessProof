@@ -120,6 +120,7 @@ from apps.api.accessproof_api.db import (
     WebhookEndpoint,
     Session as DbSession,
     SourceConnection,
+    SourceEffectiveCertification,
     ProviderSyncCursor as ProviderSyncCursorModel,
     TestIdentity,
     TestRun,
@@ -4840,6 +4841,38 @@ def latest_current_reference_rag_challenge(
         "certified_for_reference_route": _valid_route_certificate(db, row),
         "production_certification": False,
     }
+
+
+@app.post("/api/v1/current/sources/{source_id}/certificate/revoke", status_code=200)
+def revoke_source_certificate(
+    source_id: str,
+    payload: dict[str, Any],
+    actor: Actor = Depends(require(Permission.ORG_ADMIN)),
+    db: OrmSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Owner-only, immediate revocation of a source certificate (e.g. a security
+    regression found mid-validity). Takes effect on the next authorization
+    check; only a NEW independently issued certificate restores it."""
+    if actor.api_key_scopes is not None or actor.membership.role != Role.OWNER.value:
+        raise HTTPException(403, "OWNER_SESSION_REQUIRED")
+    if not isinstance(payload, dict) or set(payload) != {"confirm_text", "reason"}:
+        raise HTTPException(422, "INVALID_REVOCATION")
+    reason = payload.get("reason")
+    if not isinstance(reason, str) or not 3 <= len(reason.strip()) <= 500:
+        raise HTTPException(422, "REVOCATION_REASON_REQUIRED")
+    if payload.get("confirm_text") != f"REVOKE CERTIFICATE {source_id}":
+        raise HTTPException(422, "CONFIRMATION_TEXT_MISMATCH")
+    cert = db.scalar(select(SourceEffectiveCertification).where(
+        SourceEffectiveCertification.organization_id == actor.membership.organization_id,
+        SourceEffectiveCertification.source_id == source_id,
+    ).with_for_update())
+    if cert is None:
+        raise HTTPException(404, "Certificate not found")
+    cert.status = "revoked"
+    _audit(db, actor, actor.membership.organization_id, "SOURCE_CERTIFICATE_REVOKED", "source", source_id,
+           {"reason": reason.strip(), "evidence_digest": cert.evidence_digest})
+    db.commit()
+    return {"source_id": source_id, "status": "revoked"}
 
 
 @app.post("/api/v1/current/ai-applications/{application_id}/protection/approve", status_code=201)

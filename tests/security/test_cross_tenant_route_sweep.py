@@ -35,6 +35,9 @@ REVIEWED_VALIDATION_FIRST_ROUTES = {
     # organization-scoped lookup (404 for another tenant's application).
     "POST /api/v1/current/ai-applications/{application_id}/protection/approve",
     "POST /api/v1/current/ai-applications/{application_id}/protection/challenge",
+    # Body validated first (422); owner session only; certificate lookup is
+    # scoped to the caller's organization (404 for another tenant).
+    "POST /api/v1/current/sources/{source_id}/certificate/revoke",
     "POST /api/v1/current/ai-applications/{application_id}/verification",
     "POST /api/v1/current/ai-applications/{application_id}/verification-approvals",
     "POST /api/v1/guards/{guard_id}/rag-challenges/{challenge_id}/cutover",

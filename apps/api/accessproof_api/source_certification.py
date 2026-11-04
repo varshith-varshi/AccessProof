@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from apps.api.accessproof_api.db import SourceConnection, SourceEffectiveCertification
 from packages.crypto.source_certificate import (
+    MAX_VALIDITY,
     VERIFIER_VERSION,
     CertificateFields,
     load_public_keys,
@@ -128,7 +129,7 @@ def effective_source_certified(db: Session, source: SourceConnection, credential
     now = datetime.now(timezone.utc)
     issued = cert.certified_at.replace(tzinfo=timezone.utc) if cert.certified_at.tzinfo is None else cert.certified_at
     expires = cert.expires_at.replace(tzinfo=timezone.utc) if cert.expires_at.tzinfo is None else cert.expires_at
-    if (issued > now or expires <= now or (expires - issued).total_seconds() > 14 * 86400
+    if (issued > now or expires <= now or (expires - issued) > MAX_VALIDITY
             or len(cert.evidence_digest) != 64 or not all(c in "0123456789abcdef" for c in cert.evidence_digest)):
         return False
     return verify_certificate_signature(certificate_fields(cert), cert.signature, trusted_keys)
