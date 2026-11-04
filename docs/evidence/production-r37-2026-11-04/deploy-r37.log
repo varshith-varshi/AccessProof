@@ -1,0 +1,8 @@
+release=r37-universal-47cf857-47cf85792db9 sha256=086854419857732978d2b8ef462b61fca6692dc3dcaabcafde2866ba1bf18614
+SSM command 453bffbd-8dfd-4aea-91d7-219479859eab
+/home/ubuntu/accessproof-releases/r37-universal-47cf857-47cf85792db9/artifact.tar: OK
+2026-11-04T15:27:10Z release r37-universal-47cf857-47cf85792db9 starting
+2026-11-04T15:28:49Z images built; target DB revision w7a8b9c0d1e2
+2026-11-04T15:28:50Z backup verified (78 table-data entries)
+2026-11-04T15:28:53Z database at w7a8b9c0d1e2
+2026-11-04T15:29:23Z DEPLOYMENT VERIFIED: api/worker/web on r37-universal-47cf857-47cf85792db9, db w7a8b9c0d1e2

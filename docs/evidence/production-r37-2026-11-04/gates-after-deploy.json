@@ -1,0 +1,210 @@
+{
+ "schema": "accessproof.production_gates/v1",
+ "evaluated_at": "2026-11-04T15:30:27.957073+00:00",
+ "organization_id": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+ "application_id": "sharepoint-rag-staging",
+ "gates": {
+  "A_INFRASTRUCTURE": {
+   "status": "PASS",
+   "checks": {
+    "api_healthy": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "worker_running": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "db_healthy": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "redis_healthy": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "web_healthy": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "migration_at_head": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "rollback_available": {
+     "status": "PASS",
+     "evidence": "healthy"
+    }
+   }
+  },
+  "B_IDENTITY": {
+   "status": "PASS",
+   "checks": {
+    "two_or_more_verified_employee_mappings": {
+     "status": "PASS",
+     "evidence": "3 verified"
+    },
+    "mappings_bound_to_entra_tenant": {
+     "status": "PASS",
+     "evidence": "tenant-bound"
+    }
+   }
+  },
+  "C_SHAREPOINT_SOURCE": {
+   "status": "PASS",
+   "checks": {
+    "source_connected": {
+     "status": "PASS",
+     "evidence": "connected"
+    },
+    "sharepoint_provider": {
+     "status": "PASS",
+     "evidence": "sharepoint"
+    },
+    "acl_sync_fresh": {
+     "status": "PASS",
+     "evidence": "72s"
+    },
+    "directory_sync_fresh": {
+     "status": "PASS",
+     "evidence": "126s"
+    },
+    "independent_certificate_valid": {
+     "status": "PASS",
+     "evidence": "Ed25519 verified"
+    },
+    "certificate_evidence_matches": {
+     "status": "PASS",
+     "evidence": "digest matches; all required checks PASS"
+    }
+   }
+  },
+  "D_GUARD": {
+   "status": "PASS",
+   "checks": {
+    "guard_online": {
+     "status": "PASS",
+     "evidence": "online"
+    },
+    "guard_security_ready": {
+     "status": "PASS",
+     "evidence": "healthy"
+    },
+    "policy_current": {
+     "status": "PASS",
+     "evidence": "v82"
+    }
+   }
+  },
+  "E_GATEWAY": {
+   "status": "PASS",
+   "checks": {
+    "gateway_connected": {
+     "status": "PASS",
+     "evidence": "authenticated heartbeat"
+    },
+    "gateway_enforcement_ready": {
+     "status": "PASS",
+     "evidence": "ready"
+    },
+    "route_certified": {
+     "status": "PASS",
+     "evidence": "CERTIFIED"
+    }
+   }
+  },
+  "F_LAYER1": {
+   "status": "PASS",
+   "checks": {
+    "authorized_retrieval_allowed": {
+     "status": "PASS",
+     "evidence": "1464 allows"
+    },
+    "unauthorized_retrieval_denied": {
+     "status": "PASS",
+     "evidence": "667 denials"
+    }
+   }
+  },
+  "G_LAYER2": {
+   "status": "PASS",
+   "checks": {
+    "release_verified": {
+     "status": "PASS",
+     "evidence": "344 verified releases"
+    },
+    "in_flight_and_tamper_evidence": {
+     "status": "PASS",
+     "evidence": "in certified evidence"
+    }
+   }
+  },
+  "H_REVOCATION_AND_CACHE": {
+   "status": "PASS",
+   "checks": {
+    "revocation_observed": {
+     "status": "PASS",
+     "evidence": "in certified evidence"
+    },
+    "stable_denial": {
+     "status": "PASS",
+     "evidence": "in certified evidence"
+    },
+    "cache_bypass_rejected": {
+     "status": "PASS",
+     "evidence": "in certified evidence"
+    },
+    "restoration_verified": {
+     "status": "PASS",
+     "evidence": "in certified evidence"
+    }
+   }
+  },
+  "I_DATABASE_SECURITY": {
+   "status": "PASS",
+   "checks": {
+    "runtime_role_not_superuser": {
+     "status": "PASS",
+     "evidence": "accessproof_app"
+    },
+    "runtime_role_no_bypassrls": {
+     "status": "PASS",
+     "evidence": "NOBYPASSRLS"
+    },
+    "runtime_role_owns_no_tables": {
+     "status": "PASS",
+     "evidence": "not owner"
+    },
+    "every_tenant_table_policied": {
+     "status": "PASS",
+     "evidence": "58 tables"
+    },
+    "no_settable_bypass": {
+     "status": "PASS",
+     "evidence": "none"
+    },
+    "metrics_read_only_role_configured": {
+     "status": "PASS",
+     "evidence": "configured"
+    }
+   }
+  },
+  "J_ACTIVATION": {
+   "status": "FAIL",
+   "checks": {
+    "activation_checklist": {
+     "status": "FAIL",
+     "evidence": "HUMAN_ACTIVATION_APPROVAL_REQUIRED"
+    },
+    "protect_acknowledged_by_guard": {
+     "status": "FAIL",
+     "evidence": "protect_pending"
+    }
+   }
+  }
+ },
+ "failing_gates": [
+  "J_ACTIVATION"
+ ],
+ "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+}

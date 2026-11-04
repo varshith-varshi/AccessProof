@@ -1,0 +1,25 @@
+{
+ "schema": "accessproof.identity_bindings_snapshot/v1",
+ "observed_at": "2026-11-04T15:32:23.582157+00:00",
+ "bindings": [
+  {
+   "employee": "alice",
+   "oidc_subject_oid": "67b731fb-c51c-4344-bbd2-63d5bf77a5d5",
+   "oid_equals_source_principal": true,
+   "method": "directory_verified",
+   "status": "VERIFIED",
+   "automatic": true,
+   "account_kind": "member"
+  },
+  {
+   "employee": "bob",
+   "oidc_subject_oid": "b7989860-d1bc-4cc3-a96c-35117a3ef9c4",
+   "oid_equals_source_principal": true,
+   "method": "directory_verified",
+   "status": "VERIFIED",
+   "automatic": true,
+   "account_kind": "member"
+  }
+ ],
+ "pass": true
+}
