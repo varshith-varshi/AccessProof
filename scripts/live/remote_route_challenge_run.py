@@ -41,6 +41,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 
 from apps.gateway.accessproof_gateway.challenge_agent import GatewayRouteChallenge, Probe  # noqa: E402
+from apps.gateway.accessproof_gateway.cutover_agent import EmployeeRouteProbe, probe_remote_employee_route  # noqa: E402
 
 
 def _load(name: str):
@@ -53,6 +54,8 @@ def _load(name: str):
 ei, rt = _load("employee_identity"), _load("revocation_trial")      # rt honours AP_PROFILE_FILE
 HOLD = Path.home() / "Downloads/sharepoint-rag-lab/witness/ap-hold"
 SHARED_CANARY = "ACCESSPROOF_SYNTHETIC_SHARED_20261027_R18"
+FINANCE_CANARY = "ACCESSPROOF_SYNTHETIC_FINANCE_ALICE_20261027_X51"
+ENGINEERING_CANARY = "ACCESSPROOF_SYNTHETIC_ENGINEERING_BOB_20261027_P72"
 LOCAL_ORIGIN = "http://127.0.0.1:9444"     # what the agent sees; the transport carries it to the TLS Gateway
 
 _GUARD_POST = r'''
@@ -151,6 +154,24 @@ def wait_for_audit_delivery(container: str, nonce: str, timeout: float = 90.0) -
     return False
 
 
+def remote_route_status(cfg: dict) -> dict:
+    """Production's verdict on this application's remote routes (operator CLI via SSM)."""
+    script = ("cd /home/ubuntu/accessproof\ndocker compose -f docker-compose.ec2.yml exec -T api python "
+              f"scripts/remote_route_certificate.py status --organization-id {cfg['organization_id']} --application-id {cfg['application_id']}")
+    cid = subprocess.run(["aws", "ssm", "send-command", "--region", "eu-north-1", "--instance-ids", "i-0c11427d4d9c1b438",
+                          "--document-name", "AWS-RunShellScript", "--comment", "read-only remote route status",
+                          "--parameters", json.dumps({"commands": script.split("\n")}), "--query", "Command.CommandId",
+                          "--output", "text"], check=True, capture_output=True, text=True).stdout.strip()
+    for _ in range(60):
+        time.sleep(2)
+        r = subprocess.run(["aws", "ssm", "get-command-invocation", "--region", "eu-north-1", "--command-id", cid,
+                            "--instance-id", "i-0c11427d4d9c1b438", "--output", "json"], capture_output=True, text=True)
+        if r.returncode == 0 and json.loads(r.stdout)["Status"] == "Success":
+            out = json.loads(r.stdout)["StandardOutputContent"]
+            return json.loads(out[out.index("{"):out.rindex("}") + 1])
+    return {}
+
+
 def resource(manifest: dict, name: str) -> dict:
     rid = next(d["resource_id"] for d in manifest["documents"] if d["name"] == name)
     c = next(x for x in manifest["chunks"] if x["resource_id"] == rid)
@@ -239,7 +260,48 @@ def main() -> int:
             result["outcome"] = "CHALLENGE_NOT_VERIFIED"
             return 1
         result["outcome"] = "ROUTE_CHALLENGE_VERIFIED"
-        return 0
+        # ---- employee-route cutover (remote mode) -------------------------------
+        trial.restore()
+        result["alice_grant_restored_at"] = now()
+        deadline = time.time() + 900
+        while rt.guard_decision(ei.fetch(alice, "api_token"), finance["resource_id"]) != "ALLOW" and time.time() < deadline:
+            time.sleep(5)
+        remote = remote_route_status(cfg)
+        result["remote_route_status"] = remote
+        evidence, failures = None, []
+        for _ in range(30):     # the small lab model does not always quote the canary
+            manifest = json.loads(Path(cfg["manifest"]).read_text())
+            finance = resource(manifest, "finance_alice.txt")
+            route_probe = EmployeeRouteProbe(url=LOCAL_ORIGIN + "/v1/chat/completions",
+                                             allowed_token=ei.fetch(alice, "api_token"), denied_token=ei.fetch(bob, "api_token"),
+                                             allowed_resources=[finance], denied_resources=[finance],
+                                             allowed_canary=FINANCE_CANARY, forbidden_canary=ENGINEERING_CANARY)
+            client = httpx.Client(transport=SignedTLSHeldTransport(cfg["gateway_client"], {}, lambda: "DENY"),
+                                  base_url=LOCAL_ORIGIN, timeout=60, follow_redirects=False, trust_env=False)
+            try:
+                evidence = probe_remote_employee_route(remote_route_status=remote, application_id=cfg["application_id"],
+                                                       nonce=challenge["nonce"], probe=route_probe, client=client)
+                break
+            except Exception as exc:
+                failures.append(f"{type(exc).__name__}: {str(exc)[:160]}")
+                if "REMOTE_ROUTE_NOT_CERTIFIED" in str(exc):
+                    break
+                time.sleep(3)
+            finally:
+                client.close()
+        result["cutover_probe_failures"] = failures
+        if evidence is None:
+            result["outcome"] = "CUTOVER_PROBES_FAILED"
+            return 1
+        time.sleep(12)   # D-29: the Guard uploads the cutover audit records first
+        receipt = {"challenge_id": challenge["challenge_id"], "nonce": challenge["nonce"],
+                   "deployment_sha256": installation["deployment_sha256"], "route_sha256": installation["route_sha256"], **evidence}
+        result["cutover"] = guard_post(cfg["guard_container"], "POST",
+                                       f"/api/v1/guards/{{guard_id}}/rag-challenges/{challenge['challenge_id']}/cutover", receipt,
+                                       retry_on=("CUSTOMER_CUTOVER_GUARD_AUDIT_MISMATCH", "CUSTOMER_CUTOVER_DENIED_USER_NOT_GUARD_AUDITED",
+                                                 "CUSTOMER_CUTOVER_TAMPER_NOT_GUARD_AUDITED"), attempts=30)
+        result["outcome"] = "CUTOVER_VERIFIED" if result["cutover"]["status"] == 202 else "CUTOVER_REFUSED"
+        return 0 if result["outcome"] == "CUTOVER_VERIFIED" else 1
     finally:
         if rt.RECOVERY.exists():
             trial.restore()
