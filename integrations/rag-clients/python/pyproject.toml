@@ -1,0 +1,17 @@
+[project]
+name = "accessproof-rag"
+version = "0.1.0"
+description = "Connect an existing RAG application (any OS) to an AccessProof Gateway: Layer 1 authorization before generation, Layer 2 verification before release."
+requires-python = ">=3.10"
+dependencies = []            # standard library only (portable: Linux, macOS, Windows)
+
+[project.optional-dependencies]
+langchain = ["langchain-core>=0.3"]
+llamaindex = ["llama-index-core>=0.12"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["accessproof_rag"]
