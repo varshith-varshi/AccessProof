@@ -20,6 +20,10 @@ from packages.connector_sdk.base import (
 from packages.domain.models import Capability, CapabilityStatus, Principal, SourceResource
 
 
+class DeltaResyncRequired(Exception):
+    """Microsoft Graph returned 410 resyncRequired for a delta token."""
+
+
 class Microsoft365Adapter(SourceAdapter):
     provider = "microsoft365"
     GRAPH = "https://graph.microsoft.com/v1.0"
@@ -222,8 +226,25 @@ class Microsoft365Adapter(SourceAdapter):
             path = self._continuation_path(
                 delta_url, f"/v1.0/drives/{self.drive_id}/root/delta"
             )
-        return cast(dict[str, Any], (await self._request(
-            "GET", path, headers={"Prefer": self.DELTA_PREFER})).json())
+        response = await self._request("GET", path, headers={"Prefer": self.DELTA_PREFER})
+        if response.status_code == 410:
+            # Graph: the token is no longer valid (expired, or issued under
+            # different delta preferences). The client must resynchronize (D-24).
+            raise DeltaResyncRequired("MICROSOFT_DELTA_RESYNC_REQUIRED")
+        return cast(dict[str, Any], response.json())
+
+    async def resync_delta_page(self) -> dict[str, Any]:
+        """Synthetic 'everything changed' page for a 410 resync (D-24).
+
+        The new checkpoint is captured FIRST, so a change made while the subtree
+        is re-read is still delivered by the next delta. Every item inside the
+        approved root (and the root itself) is returned as changed, so the
+        caller re-reads every permission set and revokes grants that vanished.
+        """
+        checkpoint = await self.acl_latest_delta_link()
+        items = await self.list_boundary_resources()
+        root = {"id": self.test_root_item_id, "folder": {}, "name": "configured Microsoft boundary"}
+        return {"value": [root, *items], "@odata.deltaLink": checkpoint, "_accessproof_resync": True}
 
     async def is_inside_boundary(self, item_id: str, *, max_depth: int = 64) -> bool:
         """Confirm Graph item ancestry inside the explicitly approved folder.

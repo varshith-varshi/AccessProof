@@ -26,7 +26,7 @@ from apps.api.accessproof_api.db import (
     SourceConnection,
 )
 from connectors.google_drive.adapter import GoogleDriveAdapter
-from connectors.microsoft365.adapter import Microsoft365Adapter
+from connectors.microsoft365.adapter import DeltaResyncRequired, Microsoft365Adapter
 from packages.connector_sdk.base import AuthenticationError, AuthorizationError, ProviderUnavailableError, RateLimitError
 
 
@@ -590,7 +590,21 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
         base_revision = 0
     try:
         while pages < max_pages and (pages == 0 or token):
-            page = await (adapter.acl_change_page(token) if provider == "google-drive" else adapter.acl_delta_page(token))
+            try:
+                page = await (adapter.acl_change_page(token) if provider == "google-drive" else adapter.acl_delta_page(token))
+            except DeltaResyncRequired:
+                # D-24: an expired/incompatible delta token used to leave the
+                # cursor degraded forever. Re-read the whole approved subtree as
+                # one change set at the next revision: every permission set is
+                # re-snapshotted and grants on vanished items are revoked.
+                page = await adapter.resync_delta_page()
+                listed = {str(item.get("id")) for item in page["value"] if isinstance(item, dict)}
+                for known in db.scalars(select(GuardResource).where(
+                    GuardResource.organization_id == source.organization_id,
+                    GuardResource.source_id == source.id,
+                )):
+                    if known.provider_resource_id not in listed:
+                        page["value"].append({"id": known.provider_resource_id, "removed": True})
             pages += 1
             # ``last_provider_revision`` is the high-water mark of the
             # *emitted* normalized events.  The initial inventory is version
