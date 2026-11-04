@@ -1,0 +1,157 @@
+{
+ "schema": "accessproof.buffered_release/v1",
+ "observed_at": "2026-11-04T15:33:32.502670+00:00",
+ "results": [
+  {
+   "test": "E2E-01",
+   "gateway_decision_id": "aa54b0a3-43b2-459e-836b-47deda4500b3",
+   "layer1": [
+    {
+     "decision_id": "aa54b0a3-43b2-459e-836b-47deda4500b3",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T15:32:24.259162+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "aa54b0a3-43b2-459e-836b-47deda4500b3",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T15:32:32.742940+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-02",
+   "gateway_decision_id": "e26925ad-bb74-4b0a-bd17-fbfe794657e3",
+   "layer1": [
+    {
+     "decision_id": "e26925ad-bb74-4b0a-bd17-fbfe794657e3",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T15:32:34.112429+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "e26925ad-bb74-4b0a-bd17-fbfe794657e3",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T15:32:36.698292+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-03",
+   "gateway_decision_id": "613a8163-f2a6-4617-8d77-d0d915fdd380",
+   "layer1": [
+    {
+     "decision_id": "613a8163-f2a6-4617-8d77-d0d915fdd380",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T15:32:38.100379+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "613a8163-f2a6-4617-8d77-d0d915fdd380",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T15:32:41.590173+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-04",
+   "gateway_decision_id": "9d5313b6-ef48-413e-af4d-38d1cedfce83",
+   "layer1": [
+    {
+     "decision_id": "9d5313b6-ef48-413e-af4d-38d1cedfce83",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T15:32:42.923203+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "9d5313b6-ef48-413e-af4d-38d1cedfce83",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T15:32:45.479245+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-05",
+   "gateway_decision_id": "4307a880-ef67-4a82-980e-6fa111d0f9b0",
+   "layer1": [
+    {
+     "decision_id": "4307a880-ef67-4a82-980e-6fa111d0f9b0",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T15:32:46.757980+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "4307a880-ef67-4a82-980e-6fa111d0f9b0",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T15:32:51.479436+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "pass": true
+  },
+  {
+   "test": "E2E-06",
+   "gateway_decision_id": "7ef105a9-9e26-4a12-b0a8-974a84a44b14",
+   "layer1": [
+    {
+     "decision_id": "7ef105a9-9e26-4a12-b0a8-974a84a44b14",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T15:32:52.784657+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "7ef105a9-9e26-4a12-b0a8-974a84a44b14",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T15:32:57.996883+00:00",
+     "authorization_revision": 989
+    }
+   ],
+   "pass": true
+  }
+ ],
+ "pass": true
+}
