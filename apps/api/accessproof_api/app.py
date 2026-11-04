@@ -1363,7 +1363,7 @@ def guard_policies(
     # Source health is evaluated at every machine sync, independent of policy
     # version. Guard must not trust an old ALLOW when Drive ACL polling fails.
     max_acl_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900")))
-    max_directory_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400")))
+    max_directory_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "900")))
     source_cursors = {
         (row.source_id, row.sync_kind): row
         for row in db.scalars(select(ProviderSyncCursorModel).where(
@@ -1651,7 +1651,7 @@ def current_identity_resolution(
     from apps.api.accessproof_api.identity_resolution import MICROSOFT_PROVIDERS, resolution_summary
     org_id = actor.membership.organization_id
     summary = resolution_summary(db, org_id)
-    max_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400")))
+    max_age = max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "900")))
     now = datetime.now(timezone.utc)
     sources = []
     for source in db.scalars(select(SourceConnection).where(SourceConnection.organization_id == org_id)):
@@ -3397,7 +3397,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
         60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900"))
     ))
     directory_trusted = sync_healthy(directory_cursor, max_age_seconds=max(
-        60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400"))
+        60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "900"))
     ))
     checks.append({"code": "PERMISSION_SOURCE_SYNCED", "ok": acl_trusted,
                    "reason": None if acl_trusted else "Complete a recent, trusted permission synchronization."})
@@ -3729,7 +3729,7 @@ def _acl_freshness_limit() -> int:
 
 
 def _directory_freshness_limit() -> int:
-    return max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400")))
+    return max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "900")))
 
 
 def _route_certification_expired(db: OrmSession, row: AIApplication, now: datetime) -> bool:
@@ -7011,7 +7011,7 @@ def list_current_sources(
     now = datetime.now(timezone.utc)
     thresholds = {
         "acl": max(60, int(os.getenv("ACCESSPROOF_SOURCE_ACL_MAX_AGE_SECONDS", "900"))),
-        "directory": max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "2400"))),
+        "directory": max(60, int(os.getenv("ACCESSPROOF_SOURCE_DIRECTORY_MAX_AGE_SECONDS", "900"))),
     }
     result = []
     for row in rows:

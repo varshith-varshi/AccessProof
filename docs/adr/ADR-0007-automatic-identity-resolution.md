@@ -85,7 +85,7 @@ row, and the Guard denies (`IDENTITY_MAPPING_UNRESOLVED`, HTTP 403 via D-20).
 
 ### First login and new hires
 There is no per-login step. A new hire becomes resolvable at the **next
-directory sync** (`ACCESSPROOF_DIRECTORY_SYNC_SECONDS`, default 900 s). Until
+directory sync** (`ACCESSPROOF_DIRECTORY_SYNC_SECONDS`, default 300 s since r31; was 900 s). Until
 then they are denied with `IDENTITY_MAPPING_UNRESOLVED`. On-demand resolution
 at first login is not implemented: it would need the Guard to send employee
 identifiers to the control plane, which the current design deliberately

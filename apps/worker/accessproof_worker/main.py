@@ -50,7 +50,7 @@ from apps.api.accessproof_api.observability import (
 from packages.observability.tracing import configure_tracing
 
 POLL_SECONDS = float(os.getenv("ACCESSPROOF_WORKER_POLL_SECONDS", "2"))
-DIRECTORY_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_DIRECTORY_SYNC_SECONDS", "900")))
+DIRECTORY_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_DIRECTORY_SYNC_SECONDS", "300")))
 ACL_SYNC_SECONDS = max(60, int(os.getenv("ACCESSPROOF_ACL_SYNC_SECONDS", "300")))
 # Poll for source-scoped queued bootstrap jobs without making every healthy
 # Google source resynchronize more frequently than its configured cadence.
