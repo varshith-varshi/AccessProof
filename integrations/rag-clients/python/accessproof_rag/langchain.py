@@ -20,14 +20,18 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from .client import AccessProofGateway, TrustedChunk
 
 
-class AccessProofRAG(Runnable[dict, str]):
-    def __init__(self, *, retriever: BaseRetriever, gateway: AccessProofGateway) -> None:
-        self.retriever, self.gateway = retriever, gateway
+class AccessProofRAG(Runnable[dict, Any]):
+    """Returns the answer text, or the full ProtectedAnswer (decision_id,
+    request_id) when ``return_answer=True``."""
 
-    def invoke(self, input: dict, config: RunnableConfig | None = None, **kwargs: Any) -> str:
+    def __init__(self, *, retriever: BaseRetriever, gateway: AccessProofGateway, return_answer: bool = False) -> None:
+        self.retriever, self.gateway, self.return_answer = retriever, gateway, return_answer
+
+    def invoke(self, input: dict, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
         if not isinstance(input, dict) or not isinstance(input.get("question"), str):
             raise ValueError("input must be {'question': str, 'employee_token': str}")
         token = input.get("employee_token") or ((config or {}).get("configurable") or {}).get("employee_token")
         docs = self.retriever.invoke(input["question"], config=config)
         chunks = [TrustedChunk.from_metadata(d.page_content, d.metadata) for d in docs]
-        return self.gateway.answer(token, input["question"], chunks, request_id=input.get("request_id")).text
+        answer = self.gateway.answer(token, input["question"], chunks, request_id=input.get("request_id"))
+        return answer if self.return_answer else answer.text

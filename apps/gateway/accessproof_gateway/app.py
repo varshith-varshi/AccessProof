@@ -26,7 +26,7 @@ from urllib.parse import urlsplit
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -37,6 +37,7 @@ from packages.rag_core.roster import RosterError, RosterVerifier
 from packages.rag_core.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
 from packages.demo_cache.trusted_snapshot import load_snapshot, SnapshotInvalid
 from packages.rag_core.request_signing import SignatureError
+from .gateway_audit import AUDIT_CONTEXT, GatewayAuditLog, audit_note
 from .remote_access import PROTECTED_PREFIXES, RemoteAccess
 from .model_adapters import ModelAdapter, ModelProtocolError, selected_adapter
 from .presence import PresenceReporter, PresenceSettings
@@ -654,6 +655,7 @@ class GatewayService:
             # replay that text into a new model request.
             raise HTTPException(422, "MULTISOURCE_CONVERSATION_LINEAGE_UNTRACKED")
         request_id = request.request_id or str(uuid4())
+        audit_note(request_id=request_id)
         self._enforce_audience(employee_token, _valid_participant_tokens(request.participant_tokens),
                                request.conversation_roster)
         guard = self._guard(employee_token, _valid_participant_tokens(request.participant_tokens),
@@ -731,6 +733,7 @@ class GatewayService:
             # Denied retrieved candidates never became generator inputs.
             source_trace=lambda: list(generated_source_trace),
         )
+        audit_note(decision_id=result.decision_id, decision=result.decision, reason=result.reason)
         # This endpoint is a Protect boundary, not an observational Shadow
         # endpoint. A future SDK path returning would_allow must never be
         # interpreted as successful certified enforcement.
@@ -775,6 +778,7 @@ def create_app(
     model_adapter: ModelAdapter | None = None,
     presence: PresenceReporter | None = None,
     remote: "RemoteAccess | None" = None,
+    audit_log: "GatewayAuditLog | None" = None,
 ) -> FastAPI:
     resolved = settings or GatewaySettings.from_env()
     service = GatewayService(resolved, client=client, model_adapter=model_adapter)
@@ -828,6 +832,24 @@ def create_app(
     )
     # Fail closed at startup: remote exposure without TLS + client keys refuses to run.
     remote_access = remote or RemoteAccess.from_env()
+    gateway_audit = audit_log if audit_log is not None else GatewayAuditLog.from_env()
+
+    async def audited(request: Any, response: Any, client_id: str | None, notes: dict) -> Any:
+        """Append the signed audit record; never release an unaudited response."""
+        if hasattr(response, "body_iterator"):
+            body = b"".join([part async for part in response.body_iterator])
+        else:
+            body = bytes(response.body)
+        try:
+            await run_in_threadpool(
+                gateway_audit.append, client_id=client_id, method=request.method, path=request.url.path,
+                http_status=response.status_code, request_body=request._body, response_body=body, notes=notes)
+        except Exception:
+            return JSONResponse(status_code=503, content={"detail": "GATEWAY_AUDIT_UNAVAILABLE"},
+                                headers={"Cache-Control": "no-store"})
+        headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+        return Response(content=body, status_code=response.status_code, headers=headers,
+                        media_type=response.media_type)
 
     @app.middleware("http")
     async def limit_request_bytes(request: Any, call_next: Any) -> Any:
@@ -846,6 +868,10 @@ def create_app(
                 return JSONResponse(status_code=413, content={"detail": "REQUEST_TOO_LARGE"})
             chunks.append(chunk)
         request._body = b"".join(chunks)  # Starlette cached body for downstream JSON parsing.
+        audit_this = gateway_audit is not None and request.url.path.startswith(PROTECTED_PREFIXES)
+        notes: dict = {}
+        AUDIT_CONTEXT.set(notes)
+        client_id = None
         if remote_access.remote and request.url.path.startswith(PROTECTED_PREFIXES):
             # Cross-host exposure: authenticate the calling APPLICATION over the
             # exact bytes (and the employee token) before any processing.
@@ -863,10 +889,16 @@ def create_app(
             except SignatureError as exc:
                 code = str(exc)
                 status = 429 if code == "CLIENT_RATE_LIMITED" else 401
-                return JSONResponse(status_code=status, content={"detail": code},
-                                    headers={"Cache-Control": "no-store"})
+                rejected = JSONResponse(status_code=status, content={"detail": code},
+                                        headers={"Cache-Control": "no-store"})
+                if audit_this:
+                    notes["reason"] = code
+                    return await audited(request, rejected, request.headers.get("x-accessproof-client") or None, notes)
+                return rejected
             request.state.accessproof_client = client_id
         response = await call_next(request)
+        if audit_this:
+            response = await audited(request, response, client_id, notes)
         # Do not let a browser/CDN save an authorized employee-specific answer,
         # including cache-release and non-streamed response paths.
         response.headers["Cache-Control"] = "no-store"
