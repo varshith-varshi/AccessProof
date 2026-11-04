@@ -109,3 +109,40 @@ async def test_resync_revokes_vanished_and_restores_fresh_cursor(monkeypatch):
         await synchronize_acls(db, source, creds)
         db.commit()
         assert db.scalar(select(ProviderSyncCursor).where(ProviderSyncCursor.sync_kind == "acl")).status == "connected"
+
+
+# D-25: the fake above replaced acl_delta_page wholesale, so the REAL 410
+# classification was never exercised. Graph's 410 goes through _request ->
+# bounded_idempotent_request -> raise_for_status, which raised HTTPStatusError
+# before the old `status_code == 410` check; production stayed degraded.
+import httpx  # noqa: E402
+
+from connectors.microsoft365.adapter import Microsoft365Adapter  # noqa: E402
+
+
+def _real_adapter(handler):
+    adapter = Microsoft365Adapter(access_token="synthetic", drive_id="d1", test_root_item_id="root")
+    adapter._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return adapter
+
+
+@pytest.mark.asyncio
+async def test_real_adapter_maps_graph_410_to_resync_required():
+    seen = {}
+
+    def handler(request):
+        seen["prefer"] = request.headers.get("Prefer")
+        return httpx.Response(410, json={"error": {"code": "resyncRequired", "message": "Resync required."}})
+    adapter = _real_adapter(handler)
+    with pytest.raises(DeltaResyncRequired):
+        await adapter.acl_delta_page("https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=old")
+    assert "deltashowsharingchanges" in seen["prefer"]
+    await adapter._client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_real_adapter_other_4xx_still_raise_unchanged():
+    adapter = _real_adapter(lambda request: httpx.Response(404, json={"error": {"code": "itemNotFound"}}))
+    with pytest.raises(httpx.HTTPStatusError):
+        await adapter.acl_delta_page(None)
+    await adapter._client.aclose()

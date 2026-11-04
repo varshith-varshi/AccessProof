@@ -814,6 +814,12 @@ async def synchronize_due_acls() -> int:
                 cursor.last_error_code = exc.code
                 cursor.last_error_at = datetime.now(timezone.utc)
                 db.commit()
+                # D-25: the code alone hid the real cause for hours. Log the
+                # exception types only (no messages, URLs or tokens).
+                logger.warning(
+                    "scheduled_acl_sync_failed source_id=%s code=%s cause=%s",
+                    source_id, exc.code, type(exc.__cause__).__name__ if exc.__cause__ else "-",
+                )
             except OAuthRefreshError as exc:
                 db.rollback()
                 refreshed_source = db.get(SourceConnection, source_id)

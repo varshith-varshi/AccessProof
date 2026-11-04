@@ -226,11 +226,17 @@ class Microsoft365Adapter(SourceAdapter):
             path = self._continuation_path(
                 delta_url, f"/v1.0/drives/{self.drive_id}/root/delta"
             )
-        response = await self._request("GET", path, headers={"Prefer": self.DELTA_PREFER})
-        if response.status_code == 410:
+        try:
+            response = await self._request("GET", path, headers={"Prefer": self.DELTA_PREFER})
+        except httpx.HTTPStatusError as exc:
             # Graph: the token is no longer valid (expired, or issued under
             # different delta preferences). The client must resynchronize (D-24).
-            raise DeltaResyncRequired("MICROSOFT_DELTA_RESYNC_REQUIRED")
+            # D-25: _request raises for every 4xx (raise_for_status), so the 410
+            # must be classified here; a status check on the returned response
+            # was unreachable and left production degraded.
+            if exc.response is not None and exc.response.status_code == 410:
+                raise DeltaResyncRequired("MICROSOFT_DELTA_RESYNC_REQUIRED") from exc
+            raise
         return cast(dict[str, Any], response.json())
 
     async def resync_delta_page(self) -> dict[str, Any]:
