@@ -92,6 +92,13 @@ def verify_reference_evidence(
             by_request[event.request_id].append(event)
     if not all(by_request.get(request_id) for request_id in expected_ids.values()):
         return False, "GUARD_AUDIT_EVIDENCE_MISSING"
+    # D-29: the Guard uploads audits asynchronously; the Layer 2 record of a held
+    # response is written only when that response returns. A request that MUST
+    # have Layer 2 evidence but has none uploaded yet is "not yet delivered"
+    # (retryable), not a failed proof. A present but wrong record still fails.
+    for name in ("allow", "layer2_revoke"):
+        if not any(event.layer == "layer2" for event in by_request[expected_ids[name]]):
+            return False, "GUARD_AUDIT_EVIDENCE_MISSING"
 
     def get(name: str, layer: str, result: str, reason: str | None = None) -> list[Any]:
         return [event for event in by_request[expected_ids[name]]

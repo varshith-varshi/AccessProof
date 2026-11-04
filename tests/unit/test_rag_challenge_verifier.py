@@ -134,3 +134,12 @@ def test_observed_revoke_reason_must_match_guard_audited_reason():
 def test_policy_versions_beyond_current_guard_still_fail_closed():
     observations, events = _revision_variant()
     assert _check(observations, events, version=7) == (False, "INCONSISTENT_GUARD_POLICY")
+
+
+def test_d29_layer2_audit_not_yet_uploaded_is_retryable_not_a_failed_proof():
+    observations, events = _revision_variant()
+    without_l2 = [e for e in events if not (e.request_id == IDS["layer2_revoke"] and e.layer == "layer2")]
+    assert _check(observations, without_l2, version=8) == (False, "GUARD_AUDIT_EVIDENCE_MISSING")
+    # A present Layer 2 record that is NOT a block still fails hard.
+    wrong = without_l2 + [_event("layer2_revoke", "layer2", "allow", "TRUSTED_PROVENANCE_VALID", decision="revoke", policy=8)]
+    assert _check(observations, wrong, version=8)[1] == "REVOKE_NOT_BLOCKED_IN_LAYER2"
