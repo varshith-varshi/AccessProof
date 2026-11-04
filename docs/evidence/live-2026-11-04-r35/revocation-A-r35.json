@@ -1,0 +1,146 @@
+{
+ "schema": "accessproof.revocation_trial/v1",
+ "trial": "A",
+ "document": "finance_alice.txt",
+ "item_id": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP",
+ "baseline": {
+  "sharepoint_effective_view": true,
+  "guard": "ALLOW",
+  "accessproof_allows": true,
+  "revision": 862
+ },
+ "phases": [
+  {
+   "phase": "revoke",
+   "want": "DENY",
+   "t0_initiated": "2026-11-04T10:52:22.275326+00:00",
+   "t1_source_confirmed": "2026-11-04T10:52:30.498413+00:00",
+   "t2n_notification_received": "2026-11-04T10:52:55.039894+00",
+   "t2_accessproof_detected": "2026-11-04T10:53:12.829372+00:00",
+   "t3_revision_updated": "2026-11-04T10:53:17.054965+00:00",
+   "t4_guard_acknowledged": "2026-11-04T10:53:27.430776+00:00",
+   "t5_first_decision": "2026-11-04T10:53:18.485476+00:00",
+   "t6_stable_decision": "2026-11-04T10:54:19.697179+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 8.2,
+    "t2n_notification_received": 32.8,
+    "t2_accessproof_detected": 50.6,
+    "t3_revision_updated": 54.8,
+    "t4_guard_acknowledged": 65.2,
+    "t5_first_decision": 56.2,
+    "t6_stable_decision": 117.4
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T10:52:42.863860+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:53:00.260962+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:53:18.485457+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:53:28.712092+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:53:38.768030+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:53:48.697336+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:54:00.161675+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:54:09.807191+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:54:19.697162+00:00",
+     "decision": "DENY"
+    }
+   ],
+   "completed": true
+  },
+  {
+   "phase": "restore (E)",
+   "want": "ALLOW",
+   "t0_initiated": "2026-11-04T10:54:24.697826+00:00",
+   "t1_source_confirmed": "2026-11-04T10:54:33.176659+00:00",
+   "t2n_notification_received": "2026-11-04T10:54:56.362819+00",
+   "t2_accessproof_detected": "2026-11-04T10:55:15.085875+00:00",
+   "t3_revision_updated": "2026-11-04T10:55:18.754148+00:00",
+   "t4_guard_acknowledged": "2026-11-04T10:55:18.860156+00:00",
+   "t5_first_decision": "2026-11-04T10:55:20.337446+00:00",
+   "t6_stable_decision": "2026-11-04T10:56:30.218210+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 8.5,
+    "t2n_notification_received": 31.7,
+    "t2_accessproof_detected": 50.4,
+    "t3_revision_updated": 54.1,
+    "t4_guard_acknowledged": 54.2,
+    "t5_first_decision": 55.6,
+    "t6_stable_decision": 125.5
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T10:54:45.330163+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:55:02.408271+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T10:55:20.337435+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:55:30.660174+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:55:40.421479+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:55:50.446465+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:56:00.501473+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:56:10.379262+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:56:20.254857+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T10:56:30.218182+00:00",
+     "decision": "ALLOW"
+    }
+   ],
+   "completed": true
+  }
+ ],
+ "revoke": {
+  "trial": "A",
+  "document": "finance_alice.txt",
+  "at": "2026-11-04T10:52:22.275329+00:00",
+  "kind": "direct",
+  "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+ },
+ "restored_at": "2026-11-04T10:54:25.146759+00:00"
+}

@@ -1,0 +1,203 @@
+{
+ "schema": "accessproof.rag_e2e/v1",
+ "generated_at": "2026-11-04T10:52:00.058321+00:00",
+ "results": [
+  {
+   "test_identifier": "E2E-01",
+   "timestamp": "2026-11-04T10:51:00.758094+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "finance_alice.txt",
+   "question": "finance",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "4fe41684-dedf-4aa9-bdfa-07dad334bb1d",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "ec13d881094ce119c5e0ac4ba446a45fa399bab91763c4e9c2920034978569c2",
+    "answer_canaries": [
+     "finance_alice.txt"
+    ],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": [
+     "finance_alice.txt"
+    ]
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-02",
+   "timestamp": "2026-11-04T10:51:09.346426+00:00",
+   "employee_identity_reference": "bob",
+   "document_reference": "finance_alice.txt",
+   "question": "finance",
+   "expected_decision": "DENY",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "ed99eb5a-1edc-46de-98d7-ecbe00248479",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "e4ef3de3e373da88299fca0b2ddde0ecffabcbf603963865ab1a518f64791498",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "engineering_bob.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-03",
+   "timestamp": "2026-11-04T10:51:11.763052+00:00",
+   "employee_identity_reference": "bob",
+   "document_reference": "engineering_bob.txt",
+   "question": "engineering",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "59177239-8e1d-4113-a6d7-65a6c1704cc2",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "f6dd8543fca0e29b47aff5059974578d72f9c2d76661f4cce7a10000270f99c9",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "engineering_bob.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-04",
+   "timestamp": "2026-11-04T10:51:14.691330+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "engineering_bob.txt",
+   "question": "engineering",
+   "expected_decision": "DENY",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "60a8f414-ecd2-4e8b-81e5-2927eb901305",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "113c1faef501a1a2cc95349d69b66720f7f9a4a70d0db6532c77b7f84c5aa784",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-05",
+   "timestamp": "2026-11-04T10:51:18.909831+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "shared_control.txt",
+   "question": "shared",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "45d955f3-007e-4d14-9a0e-441293fe1950",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "1f418c6cb2d3139612f8db3dcb3b1ae042140f5521fad0b2b104a7b8f1290a6d",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-06",
+   "timestamp": "2026-11-04T10:51:24.359334+00:00",
+   "employee_identity_reference": "bob",
+   "document_reference": "shared_control.txt",
+   "question": "shared",
+   "expected_decision": "ALLOW",
+   "observed": {
+    "http_status": 200,
+    "gateway_decision": "allow",
+    "gateway_decision_id": "2c3d0ffc-0767-4a86-818f-67bdc7fef6ce",
+    "detail": null,
+    "cache_hit": false,
+    "answer_sha256": "de0576c95481e33aea2aead8e5e89a238611c14204e3762bf57e37f9529cd2c6",
+    "answer_canaries": [],
+    "model_calls": 1,
+    "model_context_documents": [
+     "engineering_bob.txt",
+     "shared_control.txt"
+    ],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-11",
+   "timestamp": "2026-11-04T10:51:27.013180+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "finance_alice.txt (content altered, original signature)",
+   "expected_decision": "DENY",
+   "observed": {
+    "http_status": 503,
+    "gateway_decision": null,
+    "gateway_decision_id": null,
+    "detail": {
+     "code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "request_id": "e7e7daba-92f2-41ba-a337-24e9b44b1b56"
+    },
+    "cache_hit": null,
+    "answer_sha256": null,
+    "answer_canaries": [],
+    "model_calls": 0,
+    "model_context_documents": [],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  },
+  {
+   "test_identifier": "E2E-10",
+   "timestamp": "2026-11-04T10:51:29.589119+00:00",
+   "employee_identity_reference": "alice",
+   "document_reference": "finance_alice.txt",
+   "expected_decision": "FAIL_CLOSED",
+   "observed": {
+    "http_status": 503,
+    "gateway_decision": null,
+    "gateway_decision_id": null,
+    "detail": "ACCESSPROOF_GATEWAY_UNAVAILABLE_503",
+    "cache_hit": null,
+    "answer_sha256": null,
+    "answer_canaries": [],
+    "model_calls": 0,
+    "model_context_documents": [],
+    "model_reply_documents": []
+   },
+   "status": "PASS"
+  }
+ ]
+}

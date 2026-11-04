@@ -141,11 +141,14 @@ class HeldTransport(httpx.BaseTransport):
     """Holds the layer2_revoke request until `release_at`, then pauses the model
     until the Guard installs a new authorization revision (max 27 s)."""
 
-    def __init__(self, release_at: float, log: dict, decision_probe=None):
+    def __init__(self, release_at: float, log: dict, decision_probe=None, on_hold=None):
         self.inner = httpx.HTTPTransport()
         self.release_at, self.log = release_at, log
         # Returns the Guard's live Layer 1 decision for the revoked document.
         self.decision_probe = decision_probe
+        # Event-driven barrier: called once the model answer is held (after
+        # Layer 1 allowed); performs the SharePoint revocation.
+        self.on_hold = on_hold
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and b"-layer2_revoke" in request.content:
@@ -162,6 +165,10 @@ class HeldTransport(httpx.BaseTransport):
         # freeze: freezing broke the Gateway's model connection -> 503 before Layer 2).
         before = guard_revision()
         self.log["model_held_at"], self.log["revision_at_hold"] = now(), before
+        if self.on_hold is not None:
+            time.sleep(1.0)   # Layer 1 has run; the model request is waiting on HOLD
+            self.log["revoke"] = self.on_hold()
+            self.log["revoked_at"] = now()
         start = time.monotonic()
         try:
             # Hold until the Guard returns a real DENY: during propagation it first
@@ -198,6 +205,50 @@ def wait_for_audit_delivery(nonce: str, timeout: float = 90.0) -> bool:
     return False
 
 
+def event_driven_attempt(a, log, admin, installation, alice, bob, shared, finance, tampered, trial, save):
+    """Deterministic in-flight revocation: Layer 1 allows, the model answer is held,
+    the grant is revoked in SharePoint, and the hold lasts until the Guard returns
+    a real DENY (max ~24 s, under the Gateway's model timeout). Returns the
+    verified challenge or None."""
+    resp = httpx.post(f"{API}/api/v1/current/ai-applications/{APP}/protection/challenge", headers=admin,
+                      json={"deployment_sha256": installation["deployment_sha256"],
+                            "route_sha256": installation["route_sha256"]}, timeout=30)
+    resp.raise_for_status()
+    challenge = resp.json()
+    NONCE_FILE.write_text(challenge["nonce"])
+    NONCE_FILE.chmod(0o600)
+    log["challenge_id"] = challenge["challenge_id"]
+    a_tok, b_tok = ei.fetch(str(alice), "api_token"), ei.fetch(str(bob), "api_token")
+    probes = (Probe("allow", a_tok, [shared], (200,)), Probe("deny", b_tok, [finance], (403,)),
+              Probe("tamper", a_tok, [tampered], (503,)), Probe("layer2_revoke", a_tok, [finance], (403, 503)))
+    agent = GatewayRouteChallenge(url=URL, application_id=APP, challenge_nonce=challenge["nonce"],
+                                  forbidden_canary="ACCESSPROOF_FORGED_SOURCE_SENTINEL",
+                                  allowed_canary=SHARED_CANARY, probes=probes, timeout_seconds=60)
+    probe_token = ei.fetch(str(alice), "api_token")
+    client = httpx.Client(transport=HeldTransport(0, log, lambda: rt.guard_decision(probe_token, finance["resource_id"]),
+                                                  on_hold=trial.revoke),
+                          base_url="http://127.0.0.1:8191", timeout=60, follow_redirects=False, trust_env=False)
+    try:
+        observed = agent.run(client=client)
+    except Exception as exc:
+        log["probe_failure"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        save()
+        return None
+    finally:
+        client.close()
+    log["probes"] = observed["probes"]
+    payload = {"challenge_id": challenge["challenge_id"], "nonce": challenge["nonce"],
+               "deployment_sha256": installation["deployment_sha256"], "route_sha256": installation["route_sha256"],
+               "contract": "accessproof.gateway/v1", "observations": observed["probes"],
+               "customer_route_verified": True, "ingress_boundary_verified": True,
+               "retrieval_boundary_verified": True, "output_boundary_verified": True, "alternate_route_blocked": True}
+    log["audit_delivered_before_submit"] = wait_for_audit_delivery(challenge["nonce"])
+    log["submit"] = guard_post("POST", f"/api/v1/guards/{{guard_id}}/rag-challenges/{challenge['challenge_id']}/submit",
+                               payload, retry_on=("GUARD_AUDIT_EVIDENCE_MISSING",), attempts=30)
+    save()
+    return challenge if log["submit"]["status"] == 202 else None
+
+
 def admin_session() -> dict:
     email, password = os.environ.get("AP_ADMIN_EMAIL"), os.environ.get("AP_ADMIN_PASSWORD")
     if not email or not password:
@@ -214,6 +265,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", required=True)
     p.add_argument("--attempts", type=int, default=3)
+    p.add_argument("--event-driven", action="store_true",
+                   help="r35+: hold the layer2_revoke answer, THEN revoke in SharePoint (deterministic barrier)")
     a = p.parse_args()
     result: dict = {"schema": "accessproof.route_certification_run/v1", "started_at": now(), "attempts": []}
 
@@ -246,6 +299,12 @@ def main() -> int:
                 if time.time() > deadline:
                     raise RuntimeError("Alice is not allowed on the finance document")
                 time.sleep(10)
+            if a.event_driven:
+                ok = event_driven_attempt(a, log, admin, installation, alice, bob, shared, finance, tampered, trial, save)
+                if ok:
+                    challenge = ok
+                    break
+                continue
             # Revoke right after a sync, so the NEXT sync is the first to see it.
             while True:
                 s0 = acl_last_started()

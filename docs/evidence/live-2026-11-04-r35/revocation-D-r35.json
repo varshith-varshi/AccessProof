@@ -1,0 +1,85 @@
+{
+ "schema": "accessproof.revocation_trial/v1",
+ "trial": "D",
+ "document": "delete_canary_alice.txt",
+ "item_id": "012JSJ74XYA5K6LBVN2NCKUZL6N4IUB7Q4",
+ "baseline": {
+  "sharepoint_effective_view": true,
+  "guard": "ALLOW",
+  "accessproof_allows": true,
+  "revision": 872
+ },
+ "phases": [
+  {
+   "phase": "revoke",
+   "want": "DENY",
+   "t0_initiated": "2026-11-04T11:07:26.340235+00:00",
+   "t1_source_confirmed": "2026-11-04T11:07:33.375838+00:00",
+   "t2n_notification_received": "2026-11-04T11:08:01.349098+00",
+   "t2_accessproof_detected": "2026-11-04T11:08:17.243233+00:00",
+   "t3_revision_updated": "2026-11-04T11:08:21.130485+00:00",
+   "t4_guard_acknowledged": "2026-11-04T11:08:21.225031+00:00",
+   "t5_first_decision": "2026-11-04T11:08:21.355475+00:00",
+   "t6_stable_decision": "2026-11-04T11:09:24.377916+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 7.0,
+    "t2n_notification_received": 35.0,
+    "t2_accessproof_detected": 50.9,
+    "t3_revision_updated": 54.8,
+    "t4_guard_acknowledged": 54.9,
+    "t5_first_decision": 55.0,
+    "t6_stable_decision": 118.0
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T11:07:45.367527+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T11:08:04.362944+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T11:08:21.355453+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:08:30.486809+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:08:39.455944+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:08:48.373159+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:08:57.268577+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:09:06.205537+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:09:15.283562+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T11:09:24.377891+00:00",
+     "decision": "DENY"
+    }
+   ],
+   "completed": true
+  }
+ ],
+ "revoke": {
+  "trial": "D",
+  "document": "delete_canary_alice.txt",
+  "at": "2026-11-04T11:07:26.340240+00:00",
+  "kind": "delete",
+  "item": "012JSJ74XYA5K6LBVN2NCKUZL6N4IUB7Q4"
+ }
+}
