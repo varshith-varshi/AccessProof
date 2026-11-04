@@ -1,0 +1,9 @@
+note: working tree dirty; shipping committed ea37fbbb141785403b9e7fb3166305fa73847696 only
+release=r38c-enforce-ea37fbb-ea37fbbb1417 sha256=b6eb63b966f2069265dce6dc4e19371fe3ecc3ee877828a3b0960a16fcb3cdd4
+SSM command 9f19c1ee-ee86-453c-9901-401f46b3ca08
+/home/ubuntu/accessproof-releases/r38c-enforce-ea37fbb-ea37fbbb1417/artifact.tar: OK
+2026-11-04T18:17:01Z release r38c-enforce-ea37fbb-ea37fbbb1417 starting
+2026-11-04T18:18:46Z images built; target DB revision x8c9d0e1f2a3
+2026-11-04T18:18:47Z backup verified (79 table-data entries)
+2026-11-04T18:18:50Z database at x8c9d0e1f2a3
+2026-11-04T18:19:19Z DEPLOYMENT VERIFIED: api/worker/web on r38c-enforce-ea37fbb-ea37fbbb1417, db x8c9d0e1f2a3

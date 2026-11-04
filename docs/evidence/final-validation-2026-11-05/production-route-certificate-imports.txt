@@ -1,0 +1,45 @@
+[ssm a386433f-666e-421f-9f29-35e88ce511f3]
+{"ok": true, "event": "REMOTE_ROUTE_CERTIFICATE_IMPORTED", "fingerprint": "85071fd8fbc80dfed119a73f2670f65947139c799e87b8ecf21a00ab86466614", "route_url": "http://127.0.0.1:28187", "status": {"applicable": true, "certified": true, "routes": [{"route_url": "http://127.0.0.1:28187", "fingerprint": "85071fd8fbc80dfed119a73f2670f65947139c799e87b8ecf21a00ab86466614", "framework": "langchain", "state": "VALID", "reason": null, "expires_at": "2026-11-11T17:02:55.993840+00:00", "last_attested_at": "2026-11-04T17:02:55.993840+00:00"}]}}
+{"ok": true, "event": "REMOTE_ROUTE_CERTIFICATE_IMPORTED", "fingerprint": "942c2b4ce2d77140904ecb85a25588829e90371e2e8b39bb0cee9c0c81c64bf0", "route_url": "http://127.0.0.1:28188", "status": {"applicable": true, "certified": true, "routes": [{"route_url": "http://127.0.0.1:28188", "fingerprint": "942c2b4ce2d77140904ecb85a25588829e90371e2e8b39bb0cee9c0c81c64bf0", "framework": "llamaindex", "state": "VALID", "reason": null, "expires_at": "2026-11-11T17:06:34.545137+00:00", "last_attested_at": "2026-11-04T17:06:34.545137+00:00"}, {"route_url": "http://127.0.0.1:28187", "fingerprint": "85071fd8fbc80dfed119a73f2670f65947139c799e87b8ecf21a00ab86466614", "framework": "langchain", "state": "VALID", "reason": null, "expires_at": "2026-11-11T17:02:55.993840+00:00", "last_attested_at": "2026-11-04T17:02:55.993840+00:00"}]}}
+{"ok": true, "event": "REMOTE_ROUTE_CERTIFICATE_IMPORTED", "fingerprint": "0e6f1d19470547a5d433535581794ea8ef907aa04acb48b56b8a660a10a1053c", "route_url": "http://127.0.0.1:19187", "status": {"applicable": true, "certified": true, "routes": [{"route_url": "http://127.0.0.1:19187", "fingerprint": "0e6f1d19470547a5d433535581794ea8ef907aa04acb48b56b8a660a10a1053c", "framework": "langchain", "state": "VALID", "reason": null, "expires_at": "2026-11-11T18:02:47.127037+00:00", "last_attested_at": "2026-11-04T18:02:47.127037+00:00"}]}}
+{
+ "applicable": true,
+ "certified": true,
+ "routes": [
+  {
+   "route_url": "http://127.0.0.1:28188",
+   "fingerprint": "942c2b4ce2d77140904ecb85a25588829e90371e2e8b39bb0cee9c0c81c64bf0",
+   "framework": "llamaindex",
+   "state": "VALID",
+   "reason": null,
+   "expires_at": "2026-11-11T17:06:34.545137+00:00",
+   "last_attested_at": "2026-11-04T17:06:34.545137+00:00"
+  },
+  {
+   "route_url": "http://127.0.0.1:28187",
+   "fingerprint": "85071fd8fbc80dfed119a73f2670f65947139c799e87b8ecf21a00ab86466614",
+   "framework": "langchain",
+   "state": "VALID",
+   "reason": null,
+   "expires_at": "2026-11-11T17:02:55.993840+00:00",
+   "last_attested_at": "2026-11-04T17:02:55.993840+00:00"
+  }
+ ]
+}
+{
+ "applicable": true,
+ "certified": true,
+ "routes": [
+  {
+   "route_url": "http://127.0.0.1:19187",
+   "fingerprint": "0e6f1d19470547a5d433535581794ea8ef907aa04acb48b56b8a660a10a1053c",
+   "framework": "langchain",
+   "state": "VALID",
+   "reason": null,
+   "expires_at": "2026-11-11T18:02:47.127037+00:00",
+   "last_attested_at": "2026-11-04T18:02:47.127037+00:00"
+  }
+ ]
+}
+
+[status Success]

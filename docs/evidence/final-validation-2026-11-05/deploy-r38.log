@@ -1,0 +1,5 @@
+release=r38-enforce-4899b09-4899b098374f sha256=8fdfae675073cba0fd79b965765cdd9ec0d9c822c32f4d98110a9c4cdf3746df
+SSM command a36f90c5-cf93-447a-8441-61d9bc7b6401
+/home/ubuntu/accessproof-releases/r38-enforce-4899b09-4899b098374f/artifact.tar: OK
+2026-11-04T17:36:40Z release r38-enforce-4899b09-4899b098374f starting
+2026-11-04T17:36:41Z unexpected DB revision w7a8b9c0d1e2

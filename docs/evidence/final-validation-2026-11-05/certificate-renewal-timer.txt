@@ -1,0 +1,5 @@
+NEXT                        LEFT LAST PASSED UNIT                           ACTIVATES
+Thu 2026-11-05 08:00:57 IST   7h -         - accessproof-cert-renewal.timer accessproof-cert-renewal.service
+
+1 timers listed.
+Pass --all to see loaded but inactive timers, too.

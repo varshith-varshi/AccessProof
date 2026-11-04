@@ -1,0 +1,5 @@
+release=r38d-enforce-e30e287-e30e2871c46f sha256=102cf95cbe697af84dc6b266976edcbdbab9a4daa2543285041b4c7f361f58a3
+SSM command 53b367a2-03d3-438e-8dcd-c74466371a77
+/home/ubuntu/accessproof-releases/r38d-enforce-e30e287-e30e2871c46f/artifact.tar: OK
+2026-11-04T18:54:53Z release r38d-enforce-e30e287-e30e2871c46f starting
+2026-11-04T18:54:53Z insufficient disk: 7G free (need 8G)

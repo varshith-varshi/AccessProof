@@ -1,0 +1,92 @@
+{
+ "schema": "accessproof.remote-route-certificate/v1",
+ "status": "CERTIFIED",
+ "binding": {
+  "tenant_id": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+  "application_id": "pilot-hr-rag",
+  "route_method": "POST",
+  "route_path": "/chat",
+  "route_url": "http://127.0.0.1:19187",
+  "client_id": "rag-pilot-01",
+  "framework": "langchain",
+  "framework_version": "1.7.4",
+  "client_package": "accessproof-rag/0.1.0",
+  "rag_code_sha256": "5eaded8605246e2e5ace4e2e92579dd4cf993127aa1c34d6b173342eb332c155",
+  "rag_runtime_config_sha256": "54c391778e2c6f983d8bb9d92f68fb5f69138a76e6dbb12e461175cda5184867",
+  "rag_platform": "linux",
+  "gateway_url": "https://ap-gateway.lab.internal:8443",
+  "gateway_tls_cert_sha256": "1254202d9a3b0bd67e6140694ad5d6ee5bfea5f87142327689773ad594fbc408",
+  "gateway_exposure": "{\"client_authentication\": \"required\", \"exposure\": \"remote\", \"tls\": \"gateway\"}",
+  "gateway_audit_public_key": "XqICYpk2owVEcOEbfL8_47U6beVuZVxT6S4L8fsKhx0",
+  "gateway_image": "sha256:d2f3db8e7be57504fbbdb183cae8c5a9586a5c322788d766a2f027b46fd47219",
+  "guard_image": "sha256:9b58e0a341aed6cca4cf57f4e67f033bfba44c59ce2f5d85d4b0bf209b9db98c",
+  "guard_identity_config_sha256": "0cba05371dab4752d7e93ca0536a10966a0fa937a0207ee77890484c6cbd7300",
+  "source_id": "4eb6863f-297a-4681-b913-30c48f9f916a",
+  "source_scope_digest": "49e4f99278742c8fdee33a09d1d4a647f760515123d39a3d15f64ce0985cfe1e"
+ },
+ "fingerprint": "0e6f1d19470547a5d433535581794ea8ef907aa04acb48b56b8a660a10a1053c",
+ "checks": [
+  {
+   "code": "AUTHORIZED_ACCESS_RELEASED",
+   "status": "PASS"
+  },
+  {
+   "code": "TRUSTED_PROVENANCE_VERIFIED",
+   "status": "PASS"
+  },
+  {
+   "code": "UNAUTHORIZED_ACCESS_DENIED",
+   "status": "PASS"
+  },
+  {
+   "code": "CACHE_REPLAY_PREVENTED",
+   "status": "PASS"
+  },
+  {
+   "code": "FORGED_CONTENT_REJECTED",
+   "status": "PASS"
+  },
+  {
+   "code": "TAMPERED_OR_REPLAYED_REQUEST_REJECTED",
+   "status": "PASS"
+  },
+  {
+   "code": "CROSS_TENANT_ISOLATED",
+   "status": "PASS"
+  },
+  {
+   "code": "DIRECT_MODEL_BYPASS_ABSENT",
+   "status": "PASS"
+  },
+  {
+   "code": "ALTERNATE_ROUTES_PROTECTED",
+   "status": "PASS"
+  },
+  {
+   "code": "FAIL_CLOSED_GATEWAY_UNAVAILABLE",
+   "status": "PASS"
+  },
+  {
+   "code": "FAIL_CLOSED_GUARD_UNAVAILABLE",
+   "status": "PASS"
+  },
+  {
+   "code": "MIDREQUEST_LAYER2_BLOCKED",
+   "status": "PASS"
+  },
+  {
+   "code": "REVOKED_DOCUMENT_DENIED",
+   "status": "PASS"
+  },
+  {
+   "code": "GATEWAY_GUARD_AUDIT_MATCH",
+   "status": "PASS"
+  }
+ ],
+ "failing": [],
+ "evidence_sha256": "d72e6772d47b59afcec7a296437b11c9bdd5ee9093865f9aa892c98e6133ff83",
+ "issued_at": "2026-11-04T18:02:47.127037+00:00",
+ "expires_at": "2026-11-11T18:02:47.127037+00:00",
+ "key_id": "ap-certifier-2026-11",
+ "signature": "9DLd2M7Usb0fysHVgtPJ_Ed3c5GHGICtDTrdkBlW-eahlTIiIIgyPH0Epa3sWOci7fdJ9_jrQlnHwseSWQLWCw"
+}
