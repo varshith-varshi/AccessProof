@@ -167,3 +167,10 @@ def test_llamaindex_query_engine_routes_through_gateway(remote):
     with pytest.raises((AccessDenied, ProtectionUnavailable)):
         bad.query("What is available?")
     assert observed["llm_count"] == 1
+
+
+def test_vendored_manifest_verifier_is_identical_to_server_copy():
+    root = Path(__file__).resolve().parents[4]
+    server = (root / "packages/rag_core/evidence_manifest.py").read_text()
+    vendored = (Path(__file__).resolve().parents[1] / "accessproof_rag/_manifest.py").read_text()
+    assert vendored.split("\n", 1)[1] == server

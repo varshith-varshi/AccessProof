@@ -27,6 +27,7 @@ from .signing import signed_headers
 
 TRUSTED_KEYS = ("source_id", "resource_id", "chunk_id", "content_version", "content_attestation")
 CHAT_PATH = "/v1/chat/completions"
+EVIDENCE_PATH = "/v1/evidence/manifest"
 
 
 class AccessProofError(RuntimeError):
@@ -117,6 +118,30 @@ class AccessProofGateway:
             self._ssl.minimum_version = ssl.TLSVersion.TLSv1_2
             if client_cert:
                 self._ssl.load_cert_chain(client_cert, client_key)
+
+    def fetch_evidence(self, source_id: str) -> bytes:
+        """Signed application request for the current trusted-ingestion manifest.
+        Returns the raw manifest bytes; the caller MUST verify them
+        (``accessproof_rag.evidence``). No employee token is involved."""
+        if self.client_id is None or self._secret is None:
+            raise IdentityRejected("APPLICATION_CREDENTIALS_REQUIRED")
+        body = json.dumps({"source_id": source_id}, separators=(",", ":")).encode("utf-8")
+        headers = {"Content-Type": "application/json",
+                   **signed_headers(self.client_id, self._secret, "POST", EVIDENCE_PATH, body, "")}
+        req = urllib.request.Request(self.base_url + EVIDENCE_PATH, data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout, context=self._ssl) as resp:
+                return resp.read(64_000_001)
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = json.loads(exc.read(64_000)).get("detail")
+            except (ValueError, AttributeError):
+                detail = None
+            code = detail.get("code") if isinstance(detail, dict) else (detail or f"HTTP_{exc.code}")
+            cls = {401: IdentityRejected, 403: AccessDenied}.get(exc.code, ProtectionUnavailable)
+            raise cls(str(code), exc.code) from None
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise ProtectionUnavailable(f"GATEWAY_UNREACHABLE:{type(exc).__name__}") from None
 
     def answer(self, employee_token: str, question: str, chunks: Sequence[TrustedChunk],
                *, request_id: str | None = None, conversation: Sequence[str] = ()) -> ProtectedAnswer:

@@ -8,6 +8,7 @@ dependencies = []            # standard library only (portable: Linux, macOS, Wi
 [project.optional-dependencies]
 langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.12"]
+evidence = ["cryptography>=42"]    # continuous trusted-ingestion evidence (remote RAG hosts)
 
 [build-system]
 requires = ["setuptools>=68"]

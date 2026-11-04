@@ -58,6 +58,23 @@ class KeywordIndex:
                 "content_version": row["version"], "content_attestation": row["attestation"]}
 
 
+class SubscribedIndex:
+    """Retrieval over the CURRENT verified evidence manifest. Raises
+    EvidenceUnavailable when evidence is missing/expired (route answers 503)."""
+
+    def __init__(self, cfg: dict):
+        self.source_id, self.application_id = cfg["source_id"], cfg["application_id"]
+        self.subscriber = None
+
+    def search(self, question: str, limit: int = 5) -> list[dict]:
+        return [{"doc_id": c.resource_id, "chunk_id": c.chunk_id, "text": c.content, "version": c.content_version,
+                 "attestation": c.content_attestation} for c in self.subscriber.search(question, limit)]
+
+    def metadata(self, row: dict) -> dict:
+        return {"source_id": self.source_id, "resource_id": row["doc_id"], "chunk_id": row["chunk_id"],
+                "content_version": row["version"], "content_attestation": row["attestation"]}
+
+
 def build_answerer(framework: str, index: KeywordIndex, gateway: AccessProofGateway):
     if framework == "plain":
         def answer(question, token, request_id):
@@ -122,12 +139,17 @@ def framework_version(framework: str) -> str | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--framework", choices=["plain", "langchain", "llamaindex"], required=True)
-    ap.add_argument("--index", required=True)
+    ap.add_argument("--index", help="static trusted-ingestion export (or use --evidence-subscribe)")
     ap.add_argument("--gateway", required=True)
     ap.add_argument("--ca")
     ap.add_argument("--client-id", required=True)
     ap.add_argument("--listen", default="127.0.0.1:8187")
     ap.add_argument("--client-secret-file", help="file holding the base64url client secret (preferred over env)")
+    ap.add_argument("--evidence-subscribe", action="store_true",
+                    help="continuously fetch refreshed signed trusted-ingestion evidence from the Gateway")
+    ap.add_argument("--evidence-config", help="JSON: tenant_id, source_id, manifest_keys, attestation_keys")
+    ap.add_argument("--evidence-cache", help="persisted verified manifest (survives restarts)")
+    ap.add_argument("--evidence-interval", type=float, default=300.0)
     ap.add_argument("--unsafe-search-route", action="store_true")
     ap.add_argument("--unsafe-direct-model-route", action="store_true")
     a = ap.parse_args()
@@ -135,9 +157,24 @@ def main() -> int:
               else os.environ.get("AP_CLIENT_SECRET"))
     if not secret:
         raise SystemExit("client secret required: --client-secret-file or AP_CLIENT_SECRET")
-    index = KeywordIndex(a.index)
-    gateway = AccessProofGateway(a.gateway, application_id=index.application_id, client_id=a.client_id,
-                                 client_secret=secret, ca_file=a.ca)
+    subscriber = None
+    if a.evidence_subscribe:
+        from accessproof_rag.evidence import EvidenceSubscriber
+        cfg = json.loads(Path(a.evidence_config).read_text(encoding="utf-8"))
+        index = SubscribedIndex(cfg)
+        gateway = AccessProofGateway(a.gateway, application_id=cfg["application_id"], client_id=a.client_id,
+                                     client_secret=secret, ca_file=a.ca)
+        subscriber = EvidenceSubscriber(gateway, source_id=cfg["source_id"], tenant_id=cfg["tenant_id"],
+                                        application_id=cfg["application_id"], manifest_keys=cfg["manifest_keys"],
+                                        attestation_keys=cfg["attestation_keys"], cache_path=a.evidence_cache,
+                                        interval_seconds=a.evidence_interval)
+        index.subscriber = subscriber
+        subscriber.refresh_once()
+        subscriber.start()
+    else:
+        index = KeywordIndex(a.index)
+        gateway = AccessProofGateway(a.gateway, application_id=index.application_id, client_id=a.client_id,
+                                     client_secret=secret, ca_file=a.ca)
     os.environ.pop("AP_CLIENT_SECRET", None)
     answer = build_answerer(a.framework, index, gateway)
     ca_sha = hashlib.sha256(Path(a.ca).read_bytes()).hexdigest() if a.ca else None
@@ -148,7 +185,10 @@ def main() -> int:
                 "platform": sys.platform, "python": sys.version.split()[0],
                 # Runtime configuration (flags, never secrets): part of the certified binding.
                 "runtime_config_sha256": hashlib.sha256(json.dumps(
-                    {k: v for k, v in sorted(vars(a).items()) if k != "client_secret_file"}).encode()).hexdigest(),
+                    {**{k: v for k, v in sorted(vars(a).items()) if k != "client_secret_file"},
+                     # pinned manifest/attestation keys are part of the certified configuration
+                     "evidence_config_sha256": hashlib.sha256(Path(a.evidence_config).read_bytes()).hexdigest()
+                     if a.evidence_config else None}).encode()).hexdigest(),
                 "routes": [{"method": "POST", "path": "/chat", "protected_by": "accessproof-gateway"}]}
 
     class Handler(BaseHTTPRequestHandler):
@@ -172,6 +212,11 @@ def main() -> int:
                 return self._send(200, {"status": "ok"})
             if self.path == "/.well-known/accessproof-route":
                 return self._send(200, manifest)
+            if self.path == "/health/evidence":
+                if subscriber is None:
+                    return self._send(404, {"detail": "STATIC_INDEX"})
+                h = subscriber.health()
+                return self._send(200 if h["state"] in ("OK", "DEGRADED") else 503, h)
             return self._send(404, {"detail": "NOT_FOUND"})
 
         def _question(self):
@@ -201,6 +246,11 @@ def main() -> int:
             rid = self.headers.get("X-Request-Id") or f"rag-{uuid.uuid4()}"
             if not REQUEST_ID.fullmatch(rid):
                 return self._send(400, {"detail": "INVALID_REQUEST_ID"})
+            if subscriber is not None:
+                try:
+                    subscriber.current()
+                except AccessProofError as e:          # evidence expired/missing: fail closed
+                    return self._send(503, {"detail": e.code, "request_id": rid})
             try:
                 text, decision_id = answer(q, auth[7:], rid)
             except IdentityRejected as e:

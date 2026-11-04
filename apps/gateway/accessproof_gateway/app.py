@@ -37,6 +37,7 @@ from packages.rag_core.roster import RosterError, RosterVerifier
 from packages.rag_core.cache import CacheDependency, CachedAnswerManifest, CachedAnswerManifestVerifier
 from packages.demo_cache.trusted_snapshot import load_snapshot, SnapshotInvalid
 from packages.rag_core.request_signing import SignatureError
+from .evidence_distribution import EvidenceDistribution
 from .gateway_audit import AUDIT_CONTEXT, GatewayAuditLog, audit_note
 from .remote_access import PROTECTED_PREFIXES, RemoteAccess
 from .model_adapters import ModelAdapter, ModelProtocolError, selected_adapter
@@ -779,6 +780,7 @@ def create_app(
     presence: PresenceReporter | None = None,
     remote: "RemoteAccess | None" = None,
     audit_log: "GatewayAuditLog | None" = None,
+    evidence: "EvidenceDistribution | None" = None,
 ) -> FastAPI:
     resolved = settings or GatewaySettings.from_env()
     service = GatewayService(resolved, client=client, model_adapter=model_adapter)
@@ -833,6 +835,7 @@ def create_app(
     # Fail closed at startup: remote exposure without TLS + client keys refuses to run.
     remote_access = remote or RemoteAccess.from_env()
     gateway_audit = audit_log if audit_log is not None else GatewayAuditLog.from_env()
+    evidence_distribution = evidence if evidence is not None else EvidenceDistribution.from_env()
 
     async def audited(request: Any, response: Any, client_id: str | None, notes: dict) -> Any:
         """Append the signed audit record; never release an unaudited response."""
@@ -915,6 +918,25 @@ def create_app(
         # Discloses only the security mode, never client ids or keys.
         return {"exposure": remote_access.exposure, "tls": remote_access.tls,
                 "client_authentication": "required" if remote_access.remote else "local-network-only"}
+
+    @app.post("/v1/evidence/manifest")
+    async def evidence_manifest(request: Request) -> Any:
+        # Remote RAG hosts fetch refreshed signed trusted-ingestion evidence.
+        # Application-authenticated (middleware), own tenant/application only,
+        # verified before serving; never an authorization decision.
+        if evidence_distribution is None or not remote_access.remote:
+            raise HTTPException(404, "EVIDENCE_DISTRIBUTION_DISABLED")
+        try:
+            source_id = json.loads((await request.body()) or b"{}").get("source_id")
+        except (ValueError, AttributeError):
+            raise HTTPException(400, "SOURCE_ID_INVALID")
+        status, payload = await run_in_threadpool(
+            evidence_distribution.serve, tenant_id=resolved.tenant_id, application_id=resolved.application_id,
+            source_id=source_id, attestation_keys=resolved.verifier.trusted_keys)
+        audit_note(reason="EVIDENCE_SERVED" if status == 200 else str(payload))
+        if status != 200:
+            raise HTTPException(status, payload)
+        return Response(content=payload, media_type="application/json")
 
     @app.get("/health/ready")
     def ready() -> dict[str, str]:
