@@ -1,0 +1,165 @@
+{
+ "schema": "accessproof.buffered_release/v1",
+ "observed_at": "2026-11-04T04:30:07.177925+00:00",
+ "claim": "Every answer the employee received was released only after Guard Layer 2 allowed that exact decision (non-streaming; the Gateway buffers the complete model output).",
+ "source": "lab Guard audit_buffer joined to rag-e2e-apitoken-r30.json gateway decision ids",
+ "results": [
+  {
+   "test": "E2E-01",
+   "gateway_decision_id": "56b43402-002d-4cba-8a39-4c11ba3a2981",
+   "layer1": [
+    {
+     "decision_id": "56b43402-002d-4cba-8a39-4c11ba3a2981",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T04:07:00.484838+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "56b43402-002d-4cba-8a39-4c11ba3a2981",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T04:07:07.927074+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "answer_sha256": "d13680149013b486e8fb0c2ed4d47ce93f0f8803596302e6b260471b0f56980b",
+   "pass": true
+  },
+  {
+   "test": "E2E-02",
+   "gateway_decision_id": "d55cec37-dd30-42c8-a462-8c5dcc7d521b",
+   "layer1": [
+    {
+     "decision_id": "d55cec37-dd30-42c8-a462-8c5dcc7d521b",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T04:07:09.244693+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "d55cec37-dd30-42c8-a462-8c5dcc7d521b",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T04:07:09.995362+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "answer_sha256": "8c7e6810c30689bb4158bef849cb839fed8db835a95edc7384cf5213bc644295",
+   "pass": true
+  },
+  {
+   "test": "E2E-03",
+   "gateway_decision_id": "aa0c2840-61bf-4570-a2cb-d193268b1ea6",
+   "layer1": [
+    {
+     "decision_id": "aa0c2840-61bf-4570-a2cb-d193268b1ea6",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T04:07:11.257535+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "aa0c2840-61bf-4570-a2cb-d193268b1ea6",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T04:07:14.027265+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "answer_sha256": "33542dd98f40cf56a18d11aa595dea1a8e2e5c3c55a22727f3dac2de0c19a1a3",
+   "pass": true
+  },
+  {
+   "test": "E2E-04",
+   "gateway_decision_id": "0e5440c7-5439-4035-aee7-2c0fdfc5140e",
+   "layer1": [
+    {
+     "decision_id": "0e5440c7-5439-4035-aee7-2c0fdfc5140e",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T04:07:15.326613+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "0e5440c7-5439-4035-aee7-2c0fdfc5140e",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T04:07:15.972364+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "answer_sha256": "75f91d62f8af65f333cbf1c6b94d1a8010eee32d677e2084deba9e0da1345dfa",
+   "pass": true
+  },
+  {
+   "test": "E2E-05",
+   "gateway_decision_id": "afbbab34-8aad-4f4b-8146-b21c5a50779d",
+   "layer1": [
+    {
+     "decision_id": "afbbab34-8aad-4f4b-8146-b21c5a50779d",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T04:07:17.278791+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "afbbab34-8aad-4f4b-8146-b21c5a50779d",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T04:07:20.278444+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "answer_sha256": "4aa973850c124abdf7aecaa4638e1e47a2e915e63d6aeb14b49b2f387a4a5087",
+   "pass": true
+  },
+  {
+   "test": "E2E-06",
+   "gateway_decision_id": "63a1a913-009b-483c-8647-9bf0b1302da4",
+   "layer1": [
+    {
+     "decision_id": "63a1a913-009b-483c-8647-9bf0b1302da4",
+     "layer": "layer1",
+     "result": "allow",
+     "reason": "LAYER1_EFFECTIVE_ACCESS",
+     "created_at": "2026-11-04T04:07:21.528827+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "layer2": [
+    {
+     "decision_id": "63a1a913-009b-483c-8647-9bf0b1302da4",
+     "layer": "layer2",
+     "result": "allow",
+     "reason": "TRUSTED_PROVENANCE_VALID",
+     "created_at": "2026-11-04T04:07:23.888439+00:00",
+     "authorization_revision": 743
+    }
+   ],
+   "answer_sha256": "bf1bcd1e9cf96155b6911ce7a2cf74aee494cd50e417f2ca1c7cc57c96e85f04",
+   "pass": true
+  }
+ ],
+ "pass": true
+}
