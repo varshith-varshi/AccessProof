@@ -135,13 +135,27 @@ def guard_revision() -> int | None:
     return int(r.stdout.strip()) if r.stdout.strip().isdigit() else None
 
 
+def indexed_version(resource_id: str) -> str | None:
+    """The document version the lab RAG indexed (what the Gateway sends since r31)."""
+    code = ("import sqlite3;c=sqlite3.connect('file:/data/index.db?mode=ro',uri=True);"
+            f"r=c.execute(\"select max(version) from chunks where doc_id='{resource_id}'\").fetchone();print(r[0] or '')")
+    out = subprocess.run(["docker", "exec", "sharepoint-rag-lab-rag-1", "python", "-c", code],
+                         capture_output=True, text=True).stdout.strip()
+    return out or None
+
+
 def guard_decision(id_token: str, resource_id: str) -> str:
-    """Layer 1 decision for ONE resource, exactly as the Gateway asks it."""
+    """Layer 1 decision for ONE resource, exactly as the Gateway asks it
+    (including the indexed content version the Gateway forwards)."""
+    ref = {"source_id": SOURCE, "resource_id": resource_id}
+    version = indexed_version(resource_id)
+    if version:
+        ref["content_version"] = version
     try:
         r = httpx.post(f"{GUARD_URL}/guard/v1/filter-resources", timeout=10,
                        headers={"Authorization": f"Bearer {id_token}"},
                        json={"application_id": APP, "request_id": f"rev-{time.time_ns()}",
-                             "resources": [{"source_id": SOURCE, "resource_id": resource_id}]})
+                             "resources": [ref]})
     except httpx.HTTPError:
         return "ERROR"
     if r.status_code != 200:
