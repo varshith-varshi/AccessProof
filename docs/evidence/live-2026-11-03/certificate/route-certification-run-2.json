@@ -1,0 +1,56 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T07:44:48.240839+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "acl_last_started_epoch": 1793778497.525768,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T07:48:48.197345+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "layer2_release_target": "2026-11-04T07:53:22.525768+00:00",
+   "challenge_id": "63677c8c-92e0-482b-aa07-ae971af1c558",
+   "layer2_revoke_sent_at": "2026-11-04T07:53:22.525974+00:00",
+   "model_paused_at": "2026-11-04T07:53:23.043436+00:00",
+   "revision_at_pause": 809,
+   "guard_decision_flipped_at": "2026-11-04T07:53:38.622356+00:00",
+   "probe_failure": "RouteChallengeError: layer2_revoke has no verified refusal reason",
+   "model_unpaused_at": "2026-11-04T07:53:39.661878+00:00"
+  },
+  {
+   "attempt": 2
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "b6008fc5c2573fb02bed75d4b24cc330e5c372991bb6585b78f8e662d6302adc",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe"
+}

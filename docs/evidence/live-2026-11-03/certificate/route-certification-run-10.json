@@ -1,0 +1,159 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T09:21:02.811795+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "acl_last_started_epoch": 1793783989.958503,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T09:21:10.795772+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "shots": [
+    {
+     "challenge_id": "4e9cffe2-3869-4832-bdc2-4b72d5503f1d",
+     "issued_at": "2026-11-04T09:24:56.321895+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T09:25:05.411655+00:00",
+     "model_held_at": "2026-11-04T09:25:05.519286+00:00",
+     "revision_at_hold": 838,
+     "model_released_at": "2026-11-04T09:25:30.482546+00:00",
+     "probe_failure": "RouteChallengeError: layer2_revoke returned unexpected status 200"
+    },
+    {
+     "challenge_id": "4286f0b7-ffc8-4a1f-ba51-7b9904169563",
+     "issued_at": "2026-11-04T09:25:33.272300+00:00",
+     "layer2_revoke_sent_at": "2026-11-04T09:25:35.236725+00:00",
+     "model_held_at": "2026-11-04T09:25:35.424544+00:00",
+     "revision_at_hold": 838,
+     "guard_decision_flipped_at": "2026-11-04T09:25:49.924745+00:00",
+     "model_released_at": "2026-11-04T09:25:50.225014+00:00"
+    }
+   ],
+   "challenge_id": "4286f0b7-ffc8-4a1f-ba51-7b9904169563",
+   "probes": [
+    {
+     "name": "allow",
+     "request_id": "ap-challenge-663b73a35b80128e052f1e0d-allow",
+     "http_status": 200,
+     "response_sha256": "ef7f418669b1db68dabf5b6d9a7b1b742bd999d7bc25a6c5bc8a85ca7749c262",
+     "response_byte_count": 587,
+     "forbidden_content_observed": false,
+     "reason_code": null,
+     "decision": "allow",
+     "decision_id": "9056edb0-0313-4e43-a9e1-b8daded066b8"
+    },
+    {
+     "name": "deny",
+     "request_id": "ap-challenge-663b73a35b80128e052f1e0d-deny",
+     "http_status": 403,
+     "response_sha256": "169fdba21cecae7f9e677d8fad6eb29f409d067f31dd7999b6810671e563b66b",
+     "response_byte_count": 103,
+     "forbidden_content_observed": false,
+     "reason_code": "NO_AUTHORIZED_RESOURCES",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "tamper",
+     "request_id": "ap-challenge-663b73a35b80128e052f1e0d-tamper",
+     "http_status": 503,
+     "response_sha256": "8efeaf60f4396efb801313c9a94699e2244925093398cc16fe2a79a6add22c39",
+     "response_byte_count": 115,
+     "forbidden_content_observed": false,
+     "reason_code": "SOURCE_CONTENT_ATTESTATION_FAILED",
+     "decision": null,
+     "decision_id": null
+    },
+    {
+     "name": "layer2_revoke",
+     "request_id": "ap-challenge-663b73a35b80128e052f1e0d-layer2_revoke",
+     "http_status": 503,
+     "response_sha256": "56776566be0c219f70504ad1a198da2a24e62d384527826688e495e882c54c29",
+     "response_byte_count": 119,
+     "forbidden_content_observed": false,
+     "reason_code": "AUTHORIZATION_REVISION_CHANGED",
+     "decision": null,
+     "decision_id": null
+    }
+   ],
+   "audit_delivered_before_submit": true,
+   "submit": {
+    "status": 202,
+    "body": {
+     "state": "tested_awaiting_customer_cutover",
+     "challenge_id": "4286f0b7-ffc8-4a1f-ba51-7b9904169563",
+     "guard_audits_matched": 6,
+     "protection_ready": false,
+     "production_certification": false,
+     "pending_guard_acknowledgment": false
+    }
+   }
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "b6008fc5c2573fb02bed75d4b24cc330e5c372991bb6585b78f8e662d6302adc",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "alice_grant_restored_at": "2026-11-04T09:26:05.457252+00:00",
+ "cutover_probe_failures": [
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result",
+  "CustomerAgentError: Employee RAG did not return a verified allowed result"
+ ],
+ "cutover": {
+  "status": 202,
+  "body": {
+   "state": "customer_cutover_verified",
+   "challenge_id": "4286f0b7-ffc8-4a1f-ba51-7b9904169563",
+   "guard_audits_matched": 38,
+   "guard_acknowledgment_required": true,
+   "protection_ready": false,
+   "production_certification": false
+  }
+ },
+ "guard_id": "102691c8-54d7-44d7-b1b1-bc40c9f335f4",
+ "outcome": "CUTOVER_VERIFIED",
+ "finished_at": "2026-11-04T09:30:01.789435+00:00"
+}

@@ -1,0 +1,66 @@
+{
+ "schema": "accessproof.route_certification_run/v1",
+ "started_at": "2026-11-04T08:23:23.520530+00:00",
+ "attempts": [
+  {
+   "attempt": 1,
+   "acl_last_started_epoch": 1793780708.389064,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T08:25:43.061943+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "layer2_release_target": "2026-11-04T08:30:19.389064+00:00",
+   "challenge_id": "73334c62-3e82-4ffa-aa03-dd4a21bdac83",
+   "layer2_revoke_sent_at": "2026-11-04T08:30:19.389323+00:00",
+   "model_held_at": "2026-11-04T08:30:19.499155+00:00",
+   "revision_at_hold": 821,
+   "probe_failure": "RouteChallengeError: layer2_revoke has no verified refusal reason",
+   "guard_decision_flipped_at": "2026-11-04T08:30:20.061927+00:00",
+   "model_released_at": "2026-11-04T08:30:20.362183+00:00"
+  },
+  {
+   "attempt": 2,
+   "acl_last_started_epoch": 1793781046.08274,
+   "revoke": {
+    "trial": "A",
+    "document": "finance_alice.txt",
+    "at": "2026-11-04T08:31:14.971905+00:00",
+    "kind": "direct",
+    "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+   },
+   "layer2_release_target": "2026-11-04T08:35:57.082740+00:00"
+  }
+ ],
+ "network_validation": {
+  "contract": "accessproof.gateway/v1",
+  "static_egress_isolated": true,
+  "rag_service": "rag",
+  "model_service": "model",
+  "external_model_endpoint": false,
+  "model_provider": "openai-compatible",
+  "guard_service": "accessproof-guard",
+  "guard_networks": [
+   "guard-internal"
+  ],
+  "rag_networks": [
+   "rag-internal"
+  ],
+  "gateway_networks": [
+   "accessproof-gateway-host",
+   "guard-internal",
+   "model-internal",
+   "rag-internal"
+  ],
+  "model_networks": [
+   "model-internal"
+  ],
+  "customer_deployment_certified": false,
+  "runtime_probes_still_required": true
+ },
+ "deployment_sha256": "b6008fc5c2573fb02bed75d4b24cc330e5c372991bb6585b78f8e662d6302adc",
+ "route_sha256": "a9eae8d676d6e184115a0d0037af50dbf827eb1cd9d582c85a888c1b397d33fe",
+ "alice_grant_restored_at": "2026-11-04T08:33:03.440875+00:00"
+}
