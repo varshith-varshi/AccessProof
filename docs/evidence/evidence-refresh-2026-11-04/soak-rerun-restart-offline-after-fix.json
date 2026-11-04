@@ -1,0 +1,10 @@
+[
+ {
+  "scenario": "rag_restart_offline",
+  "state_after_offline_restart": "OK",
+  "seq": 24,
+  "served_after_reconnect": 200,
+  "pass": true,
+  "at": "2026-11-04T15:02:13.695469+00:00"
+ }
+]

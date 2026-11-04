@@ -1,0 +1,17 @@
+{
+ "commit": "860d296",
+ "suites": {
+  "sqlite": {
+   "tests": 1638,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 10
+  },
+  "pg": {
+   "tests": 1638,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 4
+  }
+ }
+}

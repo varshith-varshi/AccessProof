@@ -1,0 +1,3536 @@
+{
+ "schema": "accessproof.evidence-refresh-soak/v1",
+ "started_at": "2026-11-04T13:20:48.214311+00:00",
+ "samples": [
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:20:56.262304+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "338051b0-0967-42ff-b6dd-44cb7ea3cb66",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-800d57ee-7e85-4d81-89eb-ca5850fae765",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 1,
+     "seconds_remaining": 1500.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 1,
+     "seconds_remaining": 1500.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 2,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:19:09+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:21:52.535988+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "27374a51-6087-448d-848d-ba780913bdfe",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-596046db-ade7-4f3c-bf82-41202b46c744",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 1,
+     "seconds_remaining": 1444.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 1,
+     "seconds_remaining": 1444.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 2,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:19:09+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:22:59.169262+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "17731d8a-5ab7-4265-9ea1-d497dab95035",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "request_id": "soak-e91e8e7b-99e5-441d-9065-6132074b392a",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1567.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1567.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 2,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:19:09+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:23:50.201619+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "332fd832-f686-483d-8c6b-0424df98a7f1",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-64203759-0a60-4fee-b0da-3f309b80f221",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1516.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1516.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 2,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:19:09+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:24:51.389880+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5a896e57-1e19-4ffc-97a9-4589260e67a6",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-90a68d98-c3fa-4065-8479-76f864ce109a",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1455.6
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1455.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 2,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:19:09+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:25:57.312267+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "56a6e4ff-eeb6-433d-90a6-af3604c849dc",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-9d382d57-008c-4f6c-a52c-0259e29f5662",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1389.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 2,
+     "seconds_remaining": 1389.6
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 5,
+    "seconds_remaining": 1796.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:25:54+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:26:52.829480+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "eca7a31d-3676-4fca-9b9f-2a087b312197",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-ef957e11-9a72-42bc-8c14-c470ab31fc64",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 5,
+     "seconds_remaining": 1738.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 5,
+     "seconds_remaining": 1738.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 5,
+    "seconds_remaining": 1796.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:25:54+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:27:53.999269+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "25e5a3d8-b9f8-449f-858f-045645c9c05f",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "shared_control.txt"
+   ],
+   "request_id": "soak-be66063b-53f7-4fc1-93e3-51de89ee8655",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 5,
+     "seconds_remaining": 1677.0
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 5,
+     "seconds_remaining": 1676.9
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 5,
+    "seconds_remaining": 1796.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:25:54+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:31:06.742778+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "76deb011-ae2f-4b26-80d0-d3c716fae7d1",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-28d85f04-2957-4b28-b7dc-6ac00e346d74",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1668.2
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1668.2
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 8,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:31:00+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:31:52.414695+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "a44e6239-3c38-45b7-a0ea-333d167da537",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-50245eda-dd43-4d3b-a3c3-746f8d82c57c",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1622.6
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1622.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 8,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:31:00+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:32:51.400951+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "7cf1d382-dc28-4c3b-88c8-c4068caa6362",
+   "model_context_documents": [
+    "engineering_bob.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-7c09bcf9-0519-4982-8554-6ed29eda31ac",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1563.5
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1563.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 8,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:31:00+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:33:50.098495+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "e7bca41f-0ed8-45a6-8b89-f442507b81ed",
+   "model_context_documents": [
+    "engineering_bob.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-33b21eb1-e03f-4467-a5e1-1f08501962f0",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1504.9
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 7,
+     "seconds_remaining": 1504.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 8,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:31:00+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:34:53.046394+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "14bc9922-5daf-4395-8b05-816ab178ecb0",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-b7a69a58-f7b0-48dd-9eb3-b94fe8e601f2",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 8,
+     "seconds_remaining": 1564.9
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 8,
+     "seconds_remaining": 1564.9
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 8,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:31:00+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:35:51.597478+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "2d67492d-3b2e-4dc3-b654-d407733704c5",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-6f4c622b-4243-4140-93a6-4d0222aab166",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 8,
+     "seconds_remaining": 1506.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 8,
+     "seconds_remaining": 1506.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 9,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:35:41+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:42:59.703912+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "9f4bc79f-99f2-4400-8237-d9ade66502ed",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-c4f6f4c4-f2bf-480e-8bd3-6804b3f67d25",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 11,
+     "seconds_remaining": 1531.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 11,
+     "seconds_remaining": 1531.2
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 11,
+    "seconds_remaining": 1797.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:38:33+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:43:52.233445+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "72fe879a-7d4f-41e1-afbc-44182a3a122b",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-d066b316-5fc5-4c73-b492-99808d7d6b2d",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 11,
+     "seconds_remaining": 1478.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 11,
+     "seconds_remaining": 1478.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 12,
+    "seconds_remaining": 1797.3,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:43:44+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:46:46.714711+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d05c1f74-7f5c-4aeb-a5d2-6246e9157e04",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-4c244508-0673-4112-a858-724d9e105c59",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1742.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1742.2
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 14,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:45:51+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:46:52.180526+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "861714ed-d653-46d0-89f8-041c53ef0f17",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-6dd77fd6-2772-40d4-b022-afa9224f2f9b",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1736.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1736.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 14,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:45:51+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:47:51.641512+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5a08499d-3c1c-4fcb-b459-4f41f54d381d",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "request_id": "soak-254a4112-c278-44d3-87ce-7c6fa897994e",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1677.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1677.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 14,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:45:51+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:48:50.678696+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "21e6eff5-0b09-4a5b-9229-dd58a721de54",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-062fa7df-dfed-4542-9661-bd52dbc8faa8",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1618.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1618.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 14,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:45:51+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:49:51.587065+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "6358010e-4474-4d20-900b-3ae8380e0f90",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-730d7626-c5c1-4ed8-994e-75d570c76823",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1557.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1557.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 14,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:45:51+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:50:51.345248+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "eff654bc-15f1-4cfb-9291-f127b5929095",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-e162c897-ae82-481e-8de0-675ad869e7d9",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1497.6
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1497.6
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 14,
+    "seconds_remaining": 1797.2,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:45:51+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:51:51.418465+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "6d952cbe-3ac6-4360-a964-1b58d33efe69",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-ed7af817-02ec-4a02-b079-8ce5c9f88348",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1437.6
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1437.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 15,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:51:46+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:52:53.362849+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "e9832a06-3411-4629-b117-09017ab8a41e",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-6d66834d-3e96-46a9-85f5-76c117803fc2",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1375.6
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1375.6
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 15,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:51:46+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:53:51.981623+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "610a7f36-d038-4e27-beaf-cfe08f4f4e28",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-89a076af-994f-4893-884b-adb24801000e",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1317.0
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 14,
+     "seconds_remaining": 1316.9
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 15,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:51:46+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:54:53.255416+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "e6d0ac33-0518-4614-add0-9975d54b2554",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-1900e837-f24c-4d74-8890-e51d753fa628",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1609.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1609.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 15,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:51:46+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:55:50.622737+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "92010161-3602-45e2-9b40-a14416d54405",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-96606609-8672-4e31-b9d2-bf2b939f4359",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1552.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1552.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 15,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:51:46+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:57:01.874684+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "804d7930-8f65-42c2-9344-093d156dea59",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-fcc3d9bf-30bd-4388-bdbb-9993afc3e8df",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1481.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1481.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 16,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:56:59+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:57:52.603605+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "3829226e-92e5-4f12-9390-abf50fea9b92",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-bdb0674f-bf79-40e9-8a50-40b833bdcf7d",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1430.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 15,
+     "seconds_remaining": 1430.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 16,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:56:59+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T13:58:52.515127+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "ccdbe9a4-38ce-44ac-995d-93b7a28fe9e8",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-0e939b56-384c-4766-95d9-a99286b05024",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 16,
+     "seconds_remaining": 1684.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 16,
+     "seconds_remaining": 1684.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 16,
+    "seconds_remaining": 1797.5,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:56:59+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T13:59:52.133799+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "3962995c-3abf-4cd7-8c08-3f9e3649beca",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-cceddb44-7c93-485c-b4c2-11fa6dc5a324",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 16,
+     "seconds_remaining": 1624.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 16,
+     "seconds_remaining": 1624.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:01:20.833554+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "479fa25d-471f-4aea-afe9-d8834f321b95",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "shared_control.txt"
+   ],
+   "request_id": "soak-fe7c61ba-13c2-4429-968c-18af989baaf0",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1692.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 16,
+     "seconds_remaining": 1536.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:01:49.473137+00:00",
+   "actor": "alice",
+   "http_status": null,
+   "detail": "ROUTE_UNREACHABLE:RemoteProtocolError",
+   "gateway_decision_id": null,
+   "model_context_documents": [],
+   "answer_canaries": [],
+   "request_id": "soak-bc6da842-0160-45c5-9bd2-5b8e7247d1f0",
+   "rag_evidence": {
+    "langchain": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1663.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:02:51.434263+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "ea1aa7ad-813d-47f3-9c9c-993f1593df81",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-102e1090-5f35-45da-9429-dcb8e4c0a523",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1601.5
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1601.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:03:51.325915+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d711c2ef-1283-499f-b721-7ee81e8667f5",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-f48c074d-a634-4542-86cc-38f7f7fe4afd",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1541.6
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1541.6
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:04:50.655821+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "ac830e5a-bbe4-4cfb-b178-cf577c54974e",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-f2b40b47-8cd7-45a7-85e7-bed8a2c21b05",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1482.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1482.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:05:50.312935+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "b9e30efc-e3f5-4d19-8e53-27329e35ba77",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-558d6d8a-32bd-4b57-b748-9d918c00bad4",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1422.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1422.6
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:07:03.138059+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "daee791a-2e16-4c2e-a32b-ec7262d05b3f",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-aadc420e-5e1c-43a5-820a-5029c516334f",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1349.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1349.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 17,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T13:59:35+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:07:50.243891+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "c57a2b4b-6d17-4d3c-8f81-899f3c2799de",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-e3862957-e3de-4130-a12b-e69cdaee50c8",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1302.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1302.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:08:54.484161+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "c30b25ba-fdf4-483f-9f7c-14f9a71e09ef",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-876819fa-f4be-4041-ab50-a86c110afdba",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1238.5
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1238.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:09:52.061667+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d321a9db-4b69-46e4-aa34-1807052e301f",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-09433ffc-e406-414a-bb10-189095fc2eb6",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 17,
+     "seconds_remaining": 1180.9
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1647.9
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:10:51.727654+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d22519dd-8664-450c-a6b8-27937ad22ef3",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-eb1916f9-ff6f-470e-95a7-510ff5ca8713",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1588.3
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:11:52.021565+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "86940010-d4bf-4edc-88a7-21333553b2a8",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-6156df10-2f53-4557-898b-d2cd744d43d9",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1528.0
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:12:51.515912+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "f2190a45-36a9-4ba6-bdd9-ecb64ff8e016",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-9d4ccc32-df7c-43ca-97cf-7b3c593748c4",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1468.5
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:13:51.790901+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "493e7d4e-1210-41f2-ac03-e6a8e19c2e87",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-dd9be283-f301-40c4-be5c-74f073a88667",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1408.2
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:14:53.258824+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5c1c8253-331d-4e80-89eb-32cef7147e55",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-1ab8da2f-68f5-4b09-9683-3607f1574f73",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1346.7
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:15:50.181286+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "7d8e5e13-c4b0-43d5-84e5-e49477382e9d",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-02c1f520-54f5-4ed8-ad26-b433aaf10899",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1289.8
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 18,
+    "seconds_remaining": 1796.8,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:07:23+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:16:49.939229+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "a3ced725-a94a-459a-9af7-c93d51c83a87",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-0b7f9430-32a3-4657-ae04-cf2474bdf4a1",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1230.0
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:17:52.202381+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d4e3f98c-9aec-40c8-b6d6-9da2299f1284",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-28cac97b-afdf-425f-b085-1fd0e010485c",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 18,
+     "seconds_remaining": 1167.8
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:18:50.944256+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "4747dfc7-bac0-413d-aefb-220927595adb",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-093b449b-c187-441c-a276-52b0439383e1",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1623.0
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:19:52.356777+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "e778c5f2-00cd-453f-ac42-d14e33cac219",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-341edfa4-d6c9-4129-b9c3-b5b992fc3023",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1561.6
+    },
+    "llamaindex": {
+     "state": "UNREACHABLE:RemoteProtocolError",
+     "seq": null,
+     "seconds_remaining": null
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:20:57.521767+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "61f86967-d561-46db-9ab3-0d14dbaa9360",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-4e8d5090-6f7c-446e-a387-c34254489344",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1496.5
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1496.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:21:52.882517+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "a09aa587-6b61-4e41-8132-ca9ccb4abbdb",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-e1804c76-5763-4877-b5f8-5405f969c139",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1441.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1441.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:22:51.905632+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "0fa50095-8afa-4042-82bc-d3cb95b823c9",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-317e9073-73c4-4b32-95d3-39e133ce1f13",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1382.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1382.0
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 19,
+    "seconds_remaining": 1796.6,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:15:57+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:23:49.890832+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "bdcddc62-1dc0-42a5-b0dc-ed3f262760ed",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-be88a72f-f5f4-4aa2-8abe-444e34066e03",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1324.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1324.0
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:24:50.159701+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "26732b2d-1c6d-4231-9cd6-944e6686776e",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-49777d03-a56e-4027-96ed-68df7a34b3b2",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1263.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1263.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:25:51.856310+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "67476dc8-539f-4a32-ac41-dc3ad1a0f8b4",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-05331a8a-a0ff-475a-b601-1b3dce71fd77",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 19,
+     "seconds_remaining": 1202.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1657.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:26:50.822288+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "782ea5fb-0ad5-4646-8cb2-b90d1bf2c788",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-8d18f1c2-299c-47de-9f57-a89ea3b5e64d",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1598.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1598.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:27:52.587865+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "e156a4ed-c2fa-46b2-bd83-680b15febccf",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt"
+   ],
+   "request_id": "soak-1ef8ccee-3a83-4ccc-8c6c-ef8d94cd3caa",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1536.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1536.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:28:53.842005+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "2840d5a8-03b1-45d7-a3ff-df98789fd1f8",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-48691c97-fb46-4aad-a2ed-d1690d577573",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1475.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1475.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:29:52.688399+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "939d523f-4dd6-4f90-8ef2-eb7515229a9f",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-826bde64-b69b-4d17-9883-640a5e2c94a2",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1416.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1416.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:30:53.154076+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d10c0c9c-e8f7-412a-8bff-fe24ff0c43ea",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-f138278b-a7ba-4fbe-80a6-def430443283",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1355.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1355.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 20,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:23:31+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:31:50.106626+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "1f28c1a6-494d-4dc8-abb8-4d403beabcbe",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-be5c1001-633c-484a-b911-8a749134eef4",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1298.9
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1298.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:32:52.777194+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "4f7ee938-6b2c-4ea8-b3cf-2c72211ebdb1",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt"
+   ],
+   "request_id": "soak-38a85324-3b6b-491b-86fa-a3e335461129",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1236.2
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1236.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:33:52.839849+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5330d8c3-bf38-43be-9db8-a2e508f09f15",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-afc0f352-d19c-40b1-abdb-7327e4cbb599",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 20,
+     "seconds_remaining": 1176.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1645.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:34:52.431825+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "6af5b6f6-86b9-46b0-acb9-49221c6c6036",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-06bc4b48-3d14-403c-8bc9-5c832dab80ef",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1585.5
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1585.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:35:51.667115+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "070f654c-4a06-4c9e-8584-e05abc840808",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-df9aeeb8-a03f-4f87-b010-a2dd0362cd70",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1526.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1526.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:36:52.138907+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "a7982fc7-598e-43b8-8c1b-339ec881cbdb",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-c91acefc-4b3a-4327-a5b2-181378e9bf02",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1465.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1465.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:37:52.280074+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "491c4df8-a3a7-4acf-ab5e-c1ac0df170d0",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-51f8838a-5978-4329-8c41-2795eb6cff23",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1405.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1405.6
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:38:51.586111+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "346ee63a-4cc1-46f1-9c2e-81ac95a2f384",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-e6d194d6-c91e-4946-882e-9a6ea9aad37b",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1346.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1346.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 21,
+    "seconds_remaining": 1797.0,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:31:21+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:39:52.060518+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "f927307c-f0ff-447c-af78-3d3a3252fee0",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt"
+   ],
+   "request_id": "soak-888f95c2-7a94-4021-8948-d3e319fd1bc8",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1285.9
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1285.9
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:41:11.885478+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "0edbe0a9-4261-4776-a6c2-141b02f81b62",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-19495272-4e6d-4b5e-a9ca-1d0ef022ed88",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1685.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 21,
+     "seconds_remaining": 1206.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:41:52.268823+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d3e80d9d-b432-4fb7-96a8-751a0777a7bb",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-38bf66a2-1632-4b1c-b127-1a50d3e1a7c4",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1644.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1644.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:42:52.091751+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "1d8fd009-1edb-4580-8dee-0f5326b4358b",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-23c7b0a3-f931-4fe8-8333-90d82d4f3b6e",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1584.9
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1584.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:43:49.843973+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "61dfe3f2-34ca-4e82-9b6c-c330878425b6",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-d301ecb6-3c48-4804-bcfa-97f6e7acfa32",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1527.1
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1527.1
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:44:50.539834+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "87e97b11-07e3-4ed7-a0f5-6cb1be0967e3",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-37be8764-fa03-41ad-99f5-4a50dfd0ae6d",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1466.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1466.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:45:50.134649+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5b339adb-5d62-4763-90a7-1468f675dfac",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-e65fe5b3-ce31-457e-89ea-77e11853cb9e",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1406.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1406.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:46:50.259748+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "402a163d-178e-4eed-8ef2-678775429172",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-57016349-2d9d-48c8-9328-f672a9ec7d5d",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1346.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1346.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:47:53.293413+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "6ec039e7-5258-450a-9c9b-63a7c6397676",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt"
+   ],
+   "request_id": "soak-96add909-573d-4435-a526-482d25f313e6",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1283.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1283.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 22,
+    "seconds_remaining": 1797.1,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:39:19+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:48:52.127803+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "48443060-b78e-4b01-81d5-9708f9124c43",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "engineering_bob.txt"
+   ],
+   "request_id": "soak-78b77af8-119a-414a-9446-937c4dcf48c4",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1224.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 22,
+     "seconds_remaining": 1224.8
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:49:51.466460+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5be7f306-972f-4d73-af56-2a675aa6bf86",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-60626a15-7c91-4390-b5eb-4dd3399a939a",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1689.5
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1689.5
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:50:52.200147+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "85876870-0f8a-472f-b9f6-8fb43eb32720",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-0f248ce6-7797-4f90-a595-e845d603cbd2",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1628.8
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1628.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:51:51.625670+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "31a2ed68-e33b-4ea2-9cee-d5207c63e06b",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-2055a904-6ab8-4f95-8124-0149ac7512b3",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1569.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1569.3
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:52:50.584338+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "d21b4bbf-8adb-4718-82d6-ce984c443f37",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-3908891c-eaad-4069-b5e6-c3f4620f361c",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1510.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1510.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:53:53.257731+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "c4090c92-b49a-40b9-aada-45d8f73963ef",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [
+    "finance_alice.txt"
+   ],
+   "request_id": "soak-e063a861-8ed7-4a61-b4bd-b4a2a8176d6e",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1447.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1447.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:54:52.979175+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "5123556a-4831-4966-8863-31b43f1f4441",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-e779fc4e-09ff-45c4-b186-2d1a497c0169",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1388.0
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1388.0
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 23,
+    "seconds_remaining": 1797.9,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:48:03+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:55:51.962437+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "a8b495a2-ff9a-4043-a856-e54c09bc63e1",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-9ca62e1c-4153-4d49-94c4-4c7c4695989c",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1329.0
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1329.0
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 24,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:55:31+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:56:50.236341+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "f30b8acb-5554-4d10-b271-08c7ab0b4179",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-bed2c5ac-ad68-4935-bdf8-f8536d47621a",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1270.7
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 23,
+     "seconds_remaining": 1270.7
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 24,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:55:31+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:57:52.592658+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "01141612-8c0b-40f4-9b69-f0ae3a00b7c6",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-d593d01f-496d-4385-9f9b-64b1129ace85",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 24,
+     "seconds_remaining": 1656.4
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 24,
+     "seconds_remaining": 1656.4
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 24,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:55:31+00:00"
+   }
+  },
+  {
+   "route": "llamaindex",
+   "at": "2026-11-04T14:58:51.720024+00:00",
+   "actor": "alice",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "0dc649fa-85ec-4924-8f26-4ba37b3f01b1",
+   "model_context_documents": [
+    "finance_alice.txt",
+    "group_finance_alice.txt",
+    "inherited_finance_alice.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-f67dc294-d02c-4c96-89d8-47164b3de8f8",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 24,
+     "seconds_remaining": 1597.3
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 24,
+     "seconds_remaining": 1597.2
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 24,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:55:31+00:00"
+   }
+  },
+  {
+   "route": "langchain",
+   "at": "2026-11-04T14:59:50.717275+00:00",
+   "actor": "bob",
+   "http_status": 200,
+   "detail": null,
+   "gateway_decision_id": "ba70f5b5-8326-4b91-90d8-2ef82df9e5ad",
+   "model_context_documents": [
+    "engineering_bob.txt",
+    "shared_control.txt"
+   ],
+   "answer_canaries": [],
+   "request_id": "soak-3cabdec0-4e91-4ab3-9012-917e24ce4280",
+   "rag_evidence": {
+    "langchain": {
+     "state": "OK",
+     "seq": 24,
+     "seconds_remaining": 1538.2
+    },
+    "llamaindex": {
+     "state": "OK",
+     "seq": 24,
+     "seconds_remaining": 1538.2
+    }
+   },
+   "refresher": {
+    "state": "OK",
+    "seq": 24,
+    "seconds_remaining": 1797.4,
+    "consecutive_failures": 0,
+    "last_success_at": "2026-11-04T14:55:31+00:00"
+   }
+  }
+ ],
+ "scenarios": [
+  {
+   "scenario": "concurrent_refresh",
+   "seq_before": 2,
+   "seq_after": 5,
+   "history": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "tmp_files": 0,
+   "pass": true,
+   "at": "2026-11-04T13:25:54.241161+00:00"
+  },
+  {
+   "scenario": "document_modified",
+   "item": "012JSJ74RVIGYMKZU6J5EZ7EKZZO6JQGET",
+   "t0_modified": "2026-11-04T13:28:51.729281+00:00",
+   "old_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},7\"",
+   "new_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},8\"",
+   "published_changed": true,
+   "remote_rags_have_new_version": {
+    "langchain": true,
+    "llamaindex": true
+   },
+   "alice_shared_after": {
+    "http_status": 200,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "answer_canaries": []
+   },
+   "pass": true,
+   "at": "2026-11-04T13:30:53.995000+00:00"
+  },
+  {
+   "scenario": "document_restored",
+   "version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},9\"",
+   "at": "2026-11-04T13:31:00.839432+00:00"
+  },
+  {
+   "scenario": "document_deleted",
+   "item": "012JSJ74ROOTVNAOR3INB3WNN6WN27INJM",
+   "added_to_manifest": true,
+   "remote_rags_saw_it": {
+    "langchain": true,
+    "llamaindex": true
+   },
+   "deleted_at": "2026-11-04T13:38:27.797429+00:00",
+   "removed_from_manifest": true,
+   "removed_from_remote_rags": {
+    "langchain": true,
+    "llamaindex": true
+   },
+   "alice_after_delete": {
+    "http_status": 200,
+    "model_context_documents": [
+     "finance_alice.txt",
+     "group_finance_alice.txt",
+     "inherited_finance_alice.txt",
+     "shared_control.txt"
+    ],
+    "answer_canaries": []
+   },
+   "pass": true,
+   "at": "2026-11-04T13:42:57.543797+00:00"
+  },
+  {
+   "scenario": "permission_revoked_during_refresh",
+   "revoked_at": "2026-11-04T13:44:50.615886+00:00",
+   "finance_still_in_manifest_as_provenance": true,
+   "refresher_permissions_changed": [],
+   "guard_stable_deny": true,
+   "alice_after": [
+    {
+     "http_status": 200,
+     "model_context_documents": [
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "answer_canaries": [],
+     "request_id": "soak-d868692b-0ce5-4fd5-83ab-0f5047741307"
+    },
+    {
+     "http_status": 200,
+     "model_context_documents": [
+      "group_finance_alice.txt",
+      "inherited_finance_alice.txt",
+      "shared_control.txt"
+     ],
+     "answer_canaries": [],
+     "request_id": "soak-4d3cfd3a-5318-4175-ae21-fe76053ebe11"
+    }
+   ],
+   "pass": true,
+   "at": "2026-11-04T13:45:51.955989+00:00"
+  },
+  {
+   "scenario": "permission_restored",
+   "guard_allows_again": true,
+   "at": "2026-11-04T13:46:43.091833+00:00"
+  },
+  {
+   "scenario": "tampered_manifest",
+   "gateway_response": {
+    "status": 503,
+    "detail": "MANIFEST_SIGNATURE_INVALID"
+   },
+   "remote_rags_kept_valid_evidence": {
+    "langchain": "OK",
+    "llamaindex": "OK"
+   },
+   "pass": true,
+   "at": "2026-11-04T13:56:59.626426+00:00"
+  },
+  {
+   "scenario": "rag_restart_offline",
+   "state_after_offline_restart": "UNREACHABLE",
+   "seq": null,
+   "served_after_reconnect": 200,
+   "pass": false,
+   "at": "2026-11-04T14:01:15.334095+00:00"
+  },
+  {
+   "scenario": "cross_tenant",
+   "other_source": {
+    "status": 404,
+    "detail": "EVIDENCE_NOT_PUBLISHED"
+   },
+   "path_traversal": {
+    "status": 400,
+    "detail": "SOURCE_ID_INVALID"
+   },
+   "own_source_status": 200,
+   "pass": true,
+   "at": "2026-11-04T14:06:48.258384+00:00"
+  },
+  {
+   "scenario": "evidence_expiry_fail_closed_and_recovery",
+   "cut_at": "2026-11-04T13:32:48.337467+00:00",
+   "first_expired_at": "2026-11-04T14:01:15.592855+00:00",
+   "chat_while_expired": [
+    [
+     503,
+     "EVIDENCE_EXPIRED"
+    ]
+   ],
+   "recovered": true,
+   "chat_after_recovery": {
+    "status": 200,
+    "detail": null
+   },
+   "pass": true,
+   "at": "2026-11-04T14:06:58.730930+00:00"
+  },
+  {
+   "scenario": "network_outage_and_recovery",
+   "cut_at": "2026-11-04T14:10:48.309139+00:00",
+   "reconnected_at": "2026-11-04T14:20:48.411582+00:00",
+   "state_during_outage": "DEGRADED",
+   "failures_during_outage": 11,
+   "recovered": true,
+   "pass": true,
+   "at": "2026-11-04T14:20:53.792323+00:00"
+  },
+  {
+   "scenario": "tampered_cache_restart",
+   "offline_state": "NO_EVIDENCE",
+   "offline_error": "CACHE_REJECTED:MANIFEST_SIGNATURE_INVALID",
+   "recovered_after_reconnect": true,
+   "pass": true,
+   "at": "2026-11-04T14:41:10.174559+00:00"
+  }
+ ],
+ "expiry_probe": [
+  {
+   "at": "2026-11-04T13:32:48.625111+00:00",
+   "state": "OK",
+   "seconds_remaining": 1689.5,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:33:48.499665+00:00",
+   "state": "OK",
+   "seconds_remaining": 1629.6,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:34:48.480470+00:00",
+   "state": "OK",
+   "seconds_remaining": 1569.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:35:48.462061+00:00",
+   "state": "OK",
+   "seconds_remaining": 1509.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:42:57.791382+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 1080.3,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:43:48.466576+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 1029.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:46:43.365232+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 854.8,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:46:48.487752+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 849.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:47:48.460801+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 789.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:48:48.546457+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 729.6,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:49:48.473081+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 669.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:50:48.440864+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 609.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:51:48.437466+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 549.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:52:48.479603+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 489.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:53:48.463967+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 429.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:54:48.463896+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 369.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:55:48.451056+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 309.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:56:59.861114+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 238.3,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:57:48.481796+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 189.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:58:48.460424+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 129.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T13:59:48.457904+00:00",
+   "state": "DEGRADED",
+   "seconds_remaining": 69.7,
+   "chat_status": 503,
+   "chat_detail": "GATEWAY_UNREACHABLE:URLError"
+  },
+  {
+   "at": "2026-11-04T14:01:15.592855+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -17.4,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  },
+  {
+   "at": "2026-11-04T14:01:48.463117+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -50.3,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  },
+  {
+   "at": "2026-11-04T14:02:48.484874+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -110.3,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  },
+  {
+   "at": "2026-11-04T14:03:48.483986+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -170.3,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  },
+  {
+   "at": "2026-11-04T14:04:48.477203+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -230.3,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  },
+  {
+   "at": "2026-11-04T14:05:48.424228+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -290.3,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  },
+  {
+   "at": "2026-11-04T14:06:48.484926+00:00",
+   "state": "EXPIRED",
+   "seconds_remaining": -350.4,
+   "chat_status": 503,
+   "chat_detail": "EVIDENCE_EXPIRED"
+  }
+ ],
+ "finished_at": "2026-11-04T15:00:48.215858+00:00"
+}

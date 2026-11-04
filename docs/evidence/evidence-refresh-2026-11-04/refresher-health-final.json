@@ -1,0 +1,22 @@
+{
+ "state": "OK",
+ "tenant_id": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+ "application_id": "sharepoint-rag-staging",
+ "source_id": "2fa9562b-b765-4098-bebf-222ea53ec667",
+ "seq": 25,
+ "expires_at": "2026-11-04T15:31:32+00:00",
+ "seconds_remaining": 1797.4,
+ "alert": false,
+ "last_attempt_at": "2026-11-04T15:01:29+00:00",
+ "last_success_at": "2026-11-04T15:01:34+00:00",
+ "consecutive_failures": 0,
+ "last_error": null,
+ "last_changes": {
+  "added": [],
+  "deleted": [],
+  "updated": [],
+  "permissions_changed": [],
+  "permissions_observable": true
+ },
+ "manifest_sha256": "93e29a55308e07626f3769145b786dbf5393a9ca5890c7a189afd4357f3c45e5"
+}
