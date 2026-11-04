@@ -221,3 +221,19 @@ Full detail: `docs/security-assessment-2026-11-03/`.
 | O-10 | P1 | Independent certifier key does not exist yet; `ACCESSPROOF_SOURCE_CERTIFICATION_PUBLIC_KEYS_JSON` unset in production | BLOCKED — owner generates the key off-host (`scripts/issue_source_certificate.py keygen`) |
 | O-11 | P2 | No production platform adapter signs conversation rosters yet; Gateways must stay `single_user` | By design until a Teams/Slack adapter holds a pinned key |
 | O-12 | P1 | Production approval requires a human reviewer after all technical gates pass | Not automatable by design |
+
+## Update 2026-11-04 (r29–r31, live production validation)
+
+| ID | Sev | Finding | Status |
+|---|---|---|---|
+| D-24 | P1 | Graph 410 resyncRequired left the Microsoft ACL cursor degraded forever (production degraded since 2026-11-03 19:13:59Z) | FIXED r29 (resync path), **effective only with D-25** |
+| D-25 | P1 | D-24's 410 check was unreachable: `bounded_idempotent_request` raised `HTTPStatusError` first; its test faked the adapter method | **FIXED + DEPLOYED r30**; production cursor recovered automatically 04:04:18Z; real-adapter regression tests |
+| D-26 | P1 | Route challenge cannot certify a live production route: (1) the route fingerprint includes the Guard policy version, so any ACL change (and the challenge's own revocation) invalidates the challenge and any route certificate; (2) a revision-enabled Guard reports a mid-request revocation as `AUTHORIZATION_REVISION_CHANGED` (Gateway 503), but the verifier accepts only 403 `LAYER2_ACCESS_REVOKED`; (3) the agent's 12 s client timeout cannot span a propagation window | **OPEN — design decision for reviewer.** Proposed: bind the route fingerprint to configuration only (org, app, Guard, source, adapter, contract) and record the policy version as evidence; accept `layer2_revoke` as any Guard-audited Layer 2 block of a post-Layer-1 authorization change (`LAYER2_ACCESS_REVOKED` or `AUTHORIZATION_REVISION_CHANGED`), still corroborated by the Guard audit; make the agent timeout configurable. Live in-flight revocation is already proven separately (revocation F). Gates E and J stay FAIL until this is decided. |
+| C-01 | P2 | Cached chunk of an OLD document version accepted while its attestation was valid (≤ 3600 s) | **FIXED + DEPLOYED r31**: Guard Layer 1 enforces current provider versions (`SOURCE_CONTENT_VERSION_STALE/UNKNOWN/REQUIRED`); live controls 8/8 |
+| C-02 | P2 | Conversation memory and tool results had no supported provenance path | **FIXED r31** (Gateway): signed `trusted_context` items, re-authorized per employee. Free-text assistant/tool turns stay rejected. Not live-validated (lab has no signing producer) |
+| C-03 | P3 | Group-membership revocation bounded by the 900 s directory cadence (trial B: 412 s detection, restore 838 s) | **MITIGATED r31**: default 300 s; directory evidence older than 900 s fails closed. Within the window the Guard serves the last verified snapshot (bounded staleness, not fail-closed) |
+| O-01 | P1 | No SharePoint source certificate | **RESOLVED 2026-11-04**: issued from 14 live checks (evidence digest `a3499fe7…`), imported, accepted by the API; valid to 2026-11-11 |
+| O-02 | P1 | 0 verified identity mappings | **RESOLVED**: automatic directory-verified bindings (Alice, Bob), 0 manual calls |
+| O-08 | P3 | Revocation latency unmeasured | **RESOLVED**: trials A–G measured on r30 (release record) |
+| O-10 | P1 | Certifier key missing | **RESOLVED**: `ap-certifier-2026-11` (private key offline, 0600); public key pinned in production api + worker |
+| P0-01 | P0 | Runtime DB role was the table owner (superuser, BYPASSRLS) | **RESOLVED 2026-11-04 05:16Z**: api `accessproof_app`, worker `accessproof_rls_admin`, metrics `accessproof_metrics`; runtime audit clean on 58 tables; gate I PASS; rollback rehearsed |
