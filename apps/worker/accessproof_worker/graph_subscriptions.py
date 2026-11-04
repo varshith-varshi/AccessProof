@@ -35,6 +35,7 @@ from apps.api.accessproof_api.db import (
     GuardGroup, GuardPermissionGrant, ProviderEventSubscription, SessionLocal, SourceConnection,
 )
 from apps.api.accessproof_api.event_sync import MICROSOFT_PROVIDER, microsoft_binding
+from apps.api.accessproof_api.observability import graph_subscription_operations
 
 logger = logging.getLogger(__name__)
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -201,6 +202,9 @@ async def ensure_microsoft_subscriptions(
             db.commit()
         finally:
             await graph.aclose()
+    for operation, count in stats.items():
+        if count:
+            graph_subscription_operations.labels("all", operation).inc(count)
     return stats
 
 

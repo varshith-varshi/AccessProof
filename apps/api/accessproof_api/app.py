@@ -991,8 +991,11 @@ async def microsoft_graph_event_notification(request: Request, db: OrmSession = 
         db.rollback()
         # Retryable: Microsoft redelivers, so an accepted hint is never lost.
         raise HTTPException(503, "NOTIFICATION_ENQUEUE_UNAVAILABLE")
+    from apps.api.accessproof_api.observability import provider_notifications
     for code in rejected:
+        provider_notifications.labels("microsoft365", "rejected").inc()
         logging.getLogger("accessproof.provider_events").warning("microsoft_notification_rejected code=%s", code)
+    provider_notifications.labels("microsoft365", "accepted").inc(len(events))
     if not events:
         raise HTTPException(401, "NO_AUTHENTICATED_NOTIFICATIONS")
     return Response(status_code=202)

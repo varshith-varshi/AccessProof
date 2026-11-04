@@ -588,9 +588,11 @@ async def process_provider_event(event_id: str) -> None:
                 await synchronize_acls(db, source, credentials, max_pages=50)
             db.commit()
         if received_at is not None:
+            from apps.api.accessproof_api.observability import provider_event_reconcile_seconds
             seen = received_at if received_at.tzinfo else received_at.replace(tzinfo=timezone.utc)
-            logger.info("provider_event_reconciled channel=%s seconds_since_receipt=%.3f", channel,
-                        (datetime.now(timezone.utc) - seen).total_seconds())
+            elapsed = (datetime.now(timezone.utc) - seen).total_seconds()
+            provider_event_reconcile_seconds.labels(channel).observe(elapsed)
+            logger.info("provider_event_reconciled channel=%s seconds_since_receipt=%.3f", channel, elapsed)
         with SessionLocal() as db:
             event = db.get(ProviderEventJournal, event_id)
             subscription = db.get(ProviderEventSubscription, event.subscription_id) if event else None
@@ -604,9 +606,12 @@ async def process_provider_event(event_id: str) -> None:
         with SessionLocal() as db:
             event = db.get(ProviderEventJournal, event_id)
             if event:
+                from apps.api.accessproof_api.observability import provider_event_failures
                 if event.attempts >= 8:
                     event.status, event.completed_at = "failed", datetime.now(timezone.utc)
+                    provider_event_failures.labels(str(event.event_type).split(":")[0], "dead_letter").inc()
                 else:
+                    provider_event_failures.labels(str(event.event_type).split(":")[0], "retry").inc()
                     event.status = "retry"
                     event.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=min(300, 2 ** min(event.attempts, 8)))
                 event.error_code = code

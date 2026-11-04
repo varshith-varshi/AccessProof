@@ -159,3 +159,23 @@ def log_request(
 
 def metrics_payload() -> tuple[bytes, str]:
     return generate_latest(), CONTENT_TYPE_LATEST
+
+# Near-real-time authorization (no tenant, user, document or token labels).
+provider_notifications = Counter(
+    "accessproof_provider_notifications_total",
+    "Provider change/lifecycle notifications by provider and result",
+    ["provider", "result"],
+)
+provider_event_reconcile_seconds = Histogram(
+    "accessproof_provider_event_reconcile_seconds",
+    "Seconds from authenticated notification receipt to completed authoritative resync",
+    ["channel"], buckets=(0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 900),
+)
+provider_event_failures = Counter(
+    "accessproof_provider_event_failures_total",
+    "Provider event resyncs that failed (retried or dead-lettered)", ["channel", "outcome"],
+)
+graph_subscription_operations = Counter(
+    "accessproof_graph_subscription_operations_total",
+    "Microsoft Graph subscription create/renew/retire/failure operations", ["channel", "operation"],
+)
