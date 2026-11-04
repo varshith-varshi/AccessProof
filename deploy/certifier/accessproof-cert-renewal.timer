@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AccessProof certificate renewal check (renews when < 10 days remain)
+
+[Timer]
+OnCalendar=*-*-* 02:17:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

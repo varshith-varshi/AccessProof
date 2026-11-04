@@ -1,0 +1,14 @@
+{
+ "AccessProof-Certifier-ProductionReadOnly": {
+  "sha256": "253bd24f6e34a4ed8644683338484d88cadfdb86d5c1f758d2383660a9c0a911",
+  "bytes": 15298
+ },
+ "AccessProof-Certifier-ProductionImport": {
+  "sha256": "a05f822720086f480516798d04f8973c254efa089ba7d610caa19b0e72a9b01b",
+  "bytes": 14517
+ },
+ "AccessProof-Certifier-RagHostProbe": {
+  "sha256": "77d1280a2da0f7a020c14174698d6542c499d8d410e962580b2b181688386a64",
+  "bytes": 4313
+ }
+}

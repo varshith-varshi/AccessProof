@@ -1,0 +1,95 @@
+{
+ "Version": "2012-10-17",
+ "Statement": [
+  {
+   "Sid": "KeyPushStagingUbuntuOnly",
+   "Effect": "Allow",
+   "Action": "ec2-instance-connect:SendSSHPublicKey",
+   "Resource": "arn:aws:ec2:eu-north-1:102076848988:instance/i-0e6d2256a1e5a6f67",
+   "Condition": {
+    "StringEquals": {
+     "ec2:osuser": "ubuntu"
+    }
+   }
+  },
+  {
+   "Sid": "SshSessionStagingOnly",
+   "Effect": "Allow",
+   "Action": "ssm:StartSession",
+   "Resource": [
+    "arn:aws:ec2:eu-north-1:102076848988:instance/i-0e6d2256a1e5a6f67",
+    "arn:aws:ssm:eu-north-1::document/AWS-StartSSHSession"
+   ],
+   "Condition": {
+    "BoolIfExists": {
+     "ssm:SessionDocumentAccessCheck": "true"
+    }
+   }
+  },
+  {
+   "Sid": "OwnSessionsOnly",
+   "Effect": "Allow",
+   "Action": [
+    "ssm:TerminateSession",
+    "ssm:ResumeSession"
+   ],
+   "Resource": "arn:aws:ssm:eu-north-1:102076848988:session/accessproof-staging-tunnel-*"
+  },
+  {
+   "Sid": "DenyAnyCommandExecution",
+   "Effect": "Deny",
+   "Action": "ssm:SendCommand",
+   "Resource": "*"
+  },
+  {
+   "Sid": "DenyProductionInstance",
+   "Effect": "Deny",
+   "Action": [
+    "ssm:*",
+    "ec2-instance-connect:*"
+   ],
+   "Resource": "arn:aws:ec2:eu-north-1:102076848988:instance/i-0c11427d4d9c1b438"
+  },
+  {
+   "Sid": "DenyIdentityAndPolicyChanges",
+   "Effect": "Deny",
+   "Action": [
+    "iam:*",
+    "sts:AssumeRole",
+    "organizations:*",
+    "rolesanywhere:*"
+   ],
+   "Resource": "*"
+  },
+  {
+   "Sid": "DenyDocumentChanges",
+   "Effect": "Deny",
+   "Action": [
+    "ssm:CreateDocument",
+    "ssm:UpdateDocument",
+    "ssm:UpdateDocumentDefaultVersion",
+    "ssm:DeleteDocument",
+    "ssm:ModifyDocumentPermission"
+   ],
+   "Resource": "*"
+  },
+  {
+   "Sid": "DenyInfrastructureChanges",
+   "Effect": "Deny",
+   "Action": [
+    "ec2:Run*",
+    "ec2:Terminate*",
+    "ec2:Modify*",
+    "ec2:Authorize*",
+    "ec2:Create*",
+    "ec2:Delete*",
+    "s3:*",
+    "lambda:*",
+    "ecs:*",
+    "ssm:PutParameter",
+    "ssm:DeleteParameter*"
+   ],
+   "Resource": "*"
+  }
+ ]
+}

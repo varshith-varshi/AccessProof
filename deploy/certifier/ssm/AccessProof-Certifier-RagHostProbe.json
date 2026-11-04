@@ -1,0 +1,46 @@
+{
+ "schemaVersion": "2.2",
+ "description": "AccessProof certifier: fixed re-certification probes on the STAGING RAG host only.",
+ "parameters": {
+  "probe": {
+   "type": "String",
+   "allowedValues": [
+    "bypass",
+    "gateway_unsigned"
+   ]
+  },
+  "targets": {
+   "type": "String",
+   "default": "none:1",
+   "allowedPattern": "^[A-Za-z0-9.-]{1,64}:[0-9]{1,5}(,[A-Za-z0-9.-]{1,64}:[0-9]{1,5}){0,7}$"
+  },
+  "gatewayUrl": {
+   "type": "String",
+   "default": "https://ap-gateway.lab.internal:18443",
+   "allowedPattern": "^https://[a-z0-9.-]{1,128}:[0-9]{2,5}$"
+  }
+ },
+ "mainSteps": [
+  {
+   "action": "aws:runShellScript",
+   "name": "run",
+   "inputs": {
+    "timeoutSeconds": "600",
+    "runCommand": [
+     "set -eu",
+     "TOKEN=$(curl -sf -X PUT http://169.254.169.254/latest/api/token -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\")",
+     "SELF=$(curl -sf -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/instance-id)",
+     "[ \"$SELF\" = \"i-0e6d2256a1e5a6f67\" ] || { echo \"REFUSED: document pinned to i-0e6d2256a1e5a6f67 (running on $SELF)\" >&2; exit 2; }",
+     "PROBE='{{ probe }}'; TARGETS='{{ targets }}'; GW='{{ gatewayUrl }}'",
+     "CRED_RE='(OPENAI|ANTHROPIC|AZURE_OPENAI|GEMINI|GOOGLE_API_KEY|COHERE|MISTRAL|GROQ|TOGETHER|HUGGINGFACE|HF_TOKEN|OLLAMA|BEDROCK|VERTEX|LLM_|MODEL_(API|KEY|TOKEN|URL|ENDPOINT|BASE))'",
+     "case \"$PROBE\" in",
+     "  bypass) IN=$(python3 -c 'import json,sys;print(json.dumps({\"cred_re\":sys.argv[1],\"targets\":[[h,int(p)] for h,p in (t.rsplit(\":\",1) for t in sys.argv[2].split(\",\"))]}))' \"$CRED_RE\" \"$TARGETS\")",
+     "          echo \"$IN\" | python3 -c \"$(echo 'CmltcG9ydCBqc29uLCBvcywgcmUsIHNvY2tldCwgc3lzCnAgPSBqc29uLmxvYWQoc3lzLnN0ZGluKQpuYW1lcywgb2JzZXJ2YWJsZSA9IHNldCgpLCBGYWxzZQppZiBvcy5wYXRoLmlzZGlyKCIvcHJvYyIpOgogICAgZm9yIHBpZCBpbiBvcy5saXN0ZGlyKCIvcHJvYyIpOgogICAgICAgIGlmIG5vdCBwaWQuaXNkaWdpdCgpOgogICAgICAgICAgICBjb250aW51ZQogICAgICAgIHRyeToKICAgICAgICAgICAgZW52ID0gb3BlbihmIi9wcm9jL3twaWR9L2Vudmlyb24iLCAicmIiKS5yZWFkKCkuc3BsaXQoYiJcMCIpCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgY29udGludWUKICAgICAgICBvYnNlcnZhYmxlID0gVHJ1ZQogICAgICAgIGZvciBlIGluIGVudjoKICAgICAgICAgICAgayA9IGUuc3BsaXQoYiI9IiwgMSlbMF0uZGVjb2RlKCJhc2NpaSIsICJyZXBsYWNlIikKICAgICAgICAgICAgaWYgayBhbmQgcmUuc2VhcmNoKHBbImNyZWRfcmUiXSwgaywgcmUuSSk6CiAgICAgICAgICAgICAgICBuYW1lcy5hZGQoaykKcmVhY2ggPSB7fQpmb3IgaG9zdCwgcG9ydCBpbiBwWyJ0YXJnZXRzIl06CiAgICBzID0gc29ja2V0LnNvY2tldCgpOyBzLnNldHRpbWVvdXQoMykKICAgIHRyeToKICAgICAgICBzLmNvbm5lY3QoKGhvc3QsIHBvcnQpKTsgcmVhY2hbZiJ7aG9zdH06e3BvcnR9Il0gPSBUcnVlCiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIHJlYWNoW2Yie2hvc3R9Ontwb3J0fSJdID0gRmFsc2UKICAgIGZpbmFsbHk6CiAgICAgICAgcy5jbG9zZSgpCnByaW50KGpzb24uZHVtcHMoeyJlbnZfb2JzZXJ2YWJsZSI6IG9ic2VydmFibGUsICJjcmVkZW50aWFsX2Vudl9uYW1lcyI6IHNvcnRlZChuYW1lcyksICJyZWFjaGFibGUiOiByZWFjaCwgInBsYXRmb3JtIjogc3lzLnBsYXRmb3JtfSkpCg==' | base64 -d)\" ;;",
+     "  gateway_unsigned) IN=$(python3 -c 'import json,sys;print(json.dumps({\"ca\":\"/home/ubuntu/ap-remote-rag/ca.pem\",\"gw\":sys.argv[1],\"paths\":[\"/v1/chat/completions\",\"/v1/snapshots/chat/completions\",\"/v1/cache/authorize\",\"/v1/responses/authorize\",\"/v1/anything\"]}))' \"$GW\")",
+     "          echo \"$IN\" | python3 -c \"$(echo 'CmltcG9ydCBqc29uLCBzc2wsIHN5cywgdXJsbGliLnJlcXVlc3QsIHVybGxpYi5lcnJvcgpwID0ganNvbi5sb2FkKHN5cy5zdGRpbikKY3R4ID0gc3NsLmNyZWF0ZV9kZWZhdWx0X2NvbnRleHQoY2FmaWxlPXBbImNhIl0pCm91dCA9IHt9CmZvciBwYXRoIGluIHBbInBhdGhzIl06CiAgICByZXEgPSB1cmxsaWIucmVxdWVzdC5SZXF1ZXN0KHBbImd3Il0gKyBwYXRoLCBkYXRhPWIie30iLCBoZWFkZXJzPXsiQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL2pzb24iLCAiQXV0aG9yaXphdGlvbiI6ICJCZWFyZXIgeCJ9LCBtZXRob2Q9IlBPU1QiKQogICAgdHJ5OgogICAgICAgIHdpdGggdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MTUsIGNvbnRleHQ9Y3R4KSBhcyByOiBvdXRbcGF0aF0gPSByLnN0YXR1cwogICAgZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZTogb3V0W3BhdGhdID0gZS5jb2RlCiAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IG91dFtwYXRoXSA9ICJFUlI6IiArIHR5cGUoZSkuX19uYW1lX18KdHJ5OgogICAgdXJsbGliLnJlcXVlc3QudXJsb3BlbihwWyJndyJdLnJlcGxhY2UoImh0dHBzOi8vIiwgImh0dHA6Ly8iKSArICIvaGVhbHRoL3JlYWR5IiwgdGltZW91dD01KTsgb3V0WyJwbGFpbl9odHRwIl0gPSAiQUNDRVBURUQiCmV4Y2VwdCBFeGNlcHRpb24gYXMgZTogb3V0WyJwbGFpbl9odHRwIl0gPSAiUkVGVVNFRCIKcHJpbnQoanNvbi5kdW1wcyhvdXQpKQo=' | base64 -d)\" ;;",
+     "esac"
+    ]
+   }
+  }
+ ]
+}

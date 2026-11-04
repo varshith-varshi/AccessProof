@@ -1,0 +1,92 @@
+{
+ "schemaVersion": "2.2",
+ "description": "AccessProof certifier: the ONLY production write path (certificate imports / route attestation; production verifies signatures against the pinned certifier key).",
+ "parameters": {
+  "operation": {
+   "type": "String",
+   "allowedValues": [
+    "source_certificate_import",
+    "route_certificate_import",
+    "route_attestation"
+   ]
+  },
+  "organizationId": {
+   "type": "String",
+   "default": "00000000-0000-0000-0000-000000000000",
+   "allowedPattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+  },
+  "applicationId": {
+   "type": "String",
+   "default": "none",
+   "allowedPattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+  },
+  "payload1": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload2": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload3": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload4": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload5": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload6": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload7": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  },
+  "payload8": {
+   "type": "String",
+   "default": "",
+   "allowedPattern": "^[A-Za-z0-9+/=]{0,1000}$"
+  }
+ },
+ "mainSteps": [
+  {
+   "action": "aws:runShellScript",
+   "name": "run",
+   "inputs": {
+    "timeoutSeconds": "600",
+    "runCommand": [
+     "set -eu",
+     "TOKEN=$(curl -sf -X PUT http://169.254.169.254/latest/api/token -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\")",
+     "SELF=$(curl -sf -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/instance-id)",
+     "[ \"$SELF\" = \"i-0c11427d4d9c1b438\" ] || { echo \"REFUSED: document pinned to i-0c11427d4d9c1b438 (running on $SELF)\" >&2; exit 2; }",
+     "OP='{{ operation }}'; ORG='{{ organizationId }}'; APP='{{ applicationId }}'",
+     "F=$(mktemp); trap 'rm -f \"$F\"' EXIT",
+     "printf '%s' \"{{ payload1 }}{{ payload2 }}{{ payload3 }}{{ payload4 }}{{ payload5 }}{{ payload6 }}{{ payload7 }}{{ payload8 }}\" | base64 -d > \"$F\"",
+     "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d, dict)' \"$F\" || { echo \"PAYLOAD_NOT_JSON_OBJECT\" >&2; exit 3; }",
+     "cd /home/ubuntu/accessproof",
+     "case \"$OP\" in",
+     "  source_certificate_import)",
+     "    docker exec -i accessproof-api-1 sh -c 'cat > /tmp/ap-record.json' < \"$F\"",
+     "    echo 'IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJJbmRlcGVuZGVudCwgb3BlcmF0b3ItcnVuIFNoYXJlUG9pbnQvT25lRHJpdmUgc291cmNlIGNlcnRpZmllciAoZGVmZWN0IEQtMDEpLgoKVGhpcyB0b29sIGlzIGRlbGliZXJhdGVseSBOT1QgcGFydCBvZiB0aGUgQVBJIGltYWdlLiBJdCBob2xkcyB0aGUgRWQyNTUxOQpwcml2YXRlIGtleTsgdGhlIEFQSSBvbmx5IGV2ZXIgcmVjZWl2ZXMgdGhlIHB1YmxpYyBrZXkuCgogIGtleWdlbiAgLS1wcml2YXRlLWtleSBQQVRIICAgICAgICAgICAgY3JlYXRlIGEgMDYwMCBrZXksIHByaW50IHB1YmxpYy1rZXkgSlNPTgogIGlzc3VlICAgLS1wcml2YXRlLWtleSBQQVRIIC0tZXZpZGVuY2UgRVZJREVOQ0UuanNvbiAtLW9yZ2FuaXphdGlvbi1pZCAuLi4KICAgICAgICAgIC0tc291cmNlLWlkIC4uLiAtLXByb2ZpbGUgLi4uIC0tc2NvcGUtZGlnZXN0IC4uLiBbLS1kYXlzIDddCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICByZWZ1c2UgdW5sZXNzIGV2ZXJ5IHJlcXVpcmVkIGxpdmUgY2hlY2sKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIFBBU1NFRDsgcHJpbnQgYSBzaWduZWQgcmVjb3JkCiAgc2NvcGUgICAtLW9yZ2FuaXphdGlvbi1pZCAuLi4gLS1zb3VyY2UtaWQgLi4uCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBwcmludCBvbmx5IHRoZSBub24tc2VjcmV0IHByb2ZpbGUgYW5kCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBzY29wZSBkaWdlc3QgdG8gY2VydGlmeSAoREFUQUJBU0VfVVJMKQogIGltcG9ydCAgLS1yZWNvcmQgUkVDT1JELmpzb24gICAgICAgICAgdmVyaWZ5IHdpdGggdGhlIEFQSSdzIHBpbm5lZCBwdWJsaWMKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGtleXMgYW5kIHRoZSBzb3VyY2UncyBDVVJSRU5UIHNjb3BlLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGhlbiB1cHNlcnQgKERBVEFCQVNFX1VSTCk7IHJvbGxzIGJhY2sKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGlmIHRoZSBBUEkgd291bGQgbm90IGFjY2VwdCBpdAoKSXQgbmV2ZXIgZmFicmljYXRlcyBldmlkZW5jZTogaXNzdWFuY2UgcmVxdWlyZXMgYW4gZXZpZGVuY2UgZmlsZSB3aG9zZSBjaGVja3MKd2VyZSBvYnNlcnZlZCBhZ2FpbnN0IHRoZSByZWFsIHRlbmFudCBhbmQgdGhlIHJlYWwgcHJvdGVjdGVkIHJvdXRlLgoiIiIKZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IGFyZ3BhcnNlCmltcG9ydCBqc29uCmltcG9ydCBvcwppbXBvcnQgc3RhdAppbXBvcnQgc3lzCmZyb20gZGF0ZXRpbWUgaW1wb3J0IGRhdGV0aW1lLCB0aW1lZGVsdGEKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpmcm9tIGNyeXB0b2dyYXBoeS5oYXptYXQucHJpbWl0aXZlcyBpbXBvcnQgc2VyaWFsaXphdGlvbgpmcm9tIGNyeXB0b2dyYXBoeS5oYXptYXQucHJpbWl0aXZlcy5hc3ltbWV0cmljLmVkMjU1MTkgaW1wb3J0IEVkMjU1MTlQcml2YXRlS2V5CgpzeXMucGF0aC5pbnNlcnQoMCwgc3RyKFBhdGgoX19maWxlX18pLnJlc29sdmUoKS5wYXJlbnRzWzFdKSkKCmZyb20gcGFja2FnZXMuY3J5cHRvLnNvdXJjZV9jZXJ0aWZpY2F0ZSBpbXBvcnQgKCAgIyBub3FhOiBFNDAyCiAgICBSRVFVSVJFRF9DSEVDS1MsIENlcnRpZmljYXRlRXJyb3IsIGlzc3VlX2NlcnRpZmljYXRlLCBwdWJsaWNfa2V5X2I2NCwKKQoKCmRlZiBfbG9hZF9wcml2YXRlX2tleShwYXRoOiBQYXRoKSAtPiBFZDI1NTE5UHJpdmF0ZUtleToKICAgIG1vZGUgPSBzdGF0LlNfSU1PREUocGF0aC5zdGF0KCkuc3RfbW9kZSkKICAgIGlmIG1vZGUgJiAwbzA3NzoKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KGYicmVmdXNpbmcga2V5IHdpdGggcGVybWlzc2l2ZSBtb2RlIHtvY3QobW9kZSl9OyBjaG1vZCA2MDAge3BhdGh9IikKICAgIGtleSA9IHNlcmlhbGl6YXRpb24ubG9hZF9wZW1fcHJpdmF0ZV9rZXkocGF0aC5yZWFkX2J5dGVzKCksIHBhc3N3b3JkPU5vbmUpCiAgICBpZiBub3QgaXNpbnN0YW5jZShrZXksIEVkMjU1MTlQcml2YXRlS2V5KToKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KCJjZXJ0aWZpZXIga2V5IG11c3QgYmUgRWQyNTUxOSIpCiAgICByZXR1cm4ga2V5CgoKZGVmIGNtZF9rZXlnZW4oYXJnczogYXJncGFyc2UuTmFtZXNwYWNlKSAtPiBpbnQ6CiAgICBpZiBhcmdzLnByaXZhdGVfa2V5LmV4aXN0cygpOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoInJlZnVzaW5nIHRvIG92ZXJ3cml0ZSBhbiBleGlzdGluZyBjZXJ0aWZpZXIga2V5IikKICAgIGtleSA9IEVkMjU1MTlQcml2YXRlS2V5LmdlbmVyYXRlKCkKICAgIHBlbSA9IGtleS5wcml2YXRlX2J5dGVzKHNlcmlhbGl6YXRpb24uRW5jb2RpbmcuUEVNLCBzZXJpYWxpemF0aW9uLlByaXZhdGVGb3JtYXQuUEtDUzgsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBzZXJpYWxpemF0aW9uLk5vRW5jcnlwdGlvbigpKQogICAgZmQgPSBvcy5vcGVuKGFyZ3MucHJpdmF0ZV9rZXksIG9zLk9fV1JPTkxZIHwgb3MuT19DUkVBVCB8IG9zLk9fRVhDTCwgMG82MDApCiAgICB3aXRoIG9zLmZkb3BlbihmZCwgIndiIikgYXMgaGFuZGxlOgogICAgICAgIGhhbmRsZS53cml0ZShwZW0pCiAgICBwcmludChqc29uLmR1bXBzKHthcmdzLmtleV9pZDogcHVibGljX2tleV9iNjQoa2V5KX0pKQogICAgcHJpbnQoIlNldCBBQ0NFU1NQUk9PRl9TT1VSQ0VfQ0VSVElGSUNBVElPTl9QVUJMSUNfS0VZU19KU09OIG9uIHRoZSBBUEkgdG8gdGhlIGxpbmUgYWJvdmUuIiwKICAgICAgICAgIGZpbGU9c3lzLnN0ZGVycikKICAgIHJldHVybiAwCgoKZGVmIGNtZF9pc3N1ZShhcmdzOiBhcmdwYXJzZS5OYW1lc3BhY2UpIC0+IGludDoKICAgIGtleSA9IF9sb2FkX3ByaXZhdGVfa2V5KGFyZ3MucHJpdmF0ZV9rZXkpCiAgICBldmlkZW5jZSA9IGpzb24ubG9hZHMoYXJncy5ldmlkZW5jZS5yZWFkX3RleHQoKSkKICAgIHRyeToKICAgICAgICByZWNvcmQgPSBpc3N1ZV9jZXJ0aWZpY2F0ZSgKICAgICAgICAgICAgZXZpZGVuY2UsIG9yZ2FuaXphdGlvbl9pZD1hcmdzLm9yZ2FuaXphdGlvbl9pZCwgc291cmNlX2lkPWFyZ3Muc291cmNlX2lkLAogICAgICAgICAgICBwcm9maWxlPWFyZ3MucHJvZmlsZSwgc2NvcGVfZGlnZXN0PWFyZ3Muc2NvcGVfZGlnZXN0LCBwcml2YXRlX2tleT1rZXksCiAgICAgICAgICAgIGtleV9pZD1hcmdzLmtleV9pZCwgdmFsaWRpdHk9dGltZWRlbHRhKGRheXM9YXJncy5kYXlzKSwKICAgICAgICApCiAgICBleGNlcHQgQ2VydGlmaWNhdGVFcnJvciBhcyBleGM6CiAgICAgICAgcHJpbnQoZiJOT1QgSVNTVUVEOiB7ZXhjfSIsIGZpbGU9c3lzLnN0ZGVycikKICAgICAgICBwcmludCgiUmVxdWlyZWQgY2hlY2tzOiAiICsgIiwgIi5qb2luKFJFUVVJUkVEX0NIRUNLUyksIGZpbGU9c3lzLnN0ZGVycikKICAgICAgICByZXR1cm4gMgogICAgcHJpbnQoanNvbi5kdW1wcyhyZWNvcmQsIGluZGVudD0yKSkKICAgIHJldHVybiAwCgoKZGVmIGNtZF9pbXBvcnQoYXJnczogYXJncGFyc2UuTmFtZXNwYWNlKSAtPiBpbnQ6CiAgICBmcm9tIHNxbGFsY2hlbXkgaW1wb3J0IHNlbGVjdAoKICAgIGZyb20gYXBwcy5hcGkuYWNjZXNzcHJvb2ZfYXBpLmRiIGltcG9ydCAoCiAgICAgICAgU2Vzc2lvbkxvY2FsLCBTb3VyY2VDb25uZWN0aW9uLCBTb3VyY2VFZmZlY3RpdmVDZXJ0aWZpY2F0aW9uLCBzZXRfdGVuYW50X2NvbnRleHQsCiAgICApCiAgICBmcm9tIGFwcHMuYXBpLmFjY2Vzc3Byb29mX2FwaS5hcHAgaW1wb3J0IF9zZWNyZXRfYm94CiAgICBmcm9tIGFwcHMuYXBpLmFjY2Vzc3Byb29mX2FwaS5zb3VyY2VfY2VydGlmaWNhdGlvbiBpbXBvcnQgZWZmZWN0aXZlX3NvdXJjZV9jZXJ0aWZpZWQKCiAgICByZWNvcmQgPSBqc29uLmxvYWRzKGFyZ3MucmVjb3JkLnJlYWRfdGV4dCgpKQogICAgd2l0aCBTZXNzaW9uTG9jYWwoKSBhcyBkYjoKICAgICAgICBzZXRfdGVuYW50X2NvbnRleHQoZGIsIHJlY29yZFsib3JnYW5pemF0aW9uX2lkIl0pCiAgICAgICAgc291cmNlID0gZGIuc2NhbGFyKHNlbGVjdChTb3VyY2VDb25uZWN0aW9uKS53aGVyZSgKICAgICAgICAgICAgU291cmNlQ29ubmVjdGlvbi5pZCA9PSByZWNvcmRbInNvdXJjZV9pZCJdLAogICAgICAgICAgICBTb3VyY2VDb25uZWN0aW9uLm9yZ2FuaXphdGlvbl9pZCA9PSByZWNvcmRbIm9yZ2FuaXphdGlvbl9pZCJdLAogICAgICAgICkpCiAgICAgICAgaWYgc291cmNlIGlzIE5vbmU6CiAgICAgICAgICAgIHByaW50KCJOT1QgSU1QT1JURUQ6IHNvdXJjZSBub3QgZm91bmQgaW4gdGhhdCBvcmdhbml6YXRpb24iLCBmaWxlPXN5cy5zdGRlcnIpCiAgICAgICAgICAgIHJldHVybiAyCiAgICAgICAgY2VydCA9IGRiLnNjYWxhcihzZWxlY3QoU291cmNlRWZmZWN0aXZlQ2VydGlmaWNhdGlvbikud2hlcmUoCiAgICAgICAgICAgIFNvdXJjZUVmZmVjdGl2ZUNlcnRpZmljYXRpb24ub3JnYW5pemF0aW9uX2lkID09IHNvdXJjZS5vcmdhbml6YXRpb25faWQsCiAgICAgICAgICAgIFNvdXJjZUVmZmVjdGl2ZUNlcnRpZmljYXRpb24uc291cmNlX2lkID09IHNvdXJjZS5pZCwKICAgICAgICApKSBvciBTb3VyY2VFZmZlY3RpdmVDZXJ0aWZpY2F0aW9uKG9yZ2FuaXphdGlvbl9pZD1zb3VyY2Uub3JnYW5pemF0aW9uX2lkLCBzb3VyY2VfaWQ9c291cmNlLmlkKQogICAgICAgIGNlcnQucHJvdmlkZXJfcHJvZmlsZSA9IHJlY29yZFsicHJvdmlkZXJfcHJvZmlsZSJdCiAgICAgICAgY2VydC5zY29wZV9kaWdlc3QgPSByZWNvcmRbInNjb3BlX2RpZ2VzdCJdCiAgICAgICAgY2VydC5ldmlkZW5jZV9kaWdlc3QgPSByZWNvcmRbImV2aWRlbmNlX2RpZ2VzdCJdCiAgICAgICAgY2VydC52ZXJpZmllcl92ZXJzaW9uID0gcmVjb3JkWyJ2ZXJpZmllcl92ZXJzaW9uIl0KICAgICAgICBjZXJ0LmNlcnRpZmllZF9hdCA9IGRhdGV0aW1lLmZyb21pc29mb3JtYXQocmVjb3JkWyJjZXJ0aWZpZWRfYXQiXSkKICAgICAgICBjZXJ0LmV4cGlyZXNfYXQgPSBkYXRldGltZS5mcm9taXNvZm9ybWF0KHJlY29yZFsiZXhwaXJlc19hdCJdKQogICAgICAgIGNlcnQuc2lnbmF0dXJlID0gcmVjb3JkWyJzaWduYXR1cmUiXQogICAgICAgIGNlcnQuc3RhdHVzID0gInZlcmlmaWVkIgogICAgICAgIGRiLmFkZChjZXJ0KQogICAgICAgIGRiLmZsdXNoKCkKICAgICAgICBjcmVkZW50aWFscyA9IGpzb24ubG9hZHMoX3NlY3JldF9ib3guZGVjcnlwdChzb3VyY2UuZW5jcnlwdGVkX2NyZWRlbnRpYWxzIG9yICIiKSkKICAgICAgICBpZiBub3QgZWZmZWN0aXZlX3NvdXJjZV9jZXJ0aWZpZWQoZGIsIHNvdXJjZSwgY3JlZGVudGlhbHMpOgogICAgICAgICAgICBkYi5yb2xsYmFjaygpCiAgICAgICAgICAgIHByaW50KCJOT1QgSU1QT1JURUQ6IHRoZSBBUEkgd291bGQgcmVqZWN0IHRoaXMgY2VydGlmaWNhdGUgIgogICAgICAgICAgICAgICAgICAiKHNpZ25hdHVyZSwga2V5IHBpbiwgc2NvcGUsIG9yIGV4cGlyeSkiLCBmaWxlPXN5cy5zdGRlcnIpCiAgICAgICAgICAgIHJldHVybiAyCiAgICAgICAgZGIuY29tbWl0KCkKICAgIHByaW50KCJJbXBvcnRlZC4gVGhpcyBzYXRpc2ZpZXMgb25seSB0aGUgTWljcm9zb2Z0IGNlcnRpZmljYXRlIGdhdGU7IGFsbCBvdGhlciAiCiAgICAgICAgICAiYWN0aXZhdGlvbiBjaGVja3Mgc3RpbGwgYXBwbHkuIikKICAgIHJldHVybiAwCgoKZGVmIGNtZF9zY29wZShhcmdzOiBhcmdwYXJzZS5OYW1lc3BhY2UpIC0+IGludDoKICAgICIiIlByaW50IE9OTFkgdGhlIHNvdXJjZSdzIGNlcnRpZmljYXRpb24gcHJvZmlsZSBhbmQgc2NvcGUgZGlnZXN0IChib3RoCiAgICBub24tc2VjcmV0OyB0aGUgZGlnZXN0IGlzIGEgU0hBLTI1NiBvdmVyIHN0YWJsZSBpZGVudGlmaWVycykuIFJ1biB3aGVyZSB0aGUKICAgIEFQSSBydW5zIChEQVRBQkFTRV9VUkwgKyBzZWNyZXQga2V5KTsgcHJpbnRzIG5vIGlkZW50aWZpZXJzIG9yIHNlY3JldHMuIiIiCiAgICBmcm9tIHNxbGFsY2hlbXkgaW1wb3J0IHNlbGVjdAoKICAgIGZyb20gYXBwcy5hcGkuYWNjZXNzcHJvb2ZfYXBpLmFwcCBpbXBvcnQgX3NlY3JldF9ib3gKICAgIGZyb20gYXBwcy5hcGkuYWNjZXNzcHJvb2ZfYXBpLmRiIGltcG9ydCBTZXNzaW9uTG9jYWwsIFNvdXJjZUNvbm5lY3Rpb24sIHNldF90ZW5hbnRfY29udGV4dAogICAgZnJvbSBhcHBzLmFwaS5hY2Nlc3Nwcm9vZl9hcGkuc291cmNlX2NlcnRpZmljYXRpb24gaW1wb3J0IF9zb3VyY2Vfc2NvcGUKCiAgICB3aXRoIFNlc3Npb25Mb2NhbCgpIGFzIGRiOgogICAgICAgIHNldF90ZW5hbnRfY29udGV4dChkYiwgYXJncy5vcmdhbml6YXRpb25faWQpCiAgICAgICAgc291cmNlID0gZGIuc2NhbGFyKHNlbGVjdChTb3VyY2VDb25uZWN0aW9uKS53aGVyZSgKICAgICAgICAgICAgU291cmNlQ29ubmVjdGlvbi5pZCA9PSBhcmdzLnNvdXJjZV9pZCwgU291cmNlQ29ubmVjdGlvbi5vcmdhbml6YXRpb25faWQgPT0gYXJncy5vcmdhbml6YXRpb25faWQpKQogICAgICAgIGlmIHNvdXJjZSBpcyBOb25lOgogICAgICAgICAgICBwcmludCgic291cmNlIG5vdCBmb3VuZCBpbiB0aGF0IG9yZ2FuaXphdGlvbiIsIGZpbGU9c3lzLnN0ZGVycikKICAgICAgICAgICAgcmV0dXJuIDIKICAgICAgICBzY29wZSA9IF9zb3VyY2Vfc2NvcGUoc291cmNlLCBqc29uLmxvYWRzKF9zZWNyZXRfYm94LmRlY3J5cHQoc291cmNlLmVuY3J5cHRlZF9jcmVkZW50aWFscyBvciAiIikpKQogICAgICAgIGRiLnJvbGxiYWNrKCkKICAgIGlmIHNjb3BlIGlzIE5vbmU6CiAgICAgICAgcHJpbnQoIlNDT1BFX05PVF9DRVJUSUZJQUJMRSAocHJvdmlkZXIvcHJvZmlsZSBpZGVudGlmaWVycyBpbmNvbXBsZXRlKSIsIGZpbGU9c3lzLnN0ZGVycikKICAgICAgICByZXR1cm4gMgogICAgcHJpbnQoanNvbi5kdW1wcyh7InByb2ZpbGUiOiBzY29wZVswXSwgInNjb3BlX2RpZ2VzdCI6IHNjb3BlWzFdfSkpCiAgICByZXR1cm4gMAoKCmRlZiBtYWluKGFyZ3Y6IGxpc3Rbc3RyXSB8IE5vbmUgPSBOb25lKSAtPiBpbnQ6CiAgICBwYXJzZXIgPSBhcmdwYXJzZS5Bcmd1bWVudFBhcnNlcihkZXNjcmlwdGlvbj1fX2RvY19fLCBmb3JtYXR0ZXJfY2xhc3M9YXJncGFyc2UuUmF3RGVzY3JpcHRpb25IZWxwRm9ybWF0dGVyKQogICAgc3ViID0gcGFyc2VyLmFkZF9zdWJwYXJzZXJzKGRlc3Q9ImNvbW1hbmQiLCByZXF1aXJlZD1UcnVlKQogICAga2V5Z2VuID0gc3ViLmFkZF9wYXJzZXIoImtleWdlbiIpCiAgICBrZXlnZW4uYWRkX2FyZ3VtZW50KCItLXByaXZhdGUta2V5IiwgdHlwZT1QYXRoLCByZXF1aXJlZD1UcnVlKQogICAga2V5Z2VuLmFkZF9hcmd1bWVudCgiLS1rZXktaWQiLCBkZWZhdWx0PSJjZXJ0aWZpZXItMSIpCiAgICBpc3N1ZSA9IHN1Yi5hZGRfcGFyc2VyKCJpc3N1ZSIpCiAgICBpc3N1ZS5hZGRfYXJndW1lbnQoIi0tcHJpdmF0ZS1rZXkiLCB0eXBlPVBhdGgsIHJlcXVpcmVkPVRydWUpCiAgICBpc3N1ZS5hZGRfYXJndW1lbnQoIi0ta2V5LWlkIiwgZGVmYXVsdD0iY2VydGlmaWVyLTEiKQogICAgaXNzdWUuYWRkX2FyZ3VtZW50KCItLWV2aWRlbmNlIiwgdHlwZT1QYXRoLCByZXF1aXJlZD1UcnVlKQogICAgaXNzdWUuYWRkX2FyZ3VtZW50KCItLW9yZ2FuaXphdGlvbi1pZCIsIHJlcXVpcmVkPVRydWUpCiAgICBpc3N1ZS5hZGRfYXJndW1lbnQoIi0tc291cmNlLWlkIiwgcmVxdWlyZWQ9VHJ1ZSkKICAgIGlzc3VlLmFkZF9hcmd1bWVudCgiLS1wcm9maWxlIiwgcmVxdWlyZWQ9VHJ1ZSkKICAgIGlzc3VlLmFkZF9hcmd1bWVudCgiLS1zY29wZS1kaWdlc3QiLCByZXF1aXJlZD1UcnVlKQogICAgaXNzdWUuYWRkX2FyZ3VtZW50KCItLWRheXMiLCB0eXBlPWludCwgZGVmYXVsdD0zMCkKICAgIHNjb3BlID0gc3ViLmFkZF9wYXJzZXIoInNjb3BlIikKICAgIHNjb3BlLmFkZF9hcmd1bWVudCgiLS1vcmdhbml6YXRpb24taWQiLCByZXF1aXJlZD1UcnVlKQogICAgc2NvcGUuYWRkX2FyZ3VtZW50KCItLXNvdXJjZS1pZCIsIHJlcXVpcmVkPVRydWUpCiAgICBpbXAgPSBzdWIuYWRkX3BhcnNlcigiaW1wb3J0IikKICAgIGltcC5hZGRfYXJndW1lbnQoIi0tcmVjb3JkIiwgdHlwZT1QYXRoLCByZXF1aXJlZD1UcnVlKQogICAgYXJncyA9IHBhcnNlci5wYXJzZV9hcmdzKGFyZ3YpCiAgICByZXR1cm4geyJrZXlnZW4iOiBjbWRfa2V5Z2VuLCAiaXNzdWUiOiBjbWRfaXNzdWUsICJzY29wZSI6IGNtZF9zY29wZSwgImltcG9ydCI6IGNtZF9pbXBvcnR9W2FyZ3MuY29tbWFuZF0oYXJncykKCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgcmFpc2UgU3lzdGVtRXhpdChtYWluKCkpCg==' | base64 -d | docker exec -i -e PYTHONPATH=/app accessproof-api-1 python - import --record /tmp/ap-record.json; rc=$?",
+     "    docker exec accessproof-api-1 rm -f /tmp/ap-record.json; exit $rc ;;",
+     "  route_certificate_import) docker compose -f docker-compose.ec2.yml exec -T api python scripts/remote_route_certificate.py import --organization-id \"$ORG\" --application-id \"$APP\" < \"$F\" ;;",
+     "  route_attestation) docker compose -f docker-compose.ec2.yml exec -T api python scripts/remote_route_certificate.py attest --organization-id \"$ORG\" --application-id \"$APP\" < \"$F\" ;;",
+     "esac"
+    ]
+   }
+  }
+ ]
+}

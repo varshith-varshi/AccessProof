@@ -1,0 +1,94 @@
+{
+ "Version": "2012-10-17",
+ "Statement": [
+  {
+   "Sid": "ProductionNamedDocumentsOnly",
+   "Effect": "Allow",
+   "Action": "ssm:SendCommand",
+   "Resource": [
+    "arn:aws:ec2:eu-north-1:102076848988:instance/i-0c11427d4d9c1b438",
+    "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Certifier-ProductionReadOnly",
+    "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Certifier-ProductionImport"
+   ]
+  },
+  {
+   "Sid": "StagingProbeDocumentOnly",
+   "Effect": "Allow",
+   "Action": "ssm:SendCommand",
+   "Resource": [
+    "arn:aws:ec2:eu-north-1:102076848988:instance/i-0e6d2256a1e5a6f67",
+    "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Certifier-RagHostProbe"
+   ]
+  },
+  {
+   "Sid": "ReadOwnCommandResultsRegionPinned",
+   "Effect": "Allow",
+   "Action": [
+    "ssm:GetCommandInvocation",
+    "ssm:ListCommandInvocations"
+   ],
+   "Resource": "*",
+   "Condition": {
+    "StringEquals": {
+     "aws:RequestedRegion": "eu-north-1"
+    }
+   }
+  },
+  {
+   "Sid": "DenyInteractiveAccess",
+   "Effect": "Deny",
+   "Action": [
+    "ssm:StartSession",
+    "ec2-instance-connect:*"
+   ],
+   "Resource": "*"
+  },
+  {
+   "Sid": "DenyIdentityAndPolicyChanges",
+   "Effect": "Deny",
+   "Action": [
+    "iam:*",
+    "sts:AssumeRole",
+    "organizations:*",
+    "rolesanywhere:*"
+   ],
+   "Resource": "*"
+  },
+  {
+   "Sid": "DenyDocumentChanges",
+   "Effect": "Deny",
+   "Action": [
+    "ssm:CreateDocument",
+    "ssm:UpdateDocument",
+    "ssm:UpdateDocumentDefaultVersion",
+    "ssm:DeleteDocument",
+    "ssm:ModifyDocumentPermission"
+   ],
+   "Resource": "*"
+  },
+  {
+   "Sid": "DenyAwsManagedShellDocuments",
+   "Effect": "Deny",
+   "Action": "ssm:SendCommand",
+   "Resource": "arn:aws:ssm:*::document/*"
+  },
+  {
+   "Sid": "DenyInfrastructureChanges",
+   "Effect": "Deny",
+   "Action": [
+    "ec2:Run*",
+    "ec2:Terminate*",
+    "ec2:Modify*",
+    "ec2:Authorize*",
+    "ec2:Create*",
+    "ec2:Delete*",
+    "s3:*",
+    "lambda:*",
+    "ecs:*",
+    "ssm:PutParameter",
+    "ssm:DeleteParameter*"
+   ],
+   "Resource": "*"
+  }
+ ]
+}

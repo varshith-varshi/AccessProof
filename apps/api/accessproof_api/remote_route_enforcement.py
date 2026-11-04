@@ -138,7 +138,10 @@ def apply_attestation(db: Session, row: AIApplication, att: dict, *, now: dateti
         record.last_attested_at = observed
     elif record.status == "active":
         record.status = "invalidated"
-        record.status_reason = "CONFIGURATION_CHANGED:" + ",".join(att.get("changed_fields") or [])[:80]
+        # Must fit the column: PostgreSQL rejects an over-long value and the whole
+        # invalidation would roll back, leaving a changed configuration VALID.
+        limit = RemoteRouteCertificate.__table__.c.status_reason.type.length
+        record.status_reason = ("CONFIGURATION_CHANGED:" + ",".join(att.get("changed_fields") or []))[:limit]
     db.flush()
     return record
 

@@ -225,8 +225,14 @@ def event_driven_attempt(a, log, admin, installation, alice, bob, shared, financ
                                   forbidden_canary="ACCESSPROOF_FORGED_SOURCE_SENTINEL",
                                   allowed_canary=SHARED_CANARY, probes=probes, timeout_seconds=60)
     probe_token = ei.fetch(str(alice), "api_token")
-    client = httpx.Client(transport=HeldTransport(0, log, lambda: rt.guard_decision(probe_token, finance["resource_id"]),
-                                                  on_hold=trial.revoke),
+    # Measured on r35: Microsoft delivers the notification ~25-35 s after the
+    # change and the Guard enforces ~10 s later. Revoke first, then start the
+    # probes so the held request's Layer 1 runs at ~revoke+REVOKE_LEAD (still
+    # allowed); the hold (<= 24 s, Gateway model timeout 30 s) spans the flip.
+    log["revoke"] = trial.revoke()
+    log["revoked_at"] = now()
+    time.sleep(max(0.0, a.revoke_lead - 9.0))   # the three earlier probes take ~9 s
+    client = httpx.Client(transport=HeldTransport(0, log, lambda: rt.guard_decision(probe_token, finance["resource_id"])),
                           base_url="http://127.0.0.1:8191", timeout=60, follow_redirects=False, trust_env=False)
     try:
         observed = agent.run(client=client)
@@ -265,6 +271,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", required=True)
     p.add_argument("--attempts", type=int, default=3)
+    p.add_argument("--revoke-lead", type=float, default=28.0,
+                   help="event-driven: seconds from revocation to the held request's Layer 1")
     p.add_argument("--event-driven", action="store_true",
                    help="r35+: hold the layer2_revoke answer, THEN revoke in SharePoint (deterministic barrier)")
     a = p.parse_args()

@@ -74,7 +74,13 @@ APP = "sharepoint-rag-staging"
 GUARD_ID = "102691c8-54d7-44d7-b1b1-bc40c9f335f4"
 INSTANCE = "i-0c11427d4d9c1b438"
 GUARD_URL = "http://127.0.0.1:8080"
+GUARD_CONTAINER = "accessproof-guard"
 RECOVERY = Path.home() / ".config/accessproof/revocation-recovery.json"
+
+import importlib.util as _ilu  # noqa: E402
+_ps = _ilu.spec_from_file_location("_ap_profile", Path(__file__).resolve().parent / "_profile.py")
+_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("revocation_trial", globals())
 TRIALS = {"A": "finance_alice.txt", "B": "group_finance_alice.txt",
           "C": "inherited_finance_alice.txt", "D": "delete_canary_alice.txt"}
 G = fx.G
@@ -110,17 +116,17 @@ def ssm_sql(sql: str) -> str:
     raise RuntimeError("SSM_TIMEOUT")
 
 
+sys.path.insert(0, str(ROOT / "scripts/certifier"))
+import ssm_ops  # noqa: E402
+
+
 def ap_effective_allows(resource_name: str) -> bool:
-    out = ssm_sql(
-        "select count(*) from guard_effective_access e join guard_resources r on r.id=e.resource_id "
-        "join guard_subjects s on s.id=e.subject_id where e.organization_id='" + ORG + "' and e.source_id='"
-        + SOURCE + "' and s.display_name='alice' and e.decision='allow' and r.metadata_json::json->>'name'='"
-        + resource_name + "'")
+    out = ssm_ops.read_only("effective_access_allows", organizationId=ORG, sourceId=SOURCE, resourceName=resource_name)
     return out.strip() not in ("", "0")
 
 
 def ap_revision() -> int | None:
-    out = ssm_sql("select active_authorization_revisions_json from guard_registrations where id='" + GUARD_ID + "'")
+    out = ssm_ops.read_only("guard_revisions", guardId=GUARD_ID)
     try:
         return int(json.loads(out)[APP]["revision"])
     except (ValueError, KeyError, TypeError):
@@ -128,7 +134,7 @@ def ap_revision() -> int | None:
 
 
 def guard_revision() -> int | None:
-    r = subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c",
+    r = subprocess.run(["docker", "exec", GUARD_CONTAINER, "python", "-c",
                         "import sqlite3;c=sqlite3.connect('file:/var/lib/accessproof-guard/policy.db?mode=ro',uri=True);"
                         f"r=c.execute(\"select revision from authorization_revisions where application_id='{APP}'\").fetchone();"
                         "print(r[0] if r else '')"], capture_output=True, text=True)
@@ -266,9 +272,7 @@ class Trial:
             if ts["t2n_notification_received"] is None:
                 # r35+: first AUTHENTICATED Microsoft notification journaled for
                 # this source after t0 (provider-side delivery, measured separately).
-                first = ssm_sql("select coalesce(min(received_at)::text,'') from provider_event_journal where source_id='"
-                                + SOURCE + "' and provider='microsoft365' and received_at >= to_timestamp("
-                                + str(t0) + ")")
+                first = ssm_ops.read_only("first_notification", sourceId=SOURCE, sinceEpoch=str(int(t0)))
                 if first.strip():
                     ts["t2n_notification_received"] = first.strip().replace(" ", "T")
             if ts["t2_accessproof_detected"] is None and ap_effective_allows(self.doc) == (want == "ALLOW"):

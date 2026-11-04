@@ -65,7 +65,11 @@ def checks() -> list[dict]:
     def actor_ok(actor: str) -> bool:
         rows = [r for r in l1["results"] if r["actor"] == actor]
         ctl = [c for c in l1["negative_controls"] if c["actor"] == actor]
-        return len(rows) == 5 and all(r["pass"] for r in rows) and len(ctl) == 2 and all(c["pass"] for c in ctl)
+        # Identity controls are mandatory; later matrix versions add more
+        # controls (content-version freshness) and every control must pass.
+        names = {c["control"] for c in ctl}
+        return (len(rows) == 5 and all(r["pass"] for r in rows) and len(ctl) >= 2 and all(c["pass"] for c in ctl)
+                and {"id_token_rejected", "tampered_signature_rejected"} <= names)
     l1_at = latest(*(r["at"] for r in l1["results"]), *(c["at"] for c in l1["negative_controls"]))
     add("EMPLOYEE_OIDC_POSITIVE_IDENTITY", actor_ok("alice"), "layer1-guard-apitoken-r30.json", l1_sha, l1_at,
         "Alice: real Entra delegated API token verified by the Guard; ID token and tampered signature rejected")

@@ -21,12 +21,10 @@ Log: ~/.ap-id/route-attestation.log (one JSON line per route per run).
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,8 +32,6 @@ ROOT = Path(__file__).resolve().parents[2]
 CERTIFIER = ROOT / "scripts/live/remote_route_certification.py"
 STATE = Path.home() / ".ap-id/route-certs"
 LOG = Path.home() / ".ap-id/route-attestation.log"
-INSTANCE, REGION = "i-0c11427d4d9c1b438", "eu-north-1"
-CLI = "docker compose -f docker-compose.ec2.yml exec -T api python scripts/remote_route_certificate.py"
 
 
 def now() -> str:
@@ -49,27 +45,14 @@ def log(entry: dict) -> None:
     print(json.dumps(entry), flush=True)
 
 
-def ssm(script: str, comment: str) -> str:
-    params = json.dumps({"executionTimeout": ["300"], "commands": script.splitlines()})
-    cid = subprocess.run(["aws", "ssm", "send-command", "--region", REGION, "--instance-ids", INSTANCE,
-                          "--document-name", "AWS-RunShellScript", "--comment", comment, "--parameters", params,
-                          "--query", "Command.CommandId", "--output", "text"], check=True, capture_output=True, text=True).stdout.strip()
-    for _ in range(150):
-        time.sleep(2)
-        r = subprocess.run(["aws", "ssm", "get-command-invocation", "--region", REGION, "--command-id", cid,
-                            "--instance-id", INSTANCE, "--output", "json"], capture_output=True, text=True)
-        if r.returncode == 0:
-            inv = json.loads(r.stdout)
-            if inv["Status"] not in ("Pending", "InProgress", "Delayed"):
-                return inv.get("StandardOutputContent", "")
-    raise RuntimeError("SSM_TIMEOUT")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ssm_ops  # noqa: E402  (purpose-built SSM documents; no AWS-RunShellScript)
 
 
 def production(action: str, route: dict, document: dict) -> dict:
-    payload = base64.b64encode(json.dumps(document).encode()).decode()
-    out = ssm(f"cd /home/ubuntu/accessproof\necho {payload} | base64 -d | {CLI} {action} "
-              f"--organization-id {route['organization_id']} --application-id {route['application_id']}",
-              f"remote route {action} ({route['name']})")
+    op = {"import": "route_certificate_import", "attest": "route_attestation"}[action]
+    out = ssm_ops.import_payload(op, document, organizationId=route["organization_id"],
+                                 applicationId=route["application_id"])
     line = next((x for x in out.splitlines() if x.startswith('{"ok"')), None)
     return json.loads(line) if line else {"ok": False, "error": "NO_RESPONSE"}
 

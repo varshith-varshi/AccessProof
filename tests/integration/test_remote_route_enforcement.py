@@ -189,3 +189,18 @@ def test_api_enforcement_does_not_depend_on_gateway_package():
         tree = ast.parse(Path(mod).read_text())
         imported = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
         assert not [m for m in imported if m.startswith("apps.gateway")], mod
+
+
+def test_invalidation_reason_fits_column_when_many_fields_change(env):
+    """Found live on PostgreSQL: a reason longer than status_reason (100) rolled the
+    invalidation back, leaving a changed configuration VALID. SQLite ignores lengths."""
+    from apps.api.accessproof_api.db import RemoteRouteCertificate
+    db, row = _db(env)
+    c = cert(env); rre.import_certificate(db, row, c); db.commit()
+    changed = {**c["binding"], **{f: "changed" for f in ("tenant_id", "gateway_tls_cert_sha256", "gateway_audit_public_key",
+                                                         "source_id", "source_scope_digest", "rag_runtime_config_sha256")}}
+    rec = rre.apply_attestation(db, row, rrc.issue_attestation(c, changed, KEY, key_id=KID,
+                                                               now=datetime.now(timezone.utc) + timedelta(seconds=1)))
+    limit = RemoteRouteCertificate.__table__.c.status_reason.type.length
+    assert rec.status == "invalidated" and len(rec.status_reason) <= limit
+    assert rec.status_reason.startswith("CONFIGURATION_CHANGED:")

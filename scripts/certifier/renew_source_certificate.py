@@ -29,7 +29,6 @@ expires, after which production fails closed (not certified).
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import subprocess
@@ -48,35 +47,19 @@ INSTANCE, REGION = "i-0c11427d4d9c1b438", "eu-north-1"
 KEY = Path.home() / ".config/accessproof/certifier/ap-certifier-2026-11.pem"
 KEY_ID = "ap-certifier-2026-11"
 SOCKS = {a: Path.home() / f".ap-id/{a}.sock" for a in ("alice", "bob")}
+GUARD_CONTAINER = "accessproof-guard"
+import importlib.util as _ilu  # noqa: E402
+_ps = _ilu.spec_from_file_location("_ap_profile", LIVE / "_profile.py")
+_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("renew_source_certificate", globals())
 
 
 def log(msg: str) -> None:
     print(f"{datetime.now(timezone.utc).isoformat()} {msg}", flush=True)
 
 
-def ssm(script: str, comment: str, timeout: int = 600) -> str:
-    params = json.dumps({"executionTimeout": [str(timeout)], "commands": script.splitlines()})
-    cid = subprocess.run(["aws", "ssm", "send-command", "--region", REGION, "--instance-ids", INSTANCE,
-                          "--document-name", "AWS-RunShellScript", "--comment", comment, "--parameters", params,
-                          "--query", "Command.CommandId", "--output", "text"], check=True, capture_output=True, text=True).stdout.strip()
-    deadline = time.time() + timeout + 60
-    while time.time() < deadline:
-        time.sleep(3)
-        r = subprocess.run(["aws", "ssm", "get-command-invocation", "--region", REGION, "--command-id", cid,
-                            "--instance-id", INSTANCE, "--query", "[Status,StandardOutputContent,StandardErrorContent]",
-                            "--output", "json"], capture_output=True, text=True)
-        if r.returncode == 0:
-            status, out, err = json.loads(r.stdout)
-            if status in ("Success", "Failed", "Cancelled", "TimedOut"):
-                if status != "Success":
-                    raise RuntimeError(f"SSM_{status}: {(err or '')[-300:]}")
-                return out
-    raise RuntimeError("SSM_TIMEOUT")
-
-
-def sql(query: str) -> str:
-    return ssm("docker exec accessproof-db-1 psql -U accessproof -d accessproof -Atc " + json.dumps(query).replace("$", "\\$"),
-               "Read-only: certificate renewal check", 120).strip()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ssm_ops  # noqa: E402  (purpose-built SSM documents; no AWS-RunShellScript on production)
 
 
 def run(args: list[str], name: str, env: dict | None = None) -> None:
@@ -90,7 +73,7 @@ def guard_audit(decision_ids: list[str]) -> list[dict]:
     code = ("import sqlite3,json,sys;ids=json.loads(sys.argv[1]);c=sqlite3.connect('file:/var/lib/accessproof-guard/policy.db?mode=ro',uri=True);"
             "q='select decision_id,layer,result,reason,created_at,authorization_revision from audit_buffer where decision_id in (%s) order by created_at'%','.join('?'*len(ids));"
             "print(json.dumps([dict(zip(('decision_id','layer','result','reason','created_at','authorization_revision'),r)) for r in c.execute(q,ids)]))")
-    return json.loads(subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c", code, json.dumps(decision_ids)],
+    return json.loads(subprocess.run(["docker", "exec", GUARD_CONTAINER, "python", "-c", code, json.dumps(decision_ids)],
                                      capture_output=True, text=True, check=True).stdout)
 
 
@@ -111,11 +94,7 @@ def buffered_release(out: Path) -> None:
 
 
 def identity_bindings(out: Path) -> None:
-    raw = sql("select json_agg(json_build_object('employee', s.display_name, 'oidc_subject_oid', m.oidc_subject, "
-              "'oid_equals_source_principal', m.oidc_subject = s.provider_subject_id, 'method', m.method, 'status', m.status, "
-              "'automatic', m.verified_by_user_id is null, 'account_kind', s.account_kind) order by s.display_name) "
-              "from guard_identity_mappings m join guard_subjects s on s.id=m.source_subject_id "
-              f"where m.organization_id='{ORG}' and s.display_name in ('alice','bob')")
+    raw = ssm_ops.read_only("identity_bindings", organizationId=ORG)
     bindings = json.loads(raw.splitlines()[0])
     ok = len(bindings) == 2 and all(b["oid_equals_source_principal"] and b["method"] == "directory_verified"
                                      and b["status"] == "VERIFIED" for b in bindings)
@@ -124,18 +103,13 @@ def identity_bindings(out: Path) -> None:
         "bindings": bindings, "pass": ok}, indent=1))
 
 
-def push_file(local: Path, remote: str) -> str:
-    return f"echo '{base64.b64encode(local.read_bytes()).decode()}' | base64 -d | docker exec -i accessproof-api-1 sh -c 'cat > {remote}'"
-
-
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--force", action="store_true")
     p.add_argument("--renew-days", type=float, default=10.0)
     p.add_argument("--days", type=int, default=30)
     a = p.parse_args()
-    expires = sql(f"select coalesce(extract(epoch from expires_at)::text,'') || '|' || status from source_effective_certifications "
-                  f"where organization_id='{ORG}' and source_id='{SOURCE}'")
+    expires = ssm_ops.read_only("certificate_status", organizationId=ORG, sourceId=SOURCE)
     remaining = None
     if expires and expires.split("|")[0]:
         remaining = (float(expires.split("|")[0]) - time.time()) / 86400
@@ -149,13 +123,14 @@ def main() -> int:
         raise SystemExit(f"PRECONDITION_FAILED: employee sessions missing {missing} (sign in again)")
     if not KEY.exists() or (KEY.stat().st_mode & 0o077):
         raise SystemExit("PRECONDITION_FAILED: certifier key missing or not 0600")
-    health = json.loads(subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c",
-                                        "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=5).read().decode())"],
-                                       capture_output=True, text=True, check=True).stdout)
-    if not health.get("ready"):
-        raise SystemExit(f"PRECONDITION_FAILED: Guard not ready ({health.get('status')})")
-    cursors = sql(f"select string_agg(sync_kind||':'||status, ',') from provider_sync_cursors where organization_id='{ORG}' "
-                  f"and source_id='{SOURCE}' and last_error_code is null")
+    # A source being certified for the FIRST time cannot be "ready" (readiness requires
+    # the certificate); its Guard must then be in the D-19 certification window instead.
+    health = json.loads(subprocess.run(["docker", "exec", GUARD_CONTAINER, "python", "-c",
+                                        "import urllib.request,sys;print(urllib.request.urlopen('http://127.0.0.1:8080/health?application_id='+sys.argv[1],timeout=5).read().decode())",
+                                        APP], capture_output=True, text=True, check=True).stdout)
+    if not (health.get("ready") or health.get("certification_window")):
+        raise SystemExit(f"PRECONDITION_FAILED: Guard neither ready nor in its certification window ({health.get('status')})")
+    cursors = ssm_ops.read_only("sync_cursors", organizationId=ORG, sourceId=SOURCE)
     if cursors.count(":connected") < 2:
         raise SystemExit(f"PRECONDITION_FAILED: source sync not healthy ({cursors})")
     out = ROOT / "docs/evidence/certificate-renewals" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -168,9 +143,7 @@ def main() -> int:
     buffered_release(out)
     run([str(LIVE / "revocation_trial.py"), "--trial", "A", "--route", "--socket", str(SOCKS["alice"]), "--execute",
          "--budget-seconds", "1500", "--out", str(out / "revocation-A-route.json")], "revocation_route_trial", env)
-    scope_out = ssm(push_file(ROOT / "scripts/issue_source_certificate.py", "/tmp/isc.py") + "\n"
-                    f"docker exec -e PYTHONPATH=/app accessproof-api-1 python /tmp/isc.py scope --organization-id {ORG} --source-id {SOURCE}; rc=$?\n"
-                    "docker exec accessproof-api-1 rm -f /tmp/isc.py; exit $rc", "Certificate scope digest (profile + digest only)")
+    scope_out = ssm_ops.read_only("source_scope", organizationId=ORG, sourceId=SOURCE)
     scope = json.loads(scope_out.strip().splitlines()[-1])
     evidence = out / "source-certification-evidence.json"
     run([str(LIVE / "build_certificate_evidence.py"), "--dir", str(out), "--organization-id", ORG, "--source-id", SOURCE,
@@ -183,9 +156,7 @@ def main() -> int:
     if r.returncode != 0:
         raise SystemExit(f"ISSUANCE_REFUSED: {r.stderr.strip()[-300:]}")
     record.write_text(r.stdout)
-    imported = ssm(push_file(ROOT / "scripts/issue_source_certificate.py", "/tmp/isc.py") + "\n" + push_file(record, "/tmp/record.json") + "\n"
-                   "docker exec -e PYTHONPATH=/app accessproof-api-1 python /tmp/isc.py import --record /tmp/record.json; rc=$?\n"
-                   "docker exec accessproof-api-1 rm -f /tmp/isc.py /tmp/record.json; exit $rc", "Import renewed source certificate")
+    imported = ssm_ops.import_payload("source_certificate_import", json.loads(record.read_text()))
     log("import: " + imported.strip().splitlines()[-1])
     new = json.loads(record.read_text())
     log(f"RENEWED certified_at={new['certified_at']} expires_at={new['expires_at']} evidence={new['evidence_digest'][:12]}")
