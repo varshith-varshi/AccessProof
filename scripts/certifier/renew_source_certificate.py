@@ -48,6 +48,11 @@ INSTANCE, REGION = "i-0c11427d4d9c1b438", "eu-north-1"
 KEY = Path.home() / ".config/accessproof/certifier/ap-certifier-2026-11.pem"
 KEY_ID = "ap-certifier-2026-11"
 SOCKS = {a: Path.home() / f".ap-id/{a}.sock" for a in ("alice", "bob")}
+GUARD_CONTAINER = "accessproof-guard"
+import importlib.util as _ilu  # noqa: E402
+_ps = _ilu.spec_from_file_location("_ap_profile", LIVE / "_profile.py")
+_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("renew_source_certificate", globals())
 
 
 def log(msg: str) -> None:
@@ -90,7 +95,7 @@ def guard_audit(decision_ids: list[str]) -> list[dict]:
     code = ("import sqlite3,json,sys;ids=json.loads(sys.argv[1]);c=sqlite3.connect('file:/var/lib/accessproof-guard/policy.db?mode=ro',uri=True);"
             "q='select decision_id,layer,result,reason,created_at,authorization_revision from audit_buffer where decision_id in (%s) order by created_at'%','.join('?'*len(ids));"
             "print(json.dumps([dict(zip(('decision_id','layer','result','reason','created_at','authorization_revision'),r)) for r in c.execute(q,ids)]))")
-    return json.loads(subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c", code, json.dumps(decision_ids)],
+    return json.loads(subprocess.run(["docker", "exec", GUARD_CONTAINER, "python", "-c", code, json.dumps(decision_ids)],
                                      capture_output=True, text=True, check=True).stdout)
 
 
@@ -149,11 +154,13 @@ def main() -> int:
         raise SystemExit(f"PRECONDITION_FAILED: employee sessions missing {missing} (sign in again)")
     if not KEY.exists() or (KEY.stat().st_mode & 0o077):
         raise SystemExit("PRECONDITION_FAILED: certifier key missing or not 0600")
-    health = json.loads(subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c",
-                                        "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=5).read().decode())"],
-                                       capture_output=True, text=True, check=True).stdout)
-    if not health.get("ready"):
-        raise SystemExit(f"PRECONDITION_FAILED: Guard not ready ({health.get('status')})")
+    # A source being certified for the FIRST time cannot be "ready" (readiness requires
+    # the certificate); its Guard must then be in the D-19 certification window instead.
+    health = json.loads(subprocess.run(["docker", "exec", GUARD_CONTAINER, "python", "-c",
+                                        "import urllib.request,sys;print(urllib.request.urlopen('http://127.0.0.1:8080/health?application_id='+sys.argv[1],timeout=5).read().decode())",
+                                        APP], capture_output=True, text=True, check=True).stdout)
+    if not (health.get("ready") or health.get("certification_window")):
+        raise SystemExit(f"PRECONDITION_FAILED: Guard neither ready nor in its certification window ({health.get('status')})")
     cursors = sql(f"select string_agg(sync_kind||':'||status, ',') from provider_sync_cursors where organization_id='{ORG}' "
                   f"and source_id='{SOURCE}' and last_error_code is null")
     if cursors.count(":connected") < 2:

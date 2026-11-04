@@ -74,7 +74,13 @@ APP = "sharepoint-rag-staging"
 GUARD_ID = "102691c8-54d7-44d7-b1b1-bc40c9f335f4"
 INSTANCE = "i-0c11427d4d9c1b438"
 GUARD_URL = "http://127.0.0.1:8080"
+GUARD_CONTAINER = "accessproof-guard"
 RECOVERY = Path.home() / ".config/accessproof/revocation-recovery.json"
+
+import importlib.util as _ilu  # noqa: E402
+_ps = _ilu.spec_from_file_location("_ap_profile", Path(__file__).resolve().parent / "_profile.py")
+_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("revocation_trial", globals())
 TRIALS = {"A": "finance_alice.txt", "B": "group_finance_alice.txt",
           "C": "inherited_finance_alice.txt", "D": "delete_canary_alice.txt"}
 G = fx.G
@@ -128,7 +134,7 @@ def ap_revision() -> int | None:
 
 
 def guard_revision() -> int | None:
-    r = subprocess.run(["docker", "exec", "accessproof-guard", "python", "-c",
+    r = subprocess.run(["docker", "exec", GUARD_CONTAINER, "python", "-c",
                         "import sqlite3;c=sqlite3.connect('file:/var/lib/accessproof-guard/policy.db?mode=ro',uri=True);"
                         f"r=c.execute(\"select revision from authorization_revisions where application_id='{APP}'\").fetchone();"
                         "print(r[0] if r else '')"], capture_output=True, text=True)

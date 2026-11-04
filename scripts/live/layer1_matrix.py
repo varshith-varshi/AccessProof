@@ -32,6 +32,12 @@ spec.loader.exec_module(ei)
 GUARD = "http://127.0.0.1:8080/guard/v1/filter-resources"
 APP = "sharepoint-rag-staging"
 SRC = "2fa9562b-b765-4098-bebf-222ea53ec667"
+GUARD_CONTAINER = "accessproof-guard"
+
+import importlib.util as _ilu  # noqa: E402
+_ps = _ilu.spec_from_file_location("_ap_profile", Path(__file__).resolve().parent / "_profile.py")
+_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("layer1_matrix", globals())
 EXPECT = {
     "alice": {"finance_alice.txt": "ALLOW", "engineering_bob.txt": "DENY", "shared_control.txt": "ALLOW",
               "group_finance_alice.txt": "ALLOW", "inherited_finance_alice.txt": "ALLOW"},
@@ -114,7 +120,7 @@ def main() -> int:
             controls.append({"actor": actor, "control": kind, "http_status": status, "detail": body.get("detail"),
                              "pass": ok, "at": now()})
             print(f"{actor:5s} control {kind:28s} HTTP {status} {'PASS' if ok else 'FAIL'}")
-    image = subprocess.run(["docker", "inspect", "-f", "{{.Config.Image}}", "accessproof-guard"],
+    image = subprocess.run(["docker", "inspect", "-f", "{{.Config.Image}}", GUARD_CONTAINER],
                            capture_output=True, text=True).stdout.strip()
     out = {"schema": "accessproof.layer1_guard_matrix/v3", "content_versions": "as indexed by the lab RAG (Graph eTag)", "guard_image": image, "generated_at": now(),
            "token": "Entra v2 user-delegated access token for the RAG API (scp=access_as_user); "
