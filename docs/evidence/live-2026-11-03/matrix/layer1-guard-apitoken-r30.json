@@ -1,0 +1,153 @@
+{
+ "schema": "accessproof.layer1_guard_matrix/v2",
+ "guard_image": "accessproof-guard-r27:fd44ed408c2c",
+ "generated_at": "2026-11-04T04:06:52.299432+00:00",
+ "token": "Entra v2 user-delegated access token for the RAG API (scp=access_as_user); identity via automatic directory_verified binding",
+ "results": [
+  {
+   "actor": "alice",
+   "document": "finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "0951445f-3810-47e9-ae78-c992a939a4e9",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.077191+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "engineering_bob.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "2a59f68d-1a9c-4ea4-93d0-17f34906e6a8",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.095948+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "shared_control.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "d7921d2c-a14a-4485-9129-c37cc748563f",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.115112+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "group_finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "2f8ee91b-f9fa-43db-b432-12e3e73dc98e",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.132026+00:00"
+  },
+  {
+   "actor": "alice",
+   "document": "inherited_finance_alice.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "d078aaa8-3afb-492c-b8ec-5da0ec660e12",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.146347+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "a4701980-9d48-4258-8a79-472009c0cae0",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.191037+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "engineering_bob.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "6057dabd-f938-4844-969a-49f53586edd8",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.206584+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "shared_control.txt",
+   "expected": "ALLOW",
+   "guard_decision": "ALLOW",
+   "decision_id": "914459fb-76c3-4d25-88d8-9bd796ca1d79",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.218590+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "group_finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "f2837ba1-49b7-483f-b10b-8846c4b06411",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.237418+00:00"
+  },
+  {
+   "actor": "bob",
+   "document": "inherited_finance_alice.txt",
+   "expected": "DENY",
+   "guard_decision": "DENY",
+   "decision_id": "e4ed472a-495c-4f0e-b8a8-61842364b080",
+   "policy_version": 14,
+   "authorization_revision": 743,
+   "pass": true,
+   "at": "2026-11-04T04:06:52.251527+00:00"
+  }
+ ],
+ "negative_controls": [
+  {
+   "actor": "alice",
+   "control": "id_token_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN",
+   "pass": true,
+   "at": "2026-11-04T04:06:52.157436+00:00"
+  },
+  {
+   "actor": "alice",
+   "control": "tampered_signature_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_TOKEN_INVALID",
+   "pass": true,
+   "at": "2026-11-04T04:06:52.170313+00:00"
+  },
+  {
+   "actor": "bob",
+   "control": "id_token_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_NOT_DELEGATED_ACCESS_TOKEN",
+   "pass": true,
+   "at": "2026-11-04T04:06:52.265858+00:00"
+  },
+  {
+   "actor": "bob",
+   "control": "tampered_signature_rejected",
+   "http_status": 401,
+   "detail": "IDENTITY_TOKEN_INVALID",
+   "pass": true,
+   "at": "2026-11-04T04:06:52.276098+00:00"
+  }
+ ],
+ "pass": true
+}
