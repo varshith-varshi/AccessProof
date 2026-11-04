@@ -76,6 +76,16 @@ def google_identity(monkeypatch):
         url, urlsplit(url).hostname, urlsplit(url).hostname,
     ))
 
+    # Hermetic: the product resolves the provider host with real DNS before
+    # connecting (SSRF pinning). These tests use a mock transport, so DNS must
+    # not be consulted either; a resolver hiccup made 10 tests fail with 503
+    # (reproduced by forcing getaddrinfo to fail). Keep the HTTPS/host checks.
+    def _validate_without_dns(url):
+        parts = urlsplit(url)
+        if parts.scheme != "https" or not parts.hostname:
+            raise ValueError("Cloud AI targets must use HTTPS with a hostname")
+    monkeypatch.setattr(oidc_module, "validate_cloud_url", _validate_without_dns)
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("openid-configuration"):
             return httpx.Response(200, json={
