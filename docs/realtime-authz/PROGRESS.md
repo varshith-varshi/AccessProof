@@ -5,15 +5,17 @@ The r34 / Gate E certification runs from the main worktree; this work never touc
 
 ## Status
 - [x] Isolated worktree created; Gate E run 5 left running.
-- [ ] Repository audit (in progress)
-- [ ] Graph documentation check
-- [ ] Microsoft webhook receiver + lifecycle
-- [ ] Subscription manager (drive root, group membership)
-- [ ] Event-driven reconciliation priority path
-- [ ] Guard propagation latency investigation
-- [ ] Freshness contract
-- [ ] Metrics
-- [ ] Tests (unit, security, PostgreSQL)
+- [x] Repository audit
+- [x] Graph documentation check (limits recorded in OPERATIONS.md)
+- [x] Microsoft webhook receiver + lifecycle (383a6c1)
+- [x] Subscription manager: drive root, granted groups, users (383a6c1)
+- [x] Event-driven reconciliation, channel-aware (383a6c1)
+- [x] Guard propagation fix: state-token wake-up and full-window long-poll (6c8bc97)
+- [x] D-29 verifier: missing Layer 2 audit is retryable (cc5d275)
+- [x] Freshness contract and operations guide (665ce22)
+- [x] Metrics (4ebed4d)
+- [x] Full regression on 665ce22: SQLite 1572 tests, 0 failed, 0 errors; PostgreSQL 17 (`accessproof_app`) 1572 tests, 0 failed, 0 errors
+- [ ] Integrate r34 production fixes (branch is based on 727733e = r34, so nothing is missing; verify at merge time)
 - [ ] Staging
 - [ ] Live validation (needs a public HTTPS receiver, so it needs owner approval to deploy)
 
