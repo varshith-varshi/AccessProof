@@ -148,6 +148,29 @@ def probe_customer_employee_route(
         resolved_compose=resolved_compose, rag_service=spec.rag_service,
         url=probe.url, gateway_port=spec.listen_port,
     )
+    return _employee_route_evidence(application_id=spec.application_id, nonce=nonce, probe=probe, client=client)
+
+
+def probe_remote_employee_route(
+    *, remote_route_status: dict[str, Any], application_id: str, nonce: str,
+    probe: EmployeeRouteProbe, client: httpx.Client,
+) -> dict[str, Any]:
+    """Cutover evidence for a REMOTE-mode deployment (RAG on another host/OS).
+
+    The Compose isolation proof of the reference topology is replaced by the
+    production-enforced remote route certificate: the control plane must report
+    every remote route of this application CERTIFIED (signed 14-check evidence on
+    the actual RAG host, bound and freshly attested). ``client`` must carry the
+    Gateway's TLS + application signature. The probes are identical."""
+    if not (isinstance(remote_route_status, dict) and remote_route_status.get("applicable")
+            and remote_route_status.get("certified") is True):
+        raise CustomerAgentError("REMOTE_ROUTE_NOT_CERTIFIED")
+    return _employee_route_evidence(application_id=application_id, nonce=nonce, probe=probe, client=client)
+
+
+def _employee_route_evidence(
+    *, application_id: str, nonce: str, probe: EmployeeRouteProbe, client: httpx.Client | None,
+) -> dict[str, Any]:
     if not isinstance(nonce, str) or len(nonce) < 32:
         raise CustomerAgentError("The issued server nonce is missing")
     digest = hashlib.sha256(nonce.encode()).hexdigest()[:24]
@@ -157,7 +180,7 @@ def probe_customer_employee_route(
     try:
         success, success_raw, success_data = _body_json_bytes(
             http, url=probe.url, token=probe.allowed_token,
-            application_id=spec.application_id, request_id=request_id,
+            application_id=application_id, request_id=request_id,
             resources=probe.allowed_resources,
         )
         if success != 200:
@@ -171,7 +194,7 @@ def probe_customer_employee_route(
             raise CustomerAgentError("Employee RAG did not return a verified allowed result")
         denial_status, denial_raw, denial_data = _body_json_bytes(
             http, url=probe.url, token=probe.denied_token,
-            application_id=spec.application_id, request_id=request_id + "-deny",
+            application_id=application_id, request_id=request_id + "-deny",
             resources=probe.denied_resources,
         )
         detail = denial_data.get("detail")
@@ -195,7 +218,7 @@ def probe_customer_employee_route(
         forged["content"] += "\nACCESSPROOF_FORGED_SOURCE_SENTINEL\n"
         forged_status, forged_raw, forged_data = _body_json_bytes(
             http, url=probe.url, token=probe.allowed_token,
-            application_id=spec.application_id,
+            application_id=application_id,
             request_id=request_id + "-tamper", resources=[forged],
         )
         forged_detail = forged_data.get("detail")
