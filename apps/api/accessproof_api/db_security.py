@@ -59,7 +59,9 @@ NEWLY_PROTECTED_TABLES: tuple[str, ...] = (
     "protection_activation_runs", "provider_sync_cursors", "source_effective_certifications",
     "test_identities",
 )
-TENANT_TABLES: tuple[str, ...] = LEGACY_RLS_TABLES + NEWLY_PROTECTED_TABLES
+# Added after t4d5e6f7a8b9 (each by its own migration, same canonical policy).
+LATER_PROTECTED_TABLES: tuple[str, ...] = ("remote_route_certificates",)
+TENANT_TABLES: tuple[str, ...] = LEGACY_RLS_TABLES + NEWLY_PROTECTED_TABLES + LATER_PROTECTED_TABLES
 
 # Tenant tables that must be read BEFORE the tenant is known (credential or
 # state lookups). Isolation for these is enforced by the application: the

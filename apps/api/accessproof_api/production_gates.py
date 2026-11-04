@@ -25,6 +25,7 @@ from apps.api.accessproof_api.db import (
     ProviderSyncCursor, SourceConnection, SourceEffectiveCertification, set_tenant_context,
 )
 from apps.api.accessproof_api.db_security import audit as db_audit
+from apps.api.accessproof_api.remote_route_enforcement import status as remote_route_status
 from packages.crypto.source_certificate import REQUIRED_CHECKS, evidence_digest
 
 PASS, FAIL, BLOCKED = "PASS", "FAIL", "BLOCKED"
@@ -157,6 +158,13 @@ def evaluate(db: Session, *, organization_id: str, application_id: str,
         e["gateway_enforcement_ready"] = (PASS, "ready") if live["enforcement_ready_reported"] else (FAIL, str(live["reason"]))
         route = describe_route_certificate(db, row, now=now)
         e["route_certified"] = (PASS, route["status"]) if route.get("certified") else (FAIL, str(route.get("status")))
+        # Remote (cross-host) RAG routes: once any is on record, every one must hold a
+        # VALID production-verified certificate (signed, bound, unexpired, freshly attested).
+        remote = remote_route_status(db, row, now=now)
+        if remote["applicable"]:
+            bad = [f'{r["route_url"]}:{r["state"]}' for r in remote["routes"] if r["state"] != "VALID"]
+            e["remote_routes_certified"] = ((PASS, f'{sum(r["state"] == "VALID" for r in remote["routes"])} valid')
+                                            if remote["certified"] else (FAIL, "; ".join(bad)[:300] or "NOT_CERTIFIED"))
     gates["E_GATEWAY"] = _gate(e)
 
     # F/G — Layer 1 and Layer 2 observed on real traffic (Guard audit)

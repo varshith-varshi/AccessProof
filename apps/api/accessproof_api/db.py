@@ -1140,6 +1140,30 @@ class RAGRouteChallenge(Base):
     cutover_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class RemoteRouteCertificate(Base):
+    """Remote (cross-host) RAG route certificate issued by the pinned offline
+    certifier and verified on import. Production enforcement: Gate E requires a
+    currently VALID certificate for an application with a remote route; a
+    signed live attestation whose binding differs invalidates it."""
+    __tablename__ = "remote_route_certificates"
+    __table_args__ = (UniqueConstraint("organization_id", "application_row_id", "fingerprint",
+                                       name="uq_remote_route_certificate_fingerprint"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    application_row_id: Mapped[str] = mapped_column(ForeignKey("ai_applications.id", ondelete="CASCADE"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    key_id: Mapped[str] = mapped_column(String(128))
+    route_url: Mapped[str] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(24), default="active")   # active | invalidated | revoked | superseded
+    status_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    certificate_json: Mapped[str] = mapped_column(Text)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_attested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_attestation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class GuardEnrollment(Base):
     __tablename__ = "guard_enrollments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)

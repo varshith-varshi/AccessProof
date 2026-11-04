@@ -26,7 +26,6 @@ import base64
 import hashlib
 import importlib.util
 import json
-import os
 import shlex
 import socket
 import ssl
@@ -74,6 +73,20 @@ CRED_RE = (r"(OPENAI|ANTHROPIC|AZURE_OPENAI|GEMINI|GOOGLE_API_KEY|COHERE|MISTRAL
            r"OLLAMA|BEDROCK|VERTEX|LLM_|MODEL_(API|KEY|TOKEN|URL|ENDPOINT|BASE))")
 SOCK = {a: str(Path.home() / f".ap-id/{a}.sock") for a in ("alice", "bob")}
 REVOCATION_REASONS = {"LAYER2_ACCESS_REVOKED", "AUTHORIZATION_REVISION_CHANGED", "SOURCE_ACL_STALE"}
+
+
+# Trusted signing authority: the offline certifier key production already pins.
+CERTIFIER_KEY = Path.home() / ".config/accessproof/certifier/ap-certifier-2026-11.pem"
+CERTIFIER_KEY_ID = "ap-certifier-2026-11"
+
+
+def certifier_key() -> Ed25519PrivateKey:
+    if not CERTIFIER_KEY.exists() or CERTIFIER_KEY.stat().st_mode & 0o077:
+        raise SystemExit("certifier key missing or not 0600")
+    key = serialization.load_pem_private_key(CERTIFIER_KEY.read_bytes(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise SystemExit("certifier key is not Ed25519")
+    return key
 
 
 def now() -> str:
@@ -246,8 +259,9 @@ def observe_binding(o: Observer, a) -> dict:
     if src_ev.get("source_id") != o.index["source_id"]:
         raise rrc.RouteCertificationError("SOURCE_EVIDENCE_FOR_ANOTHER_SOURCE")
     route = m["routes"][0]
+    tenant = json.loads((GW_DIR / "evidence-config.json").read_text())["tenant_id"]
     return rrc.make_binding({
-        "application_id": m["application_id"], "route_method": route["method"], "route_path": route["path"],
+        "tenant_id": tenant, "application_id": m["application_id"], "route_method": route["method"], "route_path": route["path"],
         "route_url": a.route_url, "client_id": m["client_id"], "framework": m["framework"],
         "framework_version": m.get("framework_version") or "n/a", "client_package": m["client_package"],
         "rag_code_sha256": m["code_sha256"], "rag_runtime_config_sha256": m.get("runtime_config_sha256"),
@@ -622,12 +636,18 @@ def main() -> int:
     p.add_argument("--issue", action="store_true", help="sign the result with ~/.ap-id/route-certifier.key")
     p.add_argument("--skip-revocation", action="store_true")
     p.add_argument("--verify", help="re-verify an issued certificate against the LIVE deployment")
+    p.add_argument("--attest", help="sign a live attestation for an issued certificate (for production import)")
     a = p.parse_args()
-    key_path = Path.home() / ".ap-id/route-certifier.key"
     o = Observer(a)
+    if a.attest:
+        cert = json.loads(Path(a.attest).read_text())
+        live = observe_binding(o, a)
+        att = rrc.issue_attestation(cert, live, certifier_key(), key_id=CERTIFIER_KEY_ID)
+        print(json.dumps(att))
+        return 0 if att["matches"] else 1
     if a.verify:
         cert = json.loads(Path(a.verify).read_text())
-        pub = Ed25519PrivateKey.from_private_bytes(key_path.read_bytes()).public_key()
+        pub = certifier_key().public_key()
         try:
             live = observe_binding(o, a)
         except rrc.RouteCertificationError as exc:
@@ -655,12 +675,7 @@ def main() -> int:
     if a.out:
         Path(a.out).write_text(raw)
     if a.issue:
-        if not key_path.exists():
-            old = os.umask(0o077)
-            key_path.write_bytes(os.urandom(32))
-            os.umask(old)
-        key = Ed25519PrivateKey.from_private_bytes(key_path.read_bytes())
-        cert = rrc.issue(binding, results, key, key_id="ap-route-certifier-lab-1", evidence_sha256=sha(raw))
+        cert = rrc.issue(binding, results, certifier_key(), key_id=CERTIFIER_KEY_ID, evidence_sha256=sha(raw))
         Path((a.out or "route") + ".certificate.json").write_text(json.dumps(cert, indent=1))
     for c in results:
         print(f'{c["code"]:<40} {c["status"]}  {c.get("detail") or ""}')

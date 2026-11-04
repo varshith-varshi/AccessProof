@@ -46,7 +46,7 @@ REQUIRED_CHECKS: dict[str, tuple[str, ...]] = {
 }
 
 BINDING_FIELDS = (
-    "application_id", "route_method", "route_path", "route_url", "client_id", "framework",
+    "tenant_id", "application_id", "route_method", "route_path", "route_url", "client_id", "framework",
     "framework_version", "client_package", "rag_code_sha256", "rag_runtime_config_sha256", "rag_platform",
     "gateway_url", "gateway_tls_cert_sha256", "gateway_exposure", "gateway_audit_public_key",
     "gateway_image", "guard_image", "guard_identity_config_sha256", "source_id", "source_scope_digest",
@@ -112,6 +112,39 @@ def issue(binding: Mapping[str, Any], checks: list[dict], key: Ed25519PrivateKey
             "issued_at": now.isoformat(), "expires_at": (now + MAX_AGE).isoformat(), "key_id": key_id}
     cert["signature"] = _b64(key.sign(_canonical({k: v for k, v in cert.items() if k != "signature"})))
     return cert
+
+
+ATTESTATION_SCHEMA = "accessproof.remote-route-attestation/v1"
+ATTESTATION_MAX_AGE = timedelta(hours=1)
+
+
+def issue_attestation(cert: Mapping[str, Any], live_binding: Mapping[str, Any], key: Ed25519PrivateKey, *,
+                      key_id: str, now: datetime | None = None) -> dict:
+    """Signed statement of the LIVE deployment's binding, for production to
+    compare with the certified binding (configuration-change invalidation)."""
+    now = now or datetime.now(timezone.utc)
+    live_fp = fingerprint(live_binding)
+    changed = [f for f in BINDING_FIELDS if (cert.get("binding") or {}).get(f) != live_binding.get(f)]
+    att = {"schema": ATTESTATION_SCHEMA, "certificate_fingerprint": cert.get("fingerprint"),
+           "tenant_id": (cert.get("binding") or {}).get("tenant_id"),
+           "application_id": (cert.get("binding") or {}).get("application_id"),
+           "live_fingerprint": live_fp, "matches": live_fp == cert.get("fingerprint"), "changed_fields": changed,
+           "observed_at": now.isoformat(), "key_id": key_id}
+    att["signature"] = _b64(key.sign(_canonical({k: v for k, v in att.items() if k != "signature"})))
+    return att
+
+
+def verify_signed(doc: Mapping[str, Any], keys: Mapping[str, Ed25519PublicKey]) -> bool:
+    key = keys.get(str(doc.get("key_id")))
+    sig = doc.get("signature")
+    if key is None or not isinstance(sig, str):
+        return False
+    try:
+        key.verify(base64.urlsafe_b64decode(sig + "=" * (-len(sig) % 4)),
+                   _canonical({k: v for k, v in doc.items() if k != "signature"}))
+        return True
+    except Exception:
+        return False
 
 
 def verify_certificate(cert: Mapping[str, Any], public_key: Ed25519PublicKey, current_binding: Mapping[str, Any],
