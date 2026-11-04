@@ -140,3 +140,31 @@ Live (lab tenant, production control plane):
 * **G cache:** the cached baseline route returns 503 `UNPROTECTED_BASELINE_DISABLED`; protected answers are never cached (`cache_hit:false` on repeats); after revocation the pre-revocation answer is not returned.
 * **E2E-07:** after stable denial, the protected route never sent the document to the model.
 * **Security gates on r30 (read-only, 04:11Z):** PASS A infrastructure, B identity, F Layer 1. FAIL C (no independent certificate yet), D and E (Guard not ready, which waits on C), I (runtime DB role is still the owner `accessproof`), J (activation). BLOCKED G and H (they require certified evidence). Verdict: **NOT VERIFIED**. Protect remains inactive.
+
+## Update 2026-11-04 06:05 UTC — revocation B–D, least-privilege, r31, certificate, gates; D-27 open in production
+* **Revocation on r30** (seconds from t0):
+
+| Trial | t1 source | t2 detected | t5 first denial | t6 stable | Restore stable |
+|---|---|---|---|---|---|
+| B group membership | not observed* | 412.3 | 430.6 | 494.9 | 912.2 (detected 838.4) |
+| C inherited folder grant | 7.9 | 25.4 | 40.4 | 108.3 | 333.3 |
+| D deletion | 7.9 | 242.5 | 255.1 | 317.8 | n/a |
+
+  \* SharePoint's own GetUserEffectivePermissions did not reflect the group removal within the window, although AccessProof denied. Group changes travel by directory sync (900 s on r30), which explains the 412 s. r31 makes it 300 s, and directory evidence older than 900 s fails closed. Inside the window the Guard serves its last verified snapshot (bounded staleness).
+* **Least-privilege database (P0-01):** production switched at 05:16Z (api `accessproof_app`, worker `accessproof_rls_admin`, metrics `accessproof_metrics`). Runtime audit: not superuser, no BYPASSRLS, owns nothing, 58/58 tables have policies. 0 worker errors and 0 API 5xx afterwards. Rollback under these roles was rehearsed on staging (r30→r29, roles preserved). r31 deployed over them and kept them.
+* **r31 `r31-cache-freshness-8df06ebd7b4a`** (05:19→05:21Z): cached-chunk version freshness, signed memory/tool context, 300 s directory sync. SQLite 1523/0, PostgreSQL 17 (`accessproof_app`) 1523/0, staging probe 23/23.
+* **Certificate:**
+  * Certifier public key `ap-certifier-2026-11` pinned in api and worker (backup of compose and `.env` kept).
+  * Scope `sharepoint_list_item_effective` / `c63d3b90…`.
+  * Certificate issued from 14 live checks (evidence digest `a3499fe7…`), imported, and accepted by the API.
+  * Guard `ready:true`, certification window closed, Gateway ready.
+* **Gates on r31 with the certificate evidence (05:33Z):** A, B, C, D, F, G, H, I **PASS**. E FAIL (`route_certified` MISSING, D-26). J FAIL (route challenge, cutover and Guard Protect acknowledgement). Verdict **NOT VERIFIED**. Protect is **inactive** (`protect_pending`).
+* **Live on r31:**
+  * Layer 1 10/10 with indexed versions.
+  * Stale and missing content version refused (8/8 controls).
+  * RAG E2E 8/8.
+* **D-27 (P1, open in production):**
+  * What happened: after trial D deleted a document, the 05:32Z synthetic content edit made the ACL sync re-read the deleted item (Graph 404). Every sync has failed since 05:30:32Z, and the Guard fails closed (503 / `ready:false`).
+  * Fix: `51f4204`, reproduced and verified against the real lab drive. Unit/security/contract 1354/0; staging rehearsal and probe 23/23.
+  * **The production deploy was refused by the disk preflight (7 GB free, 8 GB required). Freeing space was blocked by this session's safety controls, so operator action is needed.**
+  * The document-update freshness trial could not complete for the same reason (`pass:false`). It did record that no stale chunk reached the model (the route failed closed throughout).
