@@ -4,7 +4,8 @@
     python remote_rag_server.py --framework langchain --index trusted-index.json \
         --gateway https://ap-gateway.corp.internal:8443 --ca ap-gateway-ca.pem \
         --client-id rag-win-01 --listen 127.0.0.1:8187
-    (client secret from env AP_CLIENT_SECRET; never on the command line)
+    (client secret from --client-secret-file (preferred, 0600) or env AP_CLIENT_SECRET;
+     never on the command line)
 
 The employee-facing route is POST /chat with the employee's own bearer token.
 Retrieval is local (a keyword retriever over the trusted-ingestion export);
@@ -126,12 +127,14 @@ def main() -> int:
     ap.add_argument("--ca")
     ap.add_argument("--client-id", required=True)
     ap.add_argument("--listen", default="127.0.0.1:8187")
+    ap.add_argument("--client-secret-file", help="file holding the base64url client secret (preferred over env)")
     ap.add_argument("--unsafe-search-route", action="store_true")
     ap.add_argument("--unsafe-direct-model-route", action="store_true")
     a = ap.parse_args()
-    secret = os.environ.get("AP_CLIENT_SECRET")
+    secret = (Path(a.client_secret_file).read_text(encoding="utf-8").strip() if a.client_secret_file
+              else os.environ.get("AP_CLIENT_SECRET"))
     if not secret:
-        raise SystemExit("AP_CLIENT_SECRET is required (environment / secret store)")
+        raise SystemExit("client secret required: --client-secret-file or AP_CLIENT_SECRET")
     index = KeywordIndex(a.index)
     gateway = AccessProofGateway(a.gateway, application_id=index.application_id, client_id=a.client_id,
                                  client_secret=secret, ca_file=a.ca)
@@ -143,6 +146,9 @@ def main() -> int:
                 "framework": a.framework, "framework_version": framework_version(a.framework),
                 "client_package": f"accessproof-rag/{__version__}", "code_sha256": code_digest(),
                 "platform": sys.platform, "python": sys.version.split()[0],
+                # Runtime configuration (flags, never secrets): part of the certified binding.
+                "runtime_config_sha256": hashlib.sha256(json.dumps(
+                    {k: v for k, v in sorted(vars(a).items()) if k != "client_secret_file"}).encode()).hexdigest(),
                 "routes": [{"method": "POST", "path": "/chat", "protected_by": "accessproof-gateway"}]}
 
     class Handler(BaseHTTPRequestHandler):
