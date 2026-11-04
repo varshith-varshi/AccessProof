@@ -208,11 +208,14 @@ async def _sync_loop() -> None:
             # Long polling is an outbound wake-up channel. It shortens normal
             # propagation without making policy content or authorization depend
             # on a notification; sync_once remains the authoritative fetch.
+            # The long-poll is held open for the whole sync window (was 1 s plus a
+            # 10 s sleep, which delayed revocations by up to ~10 s). Returning
+            # without a change is the periodic sync tick; only an error backs off.
             try:
-                changed = await asyncio.to_thread(client.wait_for_policy_update, wait_seconds=1) if client else False
+                if client:
+                    await asyncio.to_thread(client.wait_for_policy_update,
+                                            wait_seconds=int(min(25, max(1, sync_interval_seconds))))
             except Exception:
-                changed = False
-            if not changed:
                 await asyncio.sleep(sync_interval_seconds)
     finally:
         if client is not None:

@@ -62,10 +62,14 @@ class GuardSyncClient:
         A notification is never policy content. The caller must still execute
         ``sync_once`` to fetch and atomically install the authoritative state.
         """
+        token = getattr(self, "_authorization_state_token", None)
         response = self.client.get(
             f"{self.credentials.control_plane_url.rstrip('/')}/api/v1/guards/{self.credentials.guard_id}/policy-notifications",
             headers=self._headers,
-            params={"after_version": self.cache.version(), "wait_seconds": min(25, max(0, wait_seconds))},
+            params={"after_version": self.cache.version(), "wait_seconds": min(25, max(0, wait_seconds)),
+                    **({"state_token": token} if token else {})},
+            # The server holds the request open up to wait_seconds.
+            timeout=httpx.Timeout(min(25, max(0, wait_seconds)) + 10.0),
         )
         response.raise_for_status()
         payload = response.json()
@@ -74,6 +78,8 @@ class GuardSyncClient:
         version = payload.get("policy_version")
         if not isinstance(version, int) or version < self.cache.version():
             raise ValueError("Invalid policy notification")
+        if payload.get("event_type") == "AUTHORIZATION_STATE_CHANGED":
+            return True
         return payload.get("event_type") == "POLICY_UPDATE_AVAILABLE" and version > self.cache.version()
 
     def sync_once(self) -> bool:
@@ -147,6 +153,10 @@ class GuardSyncClient:
         for policy_version in self.cache.pending_installed_policy_acks():
             self._ack(policy_version, "installed")
             self.cache.mark_installed_policy_ack_delivered(policy_version)
+        # Only a fully applied envelope may set the token used for wake-ups;
+        # a failed sync keeps the old token, so the Guard keeps being woken.
+        token = payload.get("authorization_state_token")
+        self._authorization_state_token = token if isinstance(token, str) and len(token) <= 64 else None
         return installed
 
     @staticmethod

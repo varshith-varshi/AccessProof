@@ -1552,7 +1552,7 @@ def guard_policies(
         states = db.scalars(select(GuardEffectiveAccess).where(
             GuardEffectiveAccess.organization_id == guard.organization_id
         )).all()
-        return {"kind": "full", "version": latest, "applications": bound_applications, **_identity_envelope(), **_versions_envelope, "authorization_revisions": authorization_revisions, "decisions": [
+        return {"kind": "full", "version": latest, "applications": bound_applications, **_identity_envelope(), **_versions_envelope, "authorization_state_token": _authorization_state_token(db, guard), "authorization_revisions": authorization_revisions, "decisions": [
             {"subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id, "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id),
              "scope": row.scope, "decision": row.decision, "reason": row.reason}
             for row in states
@@ -1561,7 +1561,7 @@ def guard_policies(
         GuardPolicy.organization_id == guard.organization_id,
         GuardPolicy.version > after_version,
     ).order_by(GuardPolicy.version.asc())).all()
-    return {"kind": "incremental", "version": latest, "applications": bound_applications, **_identity_envelope(), **_versions_envelope, "authorization_revisions": authorization_revisions, "policies": [
+    return {"kind": "incremental", "version": latest, "applications": bound_applications, **_identity_envelope(), **_versions_envelope, "authorization_state_token": _authorization_state_token(db, guard), "authorization_revisions": authorization_revisions, "policies": [
         {"version": row.version, "subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id,
          "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id), "scope": row.scope, "decision": row.decision,
          "reason": row.reason}
@@ -1569,11 +1569,60 @@ def guard_policies(
     ]}
 
 
+def _guard_bound_source_ids(db: OrmSession, guard: GuardRegistration) -> list[str]:
+    rows = db.execute(select(AIApplication.id, AIApplication.source_id).where(
+        AIApplication.organization_id == guard.organization_id,
+        AIApplication.guard_id == guard.id,
+    )).all()
+    ids = {str(source) for _, source in rows if source}
+    app_rows = [str(row_id) for row_id, _ in rows]
+    if app_rows:
+        ids.update(str(source) for source in db.scalars(select(AIApplicationSourceBinding.source_id).where(
+            AIApplicationSourceBinding.organization_id == guard.organization_id,
+            AIApplicationSourceBinding.application_row_id.in_(app_rows),
+        )))
+    return sorted(ids)
+
+
+def _authorization_state_token(db: OrmSession, guard: GuardRegistration) -> str:
+    """Cheap fingerprint of everything that changes a Guard's authorization
+    envelope WITHOUT necessarily changing the policy version: unresolved
+    permission events, outstanding distributions, source sync state and the
+    identity set. A Guard long-polling with an older token is woken at once
+    (it then fetches and verifies the full envelope through the normal path)."""
+    sources = _guard_bound_source_ids(db, guard)
+    unresolved = 0
+    cursors: list[list[str]] = []
+    if sources:
+        unresolved = int(db.scalar(select(func.count(GuardPermissionEvent.id)).where(
+            GuardPermissionEvent.organization_id == guard.organization_id,
+            GuardPermissionEvent.source_id.in_(sources),
+            GuardPermissionEvent.processing_status != "resolved",
+        )) or 0)
+        cursors = [[str(c.source_id), str(c.sync_kind), str(c.status), str(c.last_success_at), str(c.last_error_code)]
+                   for c in db.scalars(select(ProviderSyncCursorModel).where(
+                       ProviderSyncCursorModel.organization_id == guard.organization_id,
+                       ProviderSyncCursorModel.source_id.in_(sources),
+                   ).order_by(ProviderSyncCursorModel.source_id, ProviderSyncCursorModel.sync_kind))]
+    outstanding = int(db.scalar(select(func.count(GuardPolicyDistribution.id)).where(
+        GuardPolicyDistribution.organization_id == guard.organization_id,
+        GuardPolicyDistribution.guard_id == guard.id,
+        GuardPolicyDistribution.status.in_(["pending", "received"]),
+    )) or 0)
+    latest = int(db.scalar(select(func.max(GuardPolicy.version)).where(
+        GuardPolicy.organization_id == guard.organization_id)) or 0)
+    from apps.api.accessproof_api.identity_resolution import identity_version as _identity_version
+    raw = json.dumps([latest, unresolved, outstanding, cursors, _identity_version(db, guard.organization_id)],
+                     separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
 @app.get("/api/v1/guards/{guard_id}/policy-notifications")
 async def guard_policy_notification(
     guard_id: str,
     after_version: int = 0,
     wait_seconds: int = 20,
+    state_token: str = "",
     authorization: str | None = Header(default=None),
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -1581,10 +1630,13 @@ async def guard_policy_notification(
 
     This delivers no policy data. A Guard treats it only as a signal to call
     the normal policy endpoint, preserving the existing signature/version and
-    atomic-installation checks.
+    atomic-installation checks. A Guard that sends the authorization state
+    token from its last envelope is also woken when that state changes
+    (e.g. source health recovering and a new revision becoming issuable),
+    not only when the policy version advances.
     """
     guard = _authenticate_guard(db, guard_id, authorization)
-    if after_version < 0 or wait_seconds < 0 or wait_seconds > 25:
+    if after_version < 0 or wait_seconds < 0 or wait_seconds > 25 or len(state_token) > 64:
         raise HTTPException(422, "INVALID_NOTIFICATION_WAIT")
     deadline = time.monotonic() + wait_seconds
     while True:
@@ -1593,8 +1645,11 @@ async def guard_policy_notification(
         )) or 0)
         if latest > after_version:
             return {"event_type": "POLICY_UPDATE_AVAILABLE", "guard_id": guard.id, "policy_version": latest}
+        if state_token and _authorization_state_token(db, guard) != state_token:
+            return {"event_type": "AUTHORIZATION_STATE_CHANGED", "guard_id": guard.id, "policy_version": latest}
         if time.monotonic() >= deadline:
             return {"event_type": "KEEPALIVE", "guard_id": guard.id, "policy_version": latest}
+        db.rollback()  # release the snapshot; see newly committed state next poll
         await asyncio.sleep(0.25)
 
 
