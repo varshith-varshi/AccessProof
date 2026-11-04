@@ -45,11 +45,13 @@ class GuardSyncClient:
             f"{self.credentials.control_plane_url.rstrip('/')}/api/v1/guards/{self.credentials.guard_id}/policies",
             headers=self._headers,
             params={"after_version": self.cache.version(), "full_snapshot": str(full_snapshot).lower(),
-                    **({"identity_version": known} if (known := self.cache.reusable_identity_version()) else {})},
+                    **({"identity_version": known} if (known := self.cache.reusable_identity_version()) else {}),
+                    **({"content_versions_digest": vd} if (vd := self.cache.resource_versions_digest()) else {})},
         )
         response.raise_for_status()
         data = response.json()
         data["_identity_version_sent"] = known
+        data["_versions_digest_sent"] = vd
         if not isinstance(data, dict) or not isinstance(data.get("version"), int):
             raise ValueError("Invalid policy synchronization response")
         return data
@@ -136,6 +138,8 @@ class GuardSyncClient:
             mappings=mappings, revisions=revisions,
             ack_versions=versions if version > self.cache.version() else [],
             identity_version=payload.get("identity_version") if isinstance(payload.get("identity_version"), str) else None,
+            resource_versions=self._resource_versions(payload),
+            resource_versions_digest=payload.get("resource_versions_digest") if isinstance(payload.get("resource_versions_digest"), str) else None,
         )
         # Do not lose an installed ACK if the HTTP request, the API, or the
         # Guard process crashes after the SQLite commit. Pending versions are
@@ -144,6 +148,20 @@ class GuardSyncClient:
             self._ack(policy_version, "installed")
             self.cache.mark_installed_policy_ack_delivered(policy_version)
         return installed
+
+    @staticmethod
+    def _resource_versions(payload: dict[str, Any]) -> dict[str, Any] | None | bool:
+        """False = keep installed set; None = control plane sends none (drop)."""
+        if (payload.get("resource_versions_unchanged") is True
+                and isinstance(payload.get("_versions_digest_sent"), str)
+                and payload.get("resource_versions_digest") == payload.get("_versions_digest_sent")):
+            return False
+        value = payload.get("resource_versions")
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("INVALID_RESOURCE_VERSIONS")
+        return value
 
     def heartbeat(self, *, degraded_conditions: list[str] | None = None) -> None:
         # An enrolled Guard without an installed policy is NOT healthy.

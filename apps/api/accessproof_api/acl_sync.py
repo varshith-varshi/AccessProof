@@ -374,7 +374,7 @@ def _resource(db: Session, source: SourceConnection, file_id: str, item: dict[st
         db.add(row)
     metadata = dict(json.loads(row.metadata_json or "{}"))
     if item:
-        metadata.update({key: item.get(key) for key in ("name", "mimeType", "parents", "parentReference", "webUrl", "driveId") if item.get(key) is not None})
+        metadata.update({key: item.get(key) for key in ("name", "mimeType", "parents", "parentReference", "webUrl", "driveId", "eTag", "cTag") if item.get(key) is not None})
         metadata["deleted"] = False
         if "folder" in item or item.get("mimeType") == "application/vnd.google-apps.folder":
             row.resource_type = "folder"
@@ -863,6 +863,15 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
             cursor.last_error_at = _now()
             cursor.last_error_code = "ACL_SYNC_BACKLOG"
             raise ACLSyncError("ACL_SYNC_BACKLOG")
+        if provider == "microsoft365":
+            # Cached-chunk freshness: resources synced before versions were
+            # recorded get their current eTag/cTag from one bounded inventory
+            # read (metadata only; ACLs are untouched here).
+            from apps.api.accessproof_api.content_versions import needs_backfill
+            if needs_backfill(db, source):
+                for item in await adapter.list_boundary_resources():
+                    _resource(db, source, str(item["id"]), item, _now())
+                db.flush()
         cursor.status, cursor.last_success_at, cursor.last_provider_revision = "connected", _now(), str(base_revision + pages)
         return {"pages": pages, "changes": changes, "events": events}
     except Exception as exc:

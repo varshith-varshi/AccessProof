@@ -76,6 +76,10 @@ class MultiSourceGuard:
                     seen.add(key)
                     source_subject = mapped_subjects[source]
                     decision, reason = cache.decide(source_subject, source, resource, "read")
+                    if decision == "allow":
+                        stale = cache.content_version_refusal(source, resource, [version or None])
+                        if stale:
+                            decision, reason = "deny", stale
                     entry = {
                         "source_id": source, "resource_id": resource,
                         "chunk_ids": [chunk] if chunk else [], "reason": reason,

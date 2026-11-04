@@ -843,6 +843,12 @@ def filter_resources(payload: FilterRequest, authorization: str | None = Header(
     unknown: list[ResourceDecision] = []
     for (source_id, resource_id, scope), items in grouped.items():
         decision, reason = cache.decide(subject, source_id, resource_id, scope)
+        if decision == "allow":
+            # Cached-chunk freshness: a still-valid attestation of an OLD
+            # document version is not current content (fails closed).
+            stale = cache.content_version_refusal(source_id, resource_id, [r.content_version for r in items])
+            if stale:
+                decision, reason = "deny", stale
         item: ResourceDecision = {"source_id": source_id, "resource_id": resource_id, "chunk_ids": [chunk for r in items for chunk in r.chunk_ids], "reason": reason}
         if decision == "allow":
             allowed.append(item)

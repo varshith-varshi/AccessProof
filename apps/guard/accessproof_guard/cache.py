@@ -51,6 +51,11 @@ class PolicyCache:
         self.db.execute("UPDATE bound_applications SET source_acl_healthy=0, certification_window=0 WHERE mode='protect'")
         self.db.execute("UPDATE bound_application_sources SET source_acl_healthy=0")
         self.db.execute("CREATE TABLE IF NOT EXISTS request_contexts (decision_id TEXT PRIMARY KEY, application_id TEXT NOT NULL, subject_id TEXT NOT NULL, request_id TEXT NOT NULL DEFAULT '', resources_json TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT, revision_hash TEXT NOT NULL DEFAULT '')")
+        # Current provider document versions (cached-chunk freshness). A source
+        # listed in versioned_sources refuses chunks whose content_version is
+        # not a current version of the document.
+        self.db.execute("CREATE TABLE IF NOT EXISTS versioned_sources (source_id TEXT PRIMARY KEY)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS resource_versions (source_id TEXT NOT NULL, resource_id TEXT NOT NULL, versions_json TEXT NOT NULL, PRIMARY KEY(source_id, resource_id))")
         self.db.execute("CREATE TABLE IF NOT EXISTS authorization_revisions (application_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, revision_hash TEXT NOT NULL, generated_at TEXT NOT NULL, installed_at TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS audit_buffer (event_id TEXT PRIMARY KEY, decision_id TEXT, application_id TEXT NOT NULL, subject_id TEXT NOT NULL, request_id TEXT NOT NULL, layer TEXT NOT NULL DEFAULT 'layer1', result TEXT NOT NULL, reason TEXT NOT NULL, policy_version INTEGER NOT NULL, resources_json TEXT NOT NULL DEFAULT '[]', authorization_revision INTEGER, authorization_revision_hash TEXT, created_at TEXT NOT NULL, delivered_at TEXT)")
         self.max_audit_records = max(1, max_audit_records)
@@ -115,6 +120,8 @@ class PolicyCache:
         full_snapshot: bool, applications: list[dict[str, object]],
         mappings: list[dict[str, object]] | None, revisions: list[dict[str, object]] | None,
         ack_versions: list[int] | None = None, identity_version: str | None = None,
+        resource_versions: dict[str, object] | None | bool = False,
+        resource_versions_digest: str | None = None,
     ) -> bool:
         """Crash-atomic Guard authorization state installation.
 
@@ -128,6 +135,8 @@ class PolicyCache:
                     self.validate_identity_mappings(mappings)
                 if revisions is not None:
                     self.validate_authorization_revisions(revisions)
+                if isinstance(resource_versions, dict):
+                    self.validate_resource_versions(resource_versions)
                 installed = self.install(version, decisions, full_snapshot=full_snapshot)
                 if revisions is not None:
                     self.set_authorization_revisions(revisions)
@@ -137,6 +146,13 @@ class PolicyCache:
                     # the version this Guard sent is still current).
                     self.set_identity_mappings(mappings)
                     self._record_identity_version(identity_version)
+                # False: keep (control plane said unchanged). None: the control
+                # plane sent no versions (older release), so drop versioning
+                # instead of enforcing a set nobody refreshes.
+                if resource_versions is None:
+                    self.set_resource_versions({"sources": [], "items": []}, None)
+                elif isinstance(resource_versions, dict):
+                    self.set_resource_versions(resource_versions, resource_versions_digest)
                 self.mark_sync_success()
                 if installed and ack_versions:
                     self.queue_installed_policy_acks(ack_versions)
@@ -472,6 +488,59 @@ class PolicyCache:
                             "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(time.time()),))
         else:
             self.db.execute("DELETE FROM metadata WHERE key IN ('identity_version', 'identity_installed_at')")
+
+    @staticmethod
+    def validate_resource_versions(payload: dict[str, object]) -> None:
+        sources, items = payload.get("sources"), payload.get("items")
+        if not isinstance(sources, list) or not isinstance(items, list) or any(
+            not isinstance(x, str) or not x or len(x) > 255 for x in sources
+        ):
+            raise ValueError("INVALID_RESOURCE_VERSIONS")
+        allowed = set(sources)
+        for item in items:
+            if (not isinstance(item, dict) or item.get("source_id") not in allowed
+                    or not isinstance(item.get("resource_id"), str) or not item["resource_id"]
+                    or not isinstance(item.get("versions"), list) or not item["versions"]
+                    or any(not isinstance(v, str) or not v or len(v) > 1024 for v in item["versions"])):
+                raise ValueError("INVALID_RESOURCE_VERSIONS")
+
+    def set_resource_versions(self, payload: dict[str, object], digest: str | None) -> None:
+        """Replace the whole version set (caller holds the write transaction)."""
+        self.db.execute("DELETE FROM resource_versions")
+        self.db.execute("DELETE FROM versioned_sources")
+        self.db.executemany("INSERT INTO versioned_sources (source_id) VALUES (?)",
+                            [(s,) for s in payload["sources"]])  # type: ignore[union-attr]
+        self.db.executemany(
+            "INSERT INTO resource_versions (source_id, resource_id, versions_json) VALUES (?, ?, ?)",
+            [(i["source_id"], i["resource_id"], json.dumps(sorted(set(i["versions"]))))  # type: ignore[index]
+             for i in payload["items"]])  # type: ignore[union-attr]
+        if digest:
+            self.db.execute("INSERT INTO metadata (key, value) VALUES ('resource_versions_digest', ?) "
+                            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (digest,))
+        else:
+            self.db.execute("DELETE FROM metadata WHERE key='resource_versions_digest'")
+
+    def resource_versions_digest(self) -> str | None:
+        with self._lock:
+            row = self.db.execute("SELECT value FROM metadata WHERE key='resource_versions_digest'").fetchone()
+        return str(row[0]) if row else None
+
+    def content_version_refusal(self, source_id: str, resource_id: str, versions: list[str | None]) -> str | None:
+        """None if every requested content_version is current; else the refusal reason.
+
+        Sources without delivered versions keep the legacy behaviour (attested
+        bytes, attestation lifetime <= 3600 s)."""
+        with self._lock:
+            if self.db.execute("SELECT 1 FROM versioned_sources WHERE source_id=?", (source_id,)).fetchone() is None:
+                return None
+            row = self.db.execute("SELECT versions_json FROM resource_versions WHERE source_id=? AND resource_id=?",
+                                  (source_id, resource_id)).fetchone()
+        if not versions or any(not v for v in versions):
+            return "SOURCE_CONTENT_VERSION_REQUIRED"
+        if row is None:
+            return "SOURCE_CONTENT_VERSION_UNKNOWN"
+        current = set(json.loads(str(row[0])))
+        return None if all(v in current for v in versions) else "SOURCE_CONTENT_VERSION_STALE"
 
     def reusable_identity_version(self) -> str | None:
         """The identity version to offer the control plane, or None to force a

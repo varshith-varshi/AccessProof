@@ -1351,6 +1351,7 @@ def guard_policies(
     after_version: int = 0,
     full_snapshot: bool = False,
     identity_version: str = "",
+    content_versions_digest: str = "",
     authorization: str | None = Header(default=None),
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -1533,11 +1534,25 @@ def guard_policies(
             return {"identity_mappings_unchanged": True, "identity_version": current_identity_version}
         return {"identity_mappings": mappings, "identity_version": current_identity_version}
 
+    # Current document versions for cached-chunk freshness. Re-sent only when
+    # changed since the digest the Guard holds; older Guards ignore the key.
+    from apps.api.accessproof_api.content_versions import resource_versions_envelope
+    versions = resource_versions_envelope(
+        db, guard.organization_id,
+        [sid for app_binding in bound_applications for sid in app_binding["source_ids"]],
+    )
+    _versions_envelope: dict[str, Any] = (
+        {"resource_versions_unchanged": True, "resource_versions_digest": versions["digest"]}
+        if content_versions_digest and content_versions_digest == versions["digest"]
+        else {"resource_versions": {"sources": versions["sources"], "items": versions["items"]},
+              "resource_versions_digest": versions["digest"]}
+    )
+
     if full_snapshot:
         states = db.scalars(select(GuardEffectiveAccess).where(
             GuardEffectiveAccess.organization_id == guard.organization_id
         )).all()
-        return {"kind": "full", "version": latest, "applications": bound_applications, **_identity_envelope(), "authorization_revisions": authorization_revisions, "decisions": [
+        return {"kind": "full", "version": latest, "applications": bound_applications, **_identity_envelope(), **_versions_envelope, "authorization_revisions": authorization_revisions, "decisions": [
             {"subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id, "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id),
              "scope": row.scope, "decision": row.decision, "reason": row.reason}
             for row in states
@@ -1546,7 +1561,7 @@ def guard_policies(
         GuardPolicy.organization_id == guard.organization_id,
         GuardPolicy.version > after_version,
     ).order_by(GuardPolicy.version.asc())).all()
-    return {"kind": "incremental", "version": latest, "applications": bound_applications, **_identity_envelope(), "authorization_revisions": authorization_revisions, "policies": [
+    return {"kind": "incremental", "version": latest, "applications": bound_applications, **_identity_envelope(), **_versions_envelope, "authorization_revisions": authorization_revisions, "policies": [
         {"version": row.version, "subject_id": _guard_subject_identifier(db, guard.organization_id, row.subject_id), "source_id": row.source_id,
          "resource_id": _guard_resource_identifier(db, guard.organization_id, row.resource_id), "scope": row.scope, "decision": row.decision,
          "reason": row.reason}
