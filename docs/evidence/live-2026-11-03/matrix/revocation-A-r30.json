@@ -1,0 +1,210 @@
+{
+ "schema": "accessproof.revocation_trial/v1",
+ "trial": "A",
+ "document": "finance_alice.txt",
+ "item_id": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP",
+ "baseline": {
+  "sharepoint_effective_view": true,
+  "guard": "ALLOW",
+  "accessproof_allows": true,
+  "revision": 743
+ },
+ "phases": [
+  {
+   "phase": "revoke",
+   "want": "DENY",
+   "t0_initiated": "2026-11-04T04:08:46.882318+00:00",
+   "t1_source_confirmed": "2026-11-04T04:08:54.879447+00:00",
+   "t2_accessproof_detected": "2026-11-04T04:10:05.454943+00:00",
+   "t3_revision_updated": "2026-11-04T04:10:09.147567+00:00",
+   "t4_guard_acknowledged": "2026-11-04T04:10:09.249034+00:00",
+   "t5_first_decision": "2026-11-04T04:10:10.206144+00:00",
+   "t6_stable_decision": "2026-11-04T04:11:19.182472+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 8.0,
+    "t2_accessproof_detected": 78.6,
+    "t3_revision_updated": 82.3,
+    "t4_guard_acknowledged": 82.4,
+    "t5_first_decision": 83.3,
+    "t6_stable_decision": 152.3
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T04:09:03.219917+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:09:16.298616+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:09:29.934565+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:09:43.344505+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:09:56.676308+00:00",
+     "decision": "HTTP_503:SOURCE_ACL_STALE"
+    },
+    {
+     "at": "2026-11-04T04:10:10.206122+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:10:19.774903+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:10:29.719565+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:10:39.854496+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:10:49.658564+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:10:59.378721+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:11:09.454990+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:11:19.182451+00:00",
+     "decision": "DENY"
+    }
+   ],
+   "completed": true
+  },
+  {
+   "phase": "restore (E)",
+   "want": "ALLOW",
+   "t0_initiated": "2026-11-04T04:11:24.182878+00:00",
+   "t1_source_confirmed": "2026-11-04T04:11:31.597226+00:00",
+   "t2_accessproof_detected": "2026-11-04T04:15:43.957897+00:00",
+   "t3_revision_updated": "2026-11-04T04:15:47.659242+00:00",
+   "t4_guard_acknowledged": "2026-11-04T04:15:47.752131+00:00",
+   "t5_first_decision": "2026-11-04T04:15:58.379379+00:00",
+   "t6_stable_decision": "2026-11-04T04:17:06.759708+00:00",
+   "latency_seconds_from_t0": {
+    "t1_source_confirmed": 7.4,
+    "t2_accessproof_detected": 259.8,
+    "t3_revision_updated": 263.5,
+    "t4_guard_acknowledged": 263.6,
+    "t5_first_decision": 274.2,
+    "t6_stable_decision": 342.6
+   },
+   "decisions": [
+    {
+     "at": "2026-11-04T04:11:39.973138+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:11:53.675689+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:12:07.288377+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:12:20.601806+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:12:34.125596+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:12:47.633635+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:14:02.356698+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:14:15.681008+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:14:29.078425+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:14:42.200937+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:14:55.644175+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:15:08.932111+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:15:21.934770+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:15:35.281909+00:00",
+     "decision": "DENY"
+    },
+    {
+     "at": "2026-11-04T04:15:48.587455+00:00",
+     "decision": "HTTP_503:SOURCE_ACL_STALE"
+    },
+    {
+     "at": "2026-11-04T04:15:58.379359+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:16:08.360857+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:16:18.002383+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:16:27.641334+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:16:37.246185+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:16:46.991381+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:16:56.960951+00:00",
+     "decision": "ALLOW"
+    },
+    {
+     "at": "2026-11-04T04:17:06.759684+00:00",
+     "decision": "ALLOW"
+    }
+   ],
+   "completed": true
+  }
+ ],
+ "revoke": {
+  "trial": "A",
+  "document": "finance_alice.txt",
+  "at": "2026-11-04T04:08:46.882322+00:00",
+  "kind": "direct",
+  "item": "012JSJ74RLLD33Y3BPLFDZIMHHGT2SWMTP"
+ },
+ "restored_at": "2026-11-04T04:11:24.495487+00:00"
+}

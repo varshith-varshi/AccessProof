@@ -281,7 +281,11 @@ def main() -> int:
     p.add_argument("--execute", action="store_true")
     p.add_argument("--budget-seconds", type=int, default=2400)
     p.add_argument("--restore-only", action="store_true")
+    p.add_argument("--route", action="store_true",
+                   help="also record E2E-07/08/09 on the real protected route (trial A only)")
     a = p.parse_args()
+    if a.route and a.trial != "A":
+        p.error("--route is defined for trial A (finance_alice.txt)")
     t = Trial(a.trial, a.socket)
     if a.restore_only:
         t.restore()
@@ -316,11 +320,30 @@ def main() -> int:
         body = json.dumps(result, indent=1)
         Path(a.out).write_text(body)
         return body
+    probe = None
+    if a.route:
+        rr = _load("route_revocation")
+        probe = rr.RouteProbe(lambda: ei.fetch(a.socket, TOKEN_KIND), t.doc)
+        probe.before_revoke()
+        result["route"] = probe.results
+        save()
+        if probe.results["E2E-08-pre"]["status"] != "PASS":
+            print("route baseline is not ALLOW/uncached; refusing to revoke", file=sys.stderr)
+            return 1
     try:
         t0 = time.time()
         result["revoke"] = t.revoke()
         save()
-        result["phases"].append(t.measure(item, "DENY", t0, a.budget_seconds, "revoke"))
+        if probe:
+            probe.start_inflight()
+        try:
+            result["phases"].append(t.measure(item, "DENY", t0, a.budget_seconds, "revoke"))
+        finally:
+            if probe:
+                probe.stop_inflight()
+                save()
+        if probe and result["phases"][-1]["completed"]:
+            probe.after_stable_denial()
         save()
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
