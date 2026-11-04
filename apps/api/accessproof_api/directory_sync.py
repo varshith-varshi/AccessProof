@@ -43,6 +43,17 @@ def _provider(source: SourceConnection) -> str:
     return "microsoft365" if source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"} else source.provider.lower()
 
 
+def _directory_fingerprint(users: Any, groups: Any, members: dict[str, Any]) -> str:
+    import hashlib
+    import json as _json
+    content = {
+        "users": sorted([u.provider_id, u.status, getattr(u, "account_kind", ""), (u.email or "").lower()] for u in users),
+        "groups": sorted([g.provider_id, (g.email or "").lower()] for g in groups),
+        "members": sorted([gid, sorted(str(m) for m in ids)] for gid, ids in members.items()),
+    }
+    return "fp:" + hashlib.sha256(_json.dumps(content, separators=(",", ":")).encode()).hexdigest()[:48]
+
+
 async def synchronize_directory(db: Session, source: SourceConnection, credentials: dict[str, Any]) -> dict[str, int]:
     """Synchronize complete provider directory state, preserving prior data on error."""
     provider = _provider(source)
@@ -358,10 +369,13 @@ async def synchronize_directory(db: Session, source: SourceConnection, credentia
     cursor.status = "connected"
     cursor.last_success_at = now
     cursor.last_error_code = None
-    # Full-snapshot readers do not have an incremental cursor.  Persist a
-    # monotonic successful revision so restarts and operator diagnostics have
-    # durable evidence without pretending a provider delta token exists.
-    cursor.last_provider_revision = now.isoformat()
+    # D-31: this value feeds the signed authorization revision. It used to be
+    # the sync timestamp, which issued a new revision every directory sync and
+    # made Layer 2 block in-flight answers with no authorization change. It is
+    # now a fingerprint of the authorization-relevant directory CONTENT (users
+    # and their status/kind/email, groups, memberships): any real change still
+    # changes it; an unchanged directory keeps it. last_success_at records time.
+    cursor.last_provider_revision = _directory_fingerprint(users, groups, members)
     result: dict[str, Any] = {"users": len(users), "groups": len(groups), "memberships": memberships}
     if provider == "microsoft365":
         if microsoft_tenant is None:

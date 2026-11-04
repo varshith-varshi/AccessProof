@@ -589,6 +589,8 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
     else:
         raise ACLSyncError("ACL_SYNC_UNSUPPORTED")
     pages = changes = events = 0
+    # D-31: authorization-relevant grant mutations that are not events.
+    grant_mutations = 0
     has_more_pages = False
     try:
         base_revision = int(cursor.last_provider_revision or "0")
@@ -802,6 +804,7 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                             # retain no dormant allow path after the provider
                             # has removed the group's permission.
                             grant.active = False
+                            grant_mutations += 1
                             grant.provider_revision = max(grant.provider_revision, revision)
                             grant.observed_at = _now()
                         for subject_id in subject_ids:
@@ -838,6 +841,7 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                             db, source=source, provider=provider, resource=resource,
                             grant_key=grant_key, provider_group_id=pid, email=email, revision=revision,
                         )
+                    grant_mutations += int(group_changed)
                     subjects = _subjects_for_principal(db, source, provider, ptype, pid, email)
                     for subject_id, group_id in subjects:
                         mutation = {"grant_key": grant_key, "principal_type": ptype, "principal_id": pid, "group_id": pid, "scope": "read", "grant_effect": "allow", "snapshot_complete": True}
@@ -862,6 +866,7 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                         )]
                         if not subject_ids and grant.principal_type == "group":
                             grant.active = False
+                            grant_mutations += 1
                             grant.provider_revision = max(grant.provider_revision, revision)
                             grant.observed_at = _now()
                         for subject_id in subject_ids:
@@ -892,7 +897,15 @@ async def synchronize_acls(db: Session, source: SourceConnection, credentials: d
                 for item in await adapter.list_boundary_resources():
                     _resource(db, source, str(item["id"]), item, _now())
                 db.flush()
-        cursor.status, cursor.last_success_at, cursor.last_provider_revision = "connected", _now(), str(base_revision + pages)
+        cursor.status, cursor.last_success_at = "connected", _now()
+        # D-31: this value feeds the signed authorization revision. Advancing it
+        # on every no-op sync issued a new revision every few minutes and made
+        # Layer 2 block in-flight answers with no authorization change. Persist
+        # the high-water mark only when this sync emitted events or changed a
+        # grant; unused revision numbers are never persisted, so emitted event
+        # revisions stay monotonic.
+        if events or grant_mutations:
+            cursor.last_provider_revision = str(base_revision + pages)
         return {"pages": pages, "changes": changes, "events": events}
     except Exception as exc:
         code = _provider_error_code(exc)
@@ -1020,7 +1033,8 @@ async def reconcile_known_acls(db: Session, source: SourceConnection, credential
         # This is a monotonic grant revision, not a Drive change token.
         # Advancing the same persisted sequence guarantees the next delta
         # has a larger revision and can revoke these reconciled grants.
-        cursor.last_provider_revision = str(revision)
+        if queued:  # D-31: only an actual reconciled change advances the revision
+            cursor.last_provider_revision = str(revision)
         return {"resources": len(resources), "events": queued}
     except Exception as exc:
         raise ACLSyncError(_provider_error_code(exc)) from exc
