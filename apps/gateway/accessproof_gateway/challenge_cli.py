@@ -46,7 +46,7 @@ def read_private_json(path: Path, *, max_bytes: int = 2_000_000) -> dict[str, An
 def parse_challenge(data: dict[str, Any]) -> GatewayRouteChallenge:
     supported = {
         "url", "application_id", "challenge_nonce", "forbidden_canary",
-        "allowed_canary", "probes", "max_response_bytes",
+        "allowed_canary", "probes", "max_response_bytes", "timeout_seconds",
     }
     if set(data) - supported:
         raise RouteChallengeError("Unsupported challenge configuration fields")
@@ -81,6 +81,7 @@ def parse_challenge(data: dict[str, Any]) -> GatewayRouteChallenge:
             allowed_canary=data["allowed_canary"],
             probes=tuple(probes),
             max_response_bytes=data.get("max_response_bytes", 1_000_000),
+            timeout_seconds=float(data.get("timeout_seconds", 12.0)),
         )
     except (KeyError, TypeError) as exc:
         raise RouteChallengeError("Incomplete route challenge") from exc

@@ -18,6 +18,15 @@ EXPECTED_REASON = {
     "tamper": "SOURCE_CONTENT_ATTESTATION_FAILED",
     "layer2_revoke": "LAYER2_ACCESS_REVOKED",
 }
+# D-26: a Guard with authorization revisions reports an access change between
+# Layer 1 and Layer 2 as AUTHORIZATION_REVISION_CHANGED (Gateway 503) because
+# the revision check precedes the per-decision recheck. Both are a Guard-audited
+# Layer 2 block of a post-Layer-1 authorization change; each outcome must still
+# agree with the Guard's own audited Layer 2 reason (see verify_reference_evidence).
+LAYER2_REVOKE_OUTCOMES = {
+    (403, "LAYER2_ACCESS_REVOKED"),
+    (503, "AUTHORIZATION_REVISION_CHANGED"),
+}
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -49,7 +58,12 @@ def verify_reference_evidence(
         name = item.get("name")
         if not isinstance(name, str) or name not in expected_ids or name in recorded:
             return False, "DUPLICATE_OR_UNKNOWN_CHALLENGE"
-        if item.get("request_id") != expected_ids[name] or item.get("http_status") != EXPECTED_HTTP[name]:
+        if item.get("request_id") != expected_ids[name]:
+            return False, "CHALLENGE_REQUEST_OR_STATUS_MISMATCH"
+        if name == "layer2_revoke":
+            if (item.get("http_status"), item.get("reason_code")) not in LAYER2_REVOKE_OUTCOMES:
+                return False, "CHALLENGE_REQUEST_OR_STATUS_MISMATCH"
+        elif item.get("http_status") != EXPECTED_HTTP[name]:
             return False, "CHALLENGE_REQUEST_OR_STATUS_MISMATCH"
         if (not isinstance(item.get("response_sha256"), str)
                 or not _HEX.fullmatch(item["response_sha256"])
@@ -57,7 +71,7 @@ def verify_reference_evidence(
                 or not 0 < item["response_byte_count"] <= 1_000_000
                 or item.get("forbidden_content_observed") is not False):
             return False, "INVALID_RESPONSE_BYTE_EVIDENCE"
-        if name != "allow" and item.get("reason_code") != EXPECTED_REASON[name]:
+        if name not in {"allow", "layer2_revoke"} and item.get("reason_code") != EXPECTED_REASON[name]:
             return False, "UNVERIFIED_DENIAL_REASON"
         if name == "allow" and (item.get("decision") != "allow"
                                 or not isinstance(item.get("decision_id"), str)
@@ -105,7 +119,7 @@ def verify_reference_evidence(
     ):
         return False, "ATTESTATION_FAILURE_NOT_CONFIRMED"
     if not bound(get("layer2_revoke", "layer1", "allow"),
-                 get("layer2_revoke", "layer2", "block", "LAYER2_ACCESS_REVOKED")):
+                 get("layer2_revoke", "layer2", "block", recorded["layer2_revoke"]["reason_code"])):
         return False, "REVOKE_NOT_BLOCKED_IN_LAYER2"
     # Correlate only uploaded Guard records. The customer deployment's
     # complete egress topology still needs a separately measured check.

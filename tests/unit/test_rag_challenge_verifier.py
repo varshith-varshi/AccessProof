@@ -93,3 +93,44 @@ def test_guard_layer2_must_match_layer1_subject_and_decision():
     obs, events = _evidence()
     events[1] = SimpleNamespace(**{**vars(events[1]), "decision_id": "forged"})
     assert _check(obs, events)[0] is False
+
+
+def _revision_variant():
+    """D-26: a revision-enabled Guard audits the revoke as AUTHORIZATION_REVISION_CHANGED."""
+    observations, events = _evidence()
+    events[-1] = _event("layer2_revoke", "layer2", "block", "AUTHORIZATION_REVISION_CHANGED", decision="revoke", policy=8)
+    obs = next(o for o in observations if o["name"] == "layer2_revoke")
+    obs["http_status"], obs["reason_code"] = 503, "AUTHORIZATION_REVISION_CHANGED"
+    return observations, events
+
+
+def test_revision_changed_layer2_block_is_accepted_when_guard_audited():
+    observations, events = _revision_variant()
+    ok, reason = _check(observations, events, version=8)
+    assert ok, reason
+
+
+@pytest.mark.parametrize("status,reason", [
+    (403, "AUTHORIZATION_REVISION_CHANGED"),     # status/reason pairing mismatch
+    (503, "LAYER2_ACCESS_REVOKED"),
+    (503, "GUARD_UNAVAILABLE"),                  # a generic outage is not a revoke
+    (200, None),
+])
+def test_layer2_revoke_outcome_pairs_are_exact(status, reason):
+    observations, events = _revision_variant()
+    obs = next(o for o in observations if o["name"] == "layer2_revoke")
+    obs["http_status"], obs["reason_code"] = status, reason
+    assert _check(observations, events, version=8)[0] is False
+
+
+def test_observed_revoke_reason_must_match_guard_audited_reason():
+    observations, events = _revision_variant()
+    # Client claims LAYER2_ACCESS_REVOKED/403 but the Guard audited a revision change.
+    obs = next(o for o in observations if o["name"] == "layer2_revoke")
+    obs["http_status"], obs["reason_code"] = 403, "LAYER2_ACCESS_REVOKED"
+    assert _check(observations, events, version=8) == (False, "REVOKE_NOT_BLOCKED_IN_LAYER2")
+
+
+def test_policy_versions_beyond_current_guard_still_fail_closed():
+    observations, events = _revision_variant()
+    assert _check(observations, events, version=7) == (False, "INCONSISTENT_GUARD_POLICY")

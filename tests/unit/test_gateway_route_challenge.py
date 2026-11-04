@@ -95,3 +95,44 @@ def test_route_agent_refuses_false_denial_evidence_when_guard_is_unavailable() -
     ), base_url="http://127.0.0.1:8989")
     with pytest.raises(RouteChallengeError, match="not ready"):
         _config().run(client=client)
+
+
+def _revocation_config(revoke_status=(403, 503), timeout=60.0) -> GatewayRouteChallenge:
+    from dataclasses import replace
+    base = _config()
+    probes = tuple(replace(p, expect_status=revoke_status) if p.name == "layer2_revoke" else p for p in base.probes)
+    return replace(base, probes=probes, timeout_seconds=timeout)
+
+
+def _responder(revoke):
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/health/ready":
+            return httpx.Response(200, json={"status": "ok"})
+        case = json.loads(request.content)["request_id"].rsplit("-", 1)[-1]
+        if case == "allow":
+            return httpx.Response(200, json={"answer": "SAFE_PUBLIC_RESULT",
+                                             "accessproof": {"decision": "allow", "decision_id": "d"}})
+        status, reason = {"deny": (403, "NO_AUTHORIZED_RESOURCES"),
+                          "tamper": (503, "SOURCE_CONTENT_ATTESTATION_FAILED"), "layer2_revoke": revoke}[case]
+        return httpx.Response(status, json={"detail": {"code": reason}})
+    return respond
+
+
+def test_d26_revision_changed_layer2_block_is_an_accepted_revoke_outcome() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(_responder((503, "AUTHORIZATION_REVISION_CHANGED"))),
+                          base_url="http://127.0.0.1:8989")
+    assert _revocation_config().run(client=client)["status"] == "PASS_LOCAL_REFERENCE_ONLY"
+
+
+@pytest.mark.parametrize("revoke", [(503, "LAYER2_ACCESS_REVOKED"), (403, "AUTHORIZATION_REVISION_CHANGED"),
+                                    (503, "GUARD_UNAVAILABLE")])
+def test_d26_mismatched_or_generic_revoke_outcomes_are_rejected(revoke) -> None:
+    client = httpx.Client(transport=httpx.MockTransport(_responder(revoke)), base_url="http://127.0.0.1:8989")
+    with pytest.raises(RouteChallengeError):
+        _revocation_config().run(client=client)
+
+
+@pytest.mark.parametrize("bad", [{"revoke_status": (200,)}, {"timeout": 0.5}, {"timeout": 600}])
+def test_d26_revoke_status_and_timeout_are_bounded(bad) -> None:
+    with pytest.raises(RouteChallengeError):
+        _revocation_config(**{"revoke_status": (403, 503), "timeout": 60.0, **bad})

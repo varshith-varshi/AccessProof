@@ -4043,10 +4043,7 @@ def current_ai_application_automated_preflight(
         return _activation_status(db, row)
     checks = _automatic_activation_checklist(db, row)
     now = datetime.now(timezone.utc)
-    current_guard = db.get(GuardRegistration, row.guard_id) if row.guard_id else None
-    fingerprint = _route_configuration_fingerprint(
-        row, int(current_guard.active_policy_version or 0) if current_guard else 0
-    )
+    fingerprint = _route_configuration_fingerprint(row)
     run = db.scalar(select(ProtectionActivationRun).where(
         ProtectionActivationRun.organization_id == row.organization_id,
         ProtectionActivationRun.application_row_id == row.id,
@@ -4651,7 +4648,7 @@ def issue_current_reference_rag_challenge(
         guard_id=guard.id,
         source_id=row.source_id,
         nonce_digest=digest,
-        configuration_fingerprint=_route_configuration_fingerprint(row, guard.active_policy_version),
+        configuration_fingerprint=_route_configuration_fingerprint(row),
         deployment_sha256=payload.deployment_sha256,
         route_sha256=payload.route_sha256,
         expires_at=now + timedelta(minutes=10),
@@ -4740,7 +4737,7 @@ def submit_enrolled_guard_rag_challenge(
             or row.guard_id != guard.id or row.source_id != record.source_id
             or row.adapter_type != "accessproof-gateway"
             or guard.revoked_at or guard.active_policy_version < 1
-            or _route_configuration_fingerprint(row, guard.active_policy_version)
+            or _route_configuration_fingerprint(row)
             != record.configuration_fingerprint):
         raise HTTPException(409, "CHALLENGE_DEPLOYMENT_OR_POLICY_CHANGED")
     if (payload.deployment_sha256 != record.deployment_sha256
@@ -4782,6 +4779,8 @@ def submit_enrolled_guard_rag_challenge(
             for item in payload.observations
         ],
         "matched_guard_events": len(events),
+        # D-26: rollback protection (see route_certification.verified_policy_version).
+        "guard_policy_version_at_verification": int(guard.active_policy_version),
     }, sort_keys=True)
     # SessionLocal uses autoflush=False: the verified status must be visible
     # to SQL certification lookups *within this transaction*, before deciding
@@ -4884,7 +4883,7 @@ def acknowledge_enrolled_guard_customer_cutover(
     if (row is None or row.organization_id != guard.organization_id
             or row.guard_id != guard.id or row.source_id != record.source_id
             or guard.revoked_at or guard.active_policy_version < 1
-            or _route_configuration_fingerprint(row, guard.active_policy_version)
+            or _route_configuration_fingerprint(row)
             != record.configuration_fingerprint):
         raise HTTPException(409, "CUTOVER_SOURCE_GUARD_OR_POLICY_CHANGED")
     expected_request_id = "ap-cutover-" + record.nonce_digest[:24]

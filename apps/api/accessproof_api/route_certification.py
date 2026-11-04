@@ -21,14 +21,29 @@ ROUTE_CERTIFICATE_SCHEMA = "accessproof.route_certificate/v1"
 CERTIFICATE_TTL = timedelta(hours=24)
 
 
-def route_configuration_fingerprint(row: AIApplication, guard_policy_version: int) -> str:
-    """Bind a challenge to the exact tenant/app/Guard/source/adapter/policy."""
+def route_configuration_fingerprint(row: AIApplication) -> str:
+    """Bind a challenge to the exact tenant/app/Guard/source/adapter/contract.
+
+    D-26: the Guard policy version is deliberately NOT part of the route
+    configuration. It advances on every ACL change, so binding it voided any
+    route certificate (and the challenge's own revocation probe) within
+    minutes in a live tenant. Policy ROLLBACK protection is kept separately:
+    a certificate records the Guard policy version it was verified at and is
+    invalid if the Guard later reports a lower version (reset/re-enrolment).
+    """
     return hashlib.sha256(json.dumps({
         "organization_id": row.organization_id, "application_id": row.application_id,
         "guard_id": row.guard_id, "source_id": row.source_id,
         "adapter": row.adapter_type, "contract_version": row.adapter_contract_version,
-        "guard_policy_version": guard_policy_version,
     }, sort_keys=True).encode()).hexdigest()
+
+
+def verified_policy_version(challenge: RAGRouteChallenge) -> int | None:
+    try:
+        value = json.loads(challenge.result_json or "{}").get("guard_policy_version_at_verification")
+    except ValueError:
+        return None
+    return value if type(value) is int else None
 
 
 def _guard(db: OrmSession, row: AIApplication) -> GuardRegistration | None:
@@ -55,9 +70,7 @@ def _latest_challenge(
         RAGRouteChallenge.application_row_id == row.id,
         RAGRouteChallenge.guard_id == row.guard_id,
         RAGRouteChallenge.source_id == row.source_id,
-        RAGRouteChallenge.configuration_fingerprint == route_configuration_fingerprint(
-            row, guard.active_policy_version
-        ),
+        RAGRouteChallenge.configuration_fingerprint == route_configuration_fingerprint(row),
     )
     if statuses:
         query = query.where(RAGRouteChallenge.status.in_(statuses))
@@ -65,10 +78,16 @@ def _latest_challenge(
     query = query.where(
         RAGRouteChallenge.verified_at >= datetime.now(timezone.utc) - CERTIFICATE_TTL
     )
-    return db.scalar(query.order_by(
+    challenge = db.scalar(query.order_by(
         RAGRouteChallenge.verified_at.desc().nullslast(),
         RAGRouteChallenge.created_at.desc(),
     ).limit(1))
+    if challenge is not None:
+        recorded = verified_policy_version(challenge)
+        # Missing record = not verifiable against rollback: not certified.
+        if recorded is None or guard.active_policy_version < recorded:
+            return None
+    return challenge
 
 
 def reference_route_tested(db: OrmSession, row: AIApplication) -> bool:
@@ -134,9 +153,7 @@ def describe_route_certificate(
         base["status"] = "MISSING"
         base["reason"] = "GUARD_NOT_READY"
         return base
-    base["configuration_fingerprint"] = route_configuration_fingerprint(
-        row, guard.active_policy_version
-    )
+    base["configuration_fingerprint"] = route_configuration_fingerprint(row)
     challenge = _latest_challenge(db, row, statuses=("tested", "cutover_verified"))
     if challenge is None:
         previous = _superseded_challenge(db, row)
@@ -180,5 +197,6 @@ __all__ = [
     "describe_route_certificate",
     "reference_route_tested",
     "route_configuration_fingerprint",
+    "verified_policy_version",
     "valid_route_certificate",
 ]

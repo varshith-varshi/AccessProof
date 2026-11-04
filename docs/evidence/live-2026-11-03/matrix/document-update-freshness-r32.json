@@ -1,0 +1,214 @@
+{
+ "schema": "accessproof.document_update_trial/v1",
+ "document": "shared_control.txt",
+ "baseline": {
+  "item_id": "012JSJ74RVIGYMKZU6J5EZ7EKZZO6JQGET",
+  "guard_versions": [
+   "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+   "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+  ],
+  "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+ },
+ "samples": [
+  {
+   "at": "2026-11-04T06:13:17.353715+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": true,
+   "doc_canary_released": true
+  },
+  {
+   "at": "2026-11-04T06:13:38.425320+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": true,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:13:57.512007+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": true,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:14:18.522565+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": true,
+   "doc_canary_released": true
+  },
+  {
+   "at": "2026-11-04T06:14:38.228113+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": true,
+   "doc_canary_released": true
+  },
+  {
+   "at": "2026-11-04T06:14:57.357126+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:15:17.003951+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:15:35.675496+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:15:55.069895+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:16:14.203036+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:16:35.105334+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:16:54.482998+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:17:11.830200+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:17:31.960417+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "ALLOW",
+   "route_http_status": 200,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:17:49.613364+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},5\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},5\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "DENY:SOURCE_CONTENT_VERSION_STALE",
+   "route_http_status": 503,
+   "doc_in_model_context": false,
+   "doc_canary_released": false
+  },
+  {
+   "at": "2026-11-04T06:18:07.624269+00:00",
+   "guard_versions": [
+    "\"c:{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+    "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\""
+   ],
+   "index_version": "\"{C5B04135-9E66-494F-9F91-59CBBC981893},6\"",
+   "guard_layer1_old_version": "DENY:SOURCE_CONTENT_VERSION_STALE",
+   "route_http_status": 200,
+   "doc_in_model_context": true,
+   "doc_canary_released": false
+  }
+ ],
+ "t0_updated": "2026-11-04T06:13:07.193370+00:00",
+ "t1_guard_new_version": "2026-11-04T06:18:04.855021+00:00",
+ "t2_index_new_version": "2026-11-04T06:14:53.497731+00:00",
+ "stale_window_samples": 0,
+ "stale_chunk_reached_model": false,
+ "old_version_refused_after_t1": true,
+ "served_again_after_reindex": true,
+ "pass": true
+}

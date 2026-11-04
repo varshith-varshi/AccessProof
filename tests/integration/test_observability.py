@@ -181,7 +181,8 @@ def test_metrics_report_authorization_freshness_route_coverage_and_revision_lag(
         db.add(RAGRouteChallenge(
             organization_id="org-authz", application_row_id=row.id, guard_id=guard.id,
             source_id=source.id, nonce_digest="c" * 64,
-            configuration_fingerprint=route_configuration_fingerprint(row, 3),
+            configuration_fingerprint=route_configuration_fingerprint(row),
+            result_json='{"guard_policy_version_at_verification": 3}',
             status="cutover_verified", deployment_sha256="a" * 64,
             route_sha256="b" * 64, verified_at=now - timedelta(seconds=30),
             cutover_at=now - timedelta(seconds=30),

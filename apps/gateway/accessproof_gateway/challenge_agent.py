@@ -38,6 +38,9 @@ class GatewayRouteChallenge:
     allowed_canary: str
     probes: tuple[Probe, ...]
     max_response_bytes: int = 1_000_000
+    # D-26: a probe must be able to span a real source revocation window
+    # (Gateway model timeout 30 s); 12 s was too short. Bounded.
+    timeout_seconds: float = 12.0
 
     def __post_init__(self) -> None:
         parsed = urlsplit(self.url)
@@ -62,11 +65,18 @@ class GatewayRouteChallenge:
         # Validate the exact reference-route failure, not just a convenient
         # HTTP 503. "Everything unavailable" is NOT a successful security test.
         required_status = {
-            "allow": (200,), "deny": (403,),
-            "tamper": (503,), "layer2_revoke": (403,),
+            "allow": {(200,)}, "deny": {(403,)},
+            "tamper": {(503,)},
+            # D-26: LAYER2_ACCESS_REVOKED (403) or, with authorization
+            # revisions, AUTHORIZATION_REVISION_CHANGED (503); the reason is
+            # checked against the status below and by the control plane
+            # against the Guard's own audited Layer 2 reason.
+            "layer2_revoke": {(403,), (503,), (403, 503)},
         }
-        if any(probe.expect_status != required_status[probe.name] for probe in self.probes):
+        if any(probe.expect_status not in required_status[probe.name] for probe in self.probes):
             raise RouteChallengeError("Reference challenge requires exact outcome status codes")
+        if not 1 <= self.timeout_seconds <= 120:
+            raise RouteChallengeError("Invalid route challenge timeout")
 
     def run(self, client: httpx.Client | None = None) -> dict[str, Any]:
         """Read every response byte, require negative canaries to be absent.
@@ -77,7 +87,7 @@ class GatewayRouteChallenge:
         """
         own_client = client is None
         if client is None:
-            client = httpx.Client(timeout=12, follow_redirects=False, trust_env=False)
+            client = httpx.Client(timeout=self.timeout_seconds, follow_redirects=False, trust_env=False)
         else:
             actual = urlsplit(str(client.base_url).rstrip("/"))
             target = urlsplit(self.url)
@@ -116,13 +126,14 @@ class GatewayRouteChallenge:
                         raise RouteChallengeError(f"{probe.name} returned an invalid response object")
                     if probe.name != "allow":
                         expected_reasons = {
-                            "deny": "NO_AUTHORIZED_RESOURCES",
-                            "tamper": "SOURCE_CONTENT_ATTESTATION_FAILED",
-                            "layer2_revoke": "LAYER2_ACCESS_REVOKED",
+                            "deny": {(403, "NO_AUTHORIZED_RESOURCES")},
+                            "tamper": {(503, "SOURCE_CONTENT_ATTESTATION_FAILED")},
+                            "layer2_revoke": {(403, "LAYER2_ACCESS_REVOKED"),
+                                              (503, "AUTHORIZATION_REVISION_CHANGED")},
                         }
                         detail = result_json.get("detail")
                         reason = detail.get("code") if isinstance(detail, dict) else None
-                        if reason != expected_reasons[probe.name]:
+                        if (response.status_code, reason) not in expected_reasons[probe.name]:
                             raise RouteChallengeError(f"{probe.name} has no verified refusal reason")
                     else:
                         if result_json.get("accessproof", {}).get("decision") != "allow":
