@@ -30,6 +30,8 @@ def inspect_certificates(directory: Path, now: datetime) -> dict[str, dict]:
             if path.is_symlink() or not path.is_file():
                 raise ValueError("Unsafe certificate file")
             payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("status") != "CERTIFIED" or not payload.get("signature"):
+                raise ValueError("Certificate is not certified and signed")
             expiry = aware(payload["expires_at"])
             remaining = round((expiry - now).total_seconds() / 3600, 2)
             state = "EXPIRED" if remaining <= 0 else "URGENT" if remaining <= 48 else "WATCH" if remaining <= 96 else "OK"

@@ -14,7 +14,7 @@ GOOD = {"local_prerequisites_present": True}
 def fixture(home: Path, expiry: datetime, *, at: datetime = NOW, ok: bool = True) -> None:
     directory = home / ".ap-id/route-certs"
     directory.mkdir(parents=True)
-    (directory / "demo.certificate.json").write_text(json.dumps({"expires_at": expiry.isoformat()}))
+    (directory / "demo.certificate.json").write_text(json.dumps({"expires_at": expiry.isoformat(), "status": "CERTIFIED", "signature": "synthetic-signature"}))
     (home / ".ap-id/route-attestation.log").write_text(json.dumps({
         "at": at.isoformat(), "route": "demo", "ok": ok, "action": "attest",
     }) + "\n")
@@ -41,3 +41,16 @@ def test_stale_and_missing_dependencies_are_flagged(tmp_path: Path) -> None:
 
 def test_missing_certificates_cannot_pass(tmp_path: Path) -> None:
     assert "NO_LOCAL_ROUTE_CERTIFICATES" in check(tmp_path, NOW, prerequisites=GOOD)["warnings"]
+
+
+def test_revoked_or_unsigned_route_certificate_fails_closed(tmp_path: Path) -> None:
+    fixture(tmp_path, NOW + timedelta(days=10))
+    target = tmp_path / ".ap-id/route-certs/demo.certificate.json"
+    payload = json.loads(target.read_text())
+    payload["status"] = "INVALIDATED"
+    target.write_text(json.dumps(payload))
+    assert "ROUTE_CERTIFICATE_INVALID_CERTIFICATE_METADATA:demo" in check(tmp_path, NOW, prerequisites=GOOD)["warnings"]
+    payload["status"] = "CERTIFIED"
+    payload.pop("signature")
+    target.write_text(json.dumps(payload))
+    assert "ROUTE_CERTIFICATE_INVALID_CERTIFICATE_METADATA:demo" in check(tmp_path, NOW, prerequisites=GOOD)["warnings"]

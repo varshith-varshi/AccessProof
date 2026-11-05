@@ -6,6 +6,7 @@
 [Unit]
 Description=AccessProof source certificate renewal - pilot organization (fresh evidence)
 After=network-online.target
+OnFailure=accessproof-renewal-watchdog-alert.service
 
 [Service]
 Type=oneshot

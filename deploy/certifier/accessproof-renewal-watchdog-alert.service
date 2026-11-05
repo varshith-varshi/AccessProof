@@ -1,0 +1,8 @@
+[Unit]
+Description=Display local warning when AccessProof renewal watchdog reports risk
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/notify-send --urgency=critical "AccessProof certificate renewal needs attention" "Run: journalctl --user -u accessproof-renewal-watchdog.service -n 12 --no-pager"
+NoNewPrivileges=yes
+PrivateTmp=yes

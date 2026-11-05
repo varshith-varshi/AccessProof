@@ -1,6 +1,7 @@
 [Unit]
 Description=AccessProof SharePoint source certificate expiry read-only monitor
 After=network-online.target
+OnFailure=accessproof-renewal-watchdog-alert.service
 
 [Service]
 Type=oneshot

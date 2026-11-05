@@ -1,0 +1,172 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "NeuralMatrix AccessProof separate private always-on certifier CANDIDATE (observer-only: no certificate keys, employee tokens, production SSM/import or customer network access).",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Approved private VPC for isolated certifier host."
+    },
+    "PrivateSubnetId": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "Approved PRIVATE subnet with SSM access through VPC endpoints or approved HTTPS egress; must be in VpcId."
+    },
+    "ApprovedAmiId": {
+      "Type": "AWS::EC2::Image::Id",
+      "Description": "Approved, maintained Linux AMI with AWS SSM agent and root disk encryption support."
+    },
+    "RootDeviceName": {
+      "Type": "String",
+      "AllowedPattern": "^/dev/[a-zA-Z0-9]+$",
+      "Description": "Exact root device name from the approved AMI block-device mapping, e.g. /dev/xvda or /dev/sda1."
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.medium",
+      "AllowedValues": [
+        "t3.small",
+        "t3.medium",
+        "t3.large"
+      ],
+      "Description": "Dedicated certifier candidate instance; operator must approve cost."
+    }
+  },
+  "Resources": {
+    "ObserverSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "No inbound; only outbound TLS for SSM/bootstrap, no customer RAG access yet.",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupIngress": [],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0",
+            "Description": "SSM endpoint TLS; restrict to VPC endpoint prefixes during approved network rollout."
+          }
+        ]
+      }
+    },
+    "ObserverRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        ],
+        "Tags": [
+          {
+            "Key": "AccessProofRole",
+            "Value": "ObserverOnlyNoSigning"
+          }
+        ]
+      }
+    },
+    "ObserverProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Roles": [
+          {
+            "Ref": "ObserverRole"
+          }
+        ]
+      }
+    },
+    "ObserverInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {
+          "Ref": "ApprovedAmiId"
+        },
+        "InstanceType": {
+          "Ref": "InstanceType"
+        },
+        "IamInstanceProfile": {
+          "Ref": "ObserverProfile"
+        },
+        "InstanceInitiatedShutdownBehavior": "stop",
+        "MetadataOptions": {
+          "HttpTokens": "required",
+          "HttpEndpoint": "enabled",
+          "HttpPutResponseHopLimit": 1
+        },
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": false,
+            "DeleteOnTermination": true,
+            "GroupSet": [
+              {
+                "Ref": "ObserverSecurityGroup"
+              }
+            ],
+            "SubnetId": {
+              "Ref": "PrivateSubnetId"
+            }
+          }
+        ],
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": {
+              "Ref": "RootDeviceName"
+            },
+            "Ebs": {
+              "Encrypted": true,
+              "VolumeType": "gp3",
+              "VolumeSize": 30,
+              "DeleteOnTermination": true
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": "#!/bin/bash\nset -eu\nid -u accessproof-certifier >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin accessproof-certifier\ninstall -d -m 0700 -o accessproof-certifier -g accessproof-certifier /var/lib/accessproof-certifier\n# Deliberately DO NOT install certifier private keys, Microsoft sessions, tunnel access, or activate certificate writers.\n"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "accessproof-certifier-observer-candidate"
+          },
+          {
+            "Key": "AccessProofCertifierActivation",
+            "Value": "BLOCKED_UNTIL_AUTHORIZED"
+          },
+          {
+            "Key": "NoCustomerCredentials",
+            "Value": "true"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "ObserverInstanceId": {
+      "Description": "SSM-managed PRIVATE observer instance ID. Does not grant certificate issuance permission.",
+      "Value": {
+        "Ref": "ObserverInstance"
+      }
+    },
+    "SecurityGroupId": {
+      "Value": {
+        "Ref": "ObserverSecurityGroup"
+      }
+    }
+  }
+}

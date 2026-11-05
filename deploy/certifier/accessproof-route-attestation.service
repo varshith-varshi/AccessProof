@@ -5,6 +5,7 @@
 [Unit]
 Description=AccessProof remote route attestation / re-certification
 After=network-online.target
+OnFailure=accessproof-renewal-watchdog-alert.service
 
 [Service]
 Type=oneshot

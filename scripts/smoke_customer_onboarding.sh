@@ -17,6 +17,9 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 TMPDIR=/dev/shm \
   tests/unit/test_gateway_zipapp_doctor.py \
   tests/integration/test_gateway_presence.py \
   tests/integration/test_guard_enrollment_api.py \
-  tests/integration/test_rag_route_challenge_api.py
+  tests/integration/test_rag_route_challenge_api.py \
+  tests/integration/test_synthetic_customer_http_boundary.py \
+  tests/integration/test_gateway_source_neutral_real_guard.py \
+  tests/integration/test_gateway_multisource_real_guard.py
 printf '\nONBOARDING_SMOKE_PASS: published artifact checks + isolated HTTP regressions.\n'
 printf 'NOT TESTED: fresh external Docker host, Microsoft admin consent, live employee route, Owner approval.\n'

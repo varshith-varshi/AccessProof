@@ -8,7 +8,7 @@ scripts/smoke_customer_onboarding.sh \
   bab5f15f62c5186235677e489d7020654e72600d1f999a83554fa160a5dd91d9
 ```
 
-This checks the exact published ZIP bytes, the embedded runtime's manifest digest, the updated challenge CLI source, and isolated API-level regressions for Guard enrollment, Gateway presence/heartbeat, route challenge, and installer failure reporting. It needs Python dependencies but **does not need AWS access, real employee credentials or Docker**, and doesn't mutate production. It is repeatable after every installer build. Do not reuse an old checksum for a newly built ZIP.
+This checks the exact published ZIP bytes, the embedded runtime's manifest digest, the updated challenge CLI source, and isolated API-level regressions for Guard enrollment, Gateway presence/heartbeat, route challenge, installer failure reporting, and synthetic RAG → real local Guard HTTP request/response authorization including streaming and denial. These add local TCP service tests but not a fresh real Docker customer installation. It needs Python dependencies but **does not need AWS access, real employee credentials or Docker**, and doesn't mutate production. It is repeatable after every installer build. Do not reuse an old checksum for a newly built ZIP.
 
 **Evidence boundary:** Green `ONBOARDING_SMOKE_PASS` is an offline artifact/integration-regression result, not fresh external customer installation, authenticated cloud pairing, SharePoint consent, route certification, or human Owner approval. The earlier R43 fresh production pilot paired successfully, but R44 must still be tried on a separately authorized Linux Docker test host before claiming full fresh-install coverage for R44.
 
