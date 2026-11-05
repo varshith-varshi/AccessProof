@@ -68,7 +68,7 @@ def release() -> dict:
             'commitSha': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[a-f0-9]{40}$'},
             'archiveSha256': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[a-f0-9]{64}$'},
             'expectedDbRevision': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[a-z0-9]{12}$'},
-            'artifactUrlB64': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[A-Za-z0-9+/=]{100,3000}$'},
+            'artifactUrlB64': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[A-Za-z0-9+/=]+$'},
         },
         'mainSteps': [{
             'action': 'aws:runShellScript',
@@ -78,6 +78,7 @@ def release() -> dict:
                 "REL=\"/home/ubuntu/accessproof-releases/$SSM_releaseId\"",
                 'test ! -e "$REL" || { echo "Release ID already used" >&2; exit 2; }',
                 'install -d -m 700 "$REL"',
+                'url_len=${#SSM_artifactUrlB64}; test "$url_len" -ge 100 && test "$url_len" -le 4096 || { echo "Bad signed URL length" >&2; exit 2; }',
                 "ZIP_URL=$(printf '%s' \"$SSM_artifactUrlB64\" | base64 -d)",
                 url_validation,
                 'curl --fail --silent --show-error --location --max-time 90 -o "$REL/artifact.tar" "$ZIP_URL"',

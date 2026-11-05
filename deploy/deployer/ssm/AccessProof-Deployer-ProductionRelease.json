@@ -25,7 +25,7 @@
     "artifactUrlB64": {
       "type": "String",
       "interpolationType": "ENV_VAR",
-      "allowedPattern": "^[A-Za-z0-9+/=]{100,3000}$"
+      "allowedPattern": "^[A-Za-z0-9+/=]+$"
     }
   },
   "mainSteps": [
@@ -43,6 +43,7 @@
           "REL=\"/home/ubuntu/accessproof-releases/$SSM_releaseId\"",
           "test ! -e \"$REL\" || { echo \"Release ID already used\" >&2; exit 2; }",
           "install -d -m 700 \"$REL\"",
+          "url_len=${#SSM_artifactUrlB64}; test \"$url_len\" -ge 100 && test \"$url_len\" -le 4096 || { echo \"Bad signed URL length\" >&2; exit 2; }",
           "ZIP_URL=$(printf '%s' \"$SSM_artifactUrlB64\" | base64 -d)",
           "python3 - \"$ZIP_URL\" <<'PYURL'\nimport re, sys\nfrom urllib.parse import urlparse, parse_qs\nu = urlparse(sys.argv[1]); q = parse_qs(u.query)\nassert u.scheme == 'https' and u.hostname == 'accessproof-release-artifacts-102076848988-eu-north-1.s3.eu-north-1.amazonaws.com', 'Invalid artifact host'\nassert not u.username and not u.password and not u.fragment and not u.port\nassert re.fullmatch(r'/releases/[a-z0-9][a-z0-9-]{5,80}-[0-9a-f]{12}\\.tar', u.path), 'Invalid object path'\nassert q.get('X-Amz-Algorithm') == ['AWS4-HMAC-SHA256'], 'Missing SigV4'\nassert q.get('X-Amz-Signature') and re.fullmatch('[0-9a-f]{64}', q['X-Amz-Signature'][0]), 'Missing signature'\nassert q.get('X-Amz-Expires') and int(q['X-Amz-Expires'][0]) <= 900, 'Excessive URL TTL'\nPYURL",
           "curl --fail --silent --show-error --location --max-time 90 -o \"$REL/artifact.tar\" \"$ZIP_URL\"",
