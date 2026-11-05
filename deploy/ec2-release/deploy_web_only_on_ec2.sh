@@ -22,6 +22,7 @@ GATEWAY_SHA='2130425fed7335bda722add846bb2ba473f6007dbc2d2b3ae5a0c23233e8f13b'
 SDK_SHA='ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072'
 SDK_FILE='accessproof_rag-0.1.0-py3-none-any.whl'
 MIN_AVAILABLE_MB=300
+INSTALLER_PATH=/app/public/downloads/accessproof-gateway-connector.zip
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 compose(){ docker compose --project-directory "$APP_DIR" -f "$COMPOSE" "$@"; }
 wait_web(){
@@ -61,6 +62,7 @@ rollback(){
   log 'WEB RELEASE FAILED: restoring previous image and environment; other services were not targeted'
   if [[ -f "$REL/rollback/.env" ]]; then
     cp -p "$REL/rollback/.env" "$APP_DIR/.env"
+    cp -p "$REL/rollback/docker-compose.ec2.yml" "$COMPOSE"
     if compose up -d --no-deps --force-recreate web >>"$REL/rollback/web-restore.log" 2>&1 \
       && reload_nginx >>"$REL/rollback/web-restore.log" 2>&1 && wait_web \
       && [[ "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 https://app.accessproof.in/login)" == 200 ]]; then
@@ -125,6 +127,26 @@ done
 log 'Both published customer download artifacts verified in the new image'
 cp -p "$APP_DIR/.env" "$REL/rollback/.env"; chmod 600 "$REL/rollback/.env"
 cp -p "$COMPOSE" "$REL/rollback/docker-compose.ec2.yml"
+# Production bind-mounts the installer over the image's copy, and that mount is
+# not in the repository's Compose file. Point it at this release's verified ZIP,
+# or a stale file keeps being served whatever the image contains.
+installer_mount=$(docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$INSTALLER_PATH\"}}{{.Type}} {{.Source}}{{end}}{{end}}" "$web_cid")
+new_compose=""
+if [[ -n "$installer_mount" ]]; then
+  log "Installer is mounted over the image: $installer_mount"
+  [[ "$installer_mount" == bind\ * ]] || { log 'Installer mount is not a bind mount; production untouched'; exit 2; }
+  [[ "$(grep -c ":$INSTALLER_PATH" "$COMPOSE")" == 1 ]] || { log 'Installer mount line not found exactly once; production untouched'; exit 2; }
+  install -d -m 755 "$REL/installer"
+  stage=$(docker create "$NEW_WEB_IMAGE")
+  docker cp "$stage:$INSTALLER_PATH" "$REL/installer/accessproof-gateway-connector.zip" >/dev/null
+  docker rm "$stage" >/dev/null
+  chmod 644 "$REL/installer/accessproof-gateway-connector.zip"
+  [[ "$(sha256sum "$REL/installer/accessproof-gateway-connector.zip" | cut -d' ' -f1)" == "$GATEWAY_SHA" ]] || { log 'Extracted installer differs from approved digest; production untouched'; exit 2; }
+  new_compose="$APP_DIR/.compose.web-release-$RELEASE_ID"
+  cp -p "$COMPOSE" "$new_compose"
+  sed -i -E "s#^([[:space:]]*-[[:space:]]*\"?)[^[:space:]\"]+:$INSTALLER_PATH#\1$REL/installer/accessproof-gateway-connector.zip:$INSTALLER_PATH#" "$new_compose"
+  [[ "$(grep -c "^[[:space:]]*-[[:space:]]*\"\?$REL/installer/accessproof-gateway-connector.zip:$INSTALLER_PATH" "$new_compose")" == 1 ]] || { log 'Could not repoint installer mount; production untouched'; exit 2; }
+fi
 printf 'previous_web_image=%s\nprevious_db_revision=%s\n' "$old_web_image" "$current_rev" > "$REL/rollback/previous-state.txt"
 log 'Previous image and .env saved; switching web only'
 trap rollback ERR
@@ -133,11 +155,17 @@ cp -p "$APP_DIR/.env" "$staged"
 sed -i -E "s#^ACCESSPROOF_WEB_IMAGE=.*#ACCESSPROOF_WEB_IMAGE=$NEW_WEB_IMAGE#" "$staged"
 [[ "$(grep -c '^ACCESSPROOF_WEB_IMAGE=' "$staged")" == 1 ]] || { log 'Web image env var missing'; false; }
 mv "$staged" "$APP_DIR/.env"
+[[ -z "$new_compose" ]] || mv "$new_compose" "$COMPOSE"
 compose up -d --no-deps --force-recreate web >"$REL/logs/web-deploy.log" 2>&1
 reload_nginx >>"$REL/logs/web-deploy.log" 2>&1
 wait_web
 new_web_cid=$(compose ps -q web)
 [[ "$new_web_cid" != "$web_cid" ]] || { log 'Web container did not recreate'; false; }
+# Check the running container: mounts can hide what the image contains.
+for expected in "$GATEWAY_SHA  $INSTALLER_PATH" "$SDK_SHA  /app/public/downloads/$SDK_FILE"; do
+  actual=$(compose exec -T web sha256sum "${expected#*  }" | awk '{print $1}')
+  [[ "$actual" == "${expected%%  *}" ]] || { log "Running web serves the wrong file: ${expected#*  }"; false; }
+done
 [[ "$(docker inspect -f '{{.Config.Image}}' "$new_web_cid")" == "$NEW_WEB_IMAGE" ]] || false
 for service in db redis api worker nginx; do
   prev=$(grep "^$service=" "$REL/rollback/unmodified-service-ids.txt" | cut -d= -f2)

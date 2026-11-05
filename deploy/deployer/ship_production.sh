@@ -22,7 +22,7 @@ shift
 COMMIT="${1:-HEAD}"
 # A `web-` label selects the isolated web-only release in deploy_on_ec2.sh; any
 # other label runs the full API, worker, web and migration release.
-LABEL="${2:-web-r40-onboarding}"
+LABEL="${2:-web-r42-installer}"
 [[ "$LABEL" =~ ^[a-z0-9][a-z0-9-]{5,40}$ ]] || { echo 'Bad release label' >&2; exit 2; }
 cd "$REPO"
 COMMIT=$(git rev-parse --verify "$COMMIT^{commit}")

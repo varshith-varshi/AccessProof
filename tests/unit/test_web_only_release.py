@@ -36,6 +36,13 @@ if [[ "$sub" == compose ]]; then
     ps) cat "$STATE/cid-$2" ;;
     exec)
       if [[ "$2" == db ]]; then echo "$(cat "$STATE/db-revision")"; exit 0; fi
+      if [[ "$2" == web ]]; then
+        if [[ "${@: -1}" == *.whl ]]; then sha256sum "$FIXTURE_SDK"; exit 0; fi
+        # A bind mount in the Compose file hides the image's copy.
+        mounted=$(sed -nE 's#^[[:space:]]*-[[:space:]]*([^:]+):/app/public/downloads/accessproof-gateway-connector\.zip.*#\1#p' "$APP_DIR/docker-compose.ec2.yml")
+        sha256sum "${mounted:-$FIXTURE_ZIP}"
+        exit 0
+      fi
       [[ ! -e "$STATE/fail-reload" ]] || exit 1 ;;
     up)
       cid="web-$(( $(cat "$STATE/web-generation") + 1 ))"
@@ -47,10 +54,13 @@ if [[ "$sub" == compose ]]; then
 fi
 case "$sub" in
   inspect)
-    if [[ "$1" == -f && "$2" == *Config.Image* ]]; then cat "$STATE/image-$3"
+    if [[ "$2" == *Mounts* ]]; then cat "$STATE/mount" 2>/dev/null || true
+    elif [[ "$1" == -f && "$2" == *Config.Image* ]]; then cat "$STATE/image-$3"
     elif [[ "$3" == worker* ]]; then echo running
     else echo healthy; fi ;;
   cp) cp "$FIXTURE_ZIP" "$2" ;;
+  create) echo stage ;;
+  rm) ;;
   image)
     [[ "${@: -1}" != accessproof/web-v2:previous || -e "$STATE/no-previous-image" ]] || exit 0
     [[ -e "$STATE/loaded" ]] || exit 1
@@ -229,6 +239,47 @@ def test_unsafe_preconditions_refuse_before_switching(rig: Rig, setup, message: 
     assert "--force-recreate" not in rig.calls
     assert rig.web_image() == OLD_IMAGE
     assert f"ACCESSPROOF_WEB_IMAGE={OLD_IMAGE}" in (rig.app / ".env").read_text()
+
+
+def mount_stale_installer(rig: Rig) -> Path:
+    stale = rig.home / "old-release/accessproof-gateway-connector.zip"
+    stale.parent.mkdir()
+    stale.write_bytes(b"stale installer")
+    (rig.state / "mount").write_text(f"bind {stale}\n")
+    (rig.app / "docker-compose.ec2.yml").write_text(
+        "services:\n  web:\n    volumes:\n"
+        f"      - {stale}:/app/public/downloads/accessproof-gateway-connector.zip:ro\n"
+    )
+    return stale
+
+
+def test_stale_mounted_installer_is_replaced(rig: Rig) -> None:
+    stale = mount_stale_installer(rig)
+    result = rig.run()
+    assert result.returncode == 0, result.stdout + result.stderr
+    compose = (rig.app / "docker-compose.ec2.yml").read_text()
+    assert str(stale) not in compose
+    assert "web-r39-onboarding-168458867ee3/installer/accessproof-gateway-connector.zip:/app/public" in compose
+    assert stale.read_bytes() == b"stale installer"
+
+
+def test_running_container_mismatch_rolls_back_compose_too(rig: Rig) -> None:
+    stale = mount_stale_installer(rig)
+    (rig.state / "mount").write_text("")
+    result = rig.run()
+    assert result.returncode != 0
+    assert "Running web serves the wrong file" in result.stdout
+    assert "WEB ROLLBACK VERIFIED" in result.stdout
+    assert rig.web_image() == OLD_IMAGE
+    assert str(stale) in (rig.app / "docker-compose.ec2.yml").read_text()
+
+
+def test_unrecognized_installer_mount_refuses_before_switching(rig: Rig) -> None:
+    (rig.state / "mount").write_text("volume /var/lib/docker/volumes/x\n")
+    result = rig.run()
+    assert result.returncode != 0
+    assert "not a bind mount" in result.stdout
+    assert "--force-recreate" not in rig.calls
 
 
 def test_installer_probe_uses_head_and_get(rig: Rig) -> None:

@@ -60,3 +60,9 @@ The off-host release then deployed without a build on the host:
 | Rollback | Not needed |
 
 Afterwards the database stayed at `x8c9d0e1f2a3`, and API, worker, database, Redis and nginx kept their containers. Live installer checks refused no-session, fabricated-session and unknown-token requests, returned no file for 14 bypass paths, and allowed a valid session. Full downloads matched both reviewed checksums.
+
+## Later finding: installer mount
+
+Release `web-r41-installer` reported success while production kept serving the old Gateway ZIP. Since 2026-11-01, production's Compose file has bind-mounted a file from an old release folder over the installer path, and that mount is not in the repository's Compose file. The release checked the image with `docker run`, which does not apply Compose mounts.
+
+Web releases now repoint that mount at the release's verified ZIP, restore the Compose file on rollback, and check checksums inside the running container.
