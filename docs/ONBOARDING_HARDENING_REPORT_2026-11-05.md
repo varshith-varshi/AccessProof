@@ -61,3 +61,20 @@ A no-op Alembic upgrade now leaves `MIGRATED=0` so a failed web-only/code-only r
 - Guard onboarding unit tests: **6 passed**. Release preflight and no-op migration tests: **7 passed**.
 - Final combined backend/security run: **24 passed, 0 failed**, exit code 0 — Microsoft consent, Owner approval, Guard enrollment UI and release-asset preservation/rollback tests (2026-11-05).
 - **Production release not performed**: the installed `accessproof-certifier` and `accessproof-staging-tunnel` Roles Anywhere identities cannot deploy and must not be broadened to do so. A separately authorized least-privilege release role / secure deploy workflow is needed. This report does not authorize root-account deployment or weakening of existing Protect.
+
+## Final release-candidate checks (2026-11-05)
+
+- Frontend TypeScript and ESLint: **PASS**.
+- Complete Playwright desktop/mobile suite: **109 passed, 5 skipped, 0 failed** (114 collected).
+- Targeted backend tests (Guard setup, Microsoft admin consent, Owner approval, release installer preservation): **24 passed**.
+- `deploy/ec2-release/deploy_on_ec2.sh` shell syntax and `git diff --check` (excluding binary PDF) both passed.
+- Actual **built Next standalone server** served the correct SDK wheel with valid organization session and `Cache-Control: private, no-store`; fabricated or missing cookies redirected; API failure returned HTTP 503. All smoke conditions passed against a local synthetic auth API. This is not a live production deployment test.
+- The offline ZIP-preservation release helper refuses absent, modified or corrupt installer artifacts and correctly passes an intact pinned installer. Production deploys will fail closed if the running web image does not contain the reviewed ZIP or its checksum has changed.
+
+### Release boundaries and pending operational verification
+
+1. **Production web deployment still pending.** Existing production installer downloads are reachable with an arbitrary cookie value; the new Next session gate is not deployed. Do not tell customers that this production flaw is fixed.
+2. **Guard setup UI is a separate customer-side runtime.** The source code now names the dashboard and suggests Entra `oid`, but currently installed customer Guard containers and the existing archived installer are not modified by a website-only release. A reviewed Guard/runtime installer refresh and acceptance test are still required before calling this live for customers.
+3. The dedicated `accessproof-certifier` IAM Roles Anywhere identity is intentionally **not** allowed to deploy applications or run general shell commands. Do **not** expand its SSM rights or use root to bypass the deployment gate. A separately authorized scoped release identity and safe rehearsal/rollback are prerequisites for shipping this web release.
+4. The currently deployed Gateway ZIP has a verified binary SHA-256 (`91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a`), which the production deploy script now pins and preserves from the previous running web container. The ZIP must still be audited more deeply before customer shipping, and the release itself must verify archive availability on the authenticated live web route.
+5. Real tenant SharePoint selected-site permission acceptance, Entra production client ID, support email deliverability and actual customer RAG challenge remain **not yet independently validated by this branch**.

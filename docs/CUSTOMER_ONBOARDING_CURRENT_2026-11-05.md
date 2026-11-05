@@ -59,3 +59,7 @@ Confirm `PROTECTED_VERIFIED` in the server-authoritative dashboard. In the custo
 ## Contact details
 
 The website currently displays `admin@accessproof.in`. Confirm the mailbox is receiving external customer requests before distributing this guide. Verify the deployed Entra application ID against the actual production registration; do not copy a synthetic ID from a screenshot.
+
+## Release operator note
+
+A web-only deployment must preserve the currently published customer Gateway ZIP with the reviewed SHA-256; the release script now copies it from the active web image after integrity verification and fails closed if missing or modified. The new wheel is committed under the website `public/downloads` path, but **neither download endpoint is authorized until the new web image is deployed and confirmed live**. The Guard setup copy/Entra subject-claim improvement also requires a reviewed separate customer-side Guard image or installer update. Use a dedicated least-privilege release identity, not the `accessproof-certifier` role or an AWS root session.
