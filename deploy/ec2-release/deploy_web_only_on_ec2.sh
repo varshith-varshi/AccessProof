@@ -109,8 +109,16 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 PY
 log 'Both published customer download artifacts verified'
 if docker image inspect "$NEW_WEB_IMAGE" >/dev/null 2>&1; then log 'Image tag already used'; exit 2; fi
-# Build before changing live .env or containers.
-docker build -t "$NEW_WEB_IMAGE" "$REL/src/web-v2" >"$REL/logs/web-build.log" 2>&1 || { log 'Web build failed; production untouched'; exit 2; }
+# Build before changing live .env or containers. The production host also serves
+# customer traffic, so explicitly yield CPU and disk scheduling priority to the
+# running API, web, database, and proxy while Docker builds the replacement.
+# `nice`/`ionice` affect the build client and the legacy builder descendants;
+# existing service containers retain their normal scheduling priority. A build
+# that cannot finish within the bounded window is terminated before any live
+# configuration or container is changed.
+timeout --signal=TERM --kill-after=30s 20m \
+  nice -n 10 ionice -c2 -n7 docker build -t "$NEW_WEB_IMAGE" "$REL/src/web-v2" \
+  >"$REL/logs/web-build.log" 2>&1 || { log 'Web build failed or timed out; production untouched'; exit 2; }
 for expected in "$GATEWAY_SHA  /app/public/downloads/accessproof-gateway-connector.zip" "$SDK_SHA  /app/public/downloads/$SDK_FILE"; do
   actual=$(docker run --rm --entrypoint sha256sum "$NEW_WEB_IMAGE" "${expected#*  }" | awk '{print $1}')
   [[ "$actual" == "${expected%%  *}" ]] || { log 'Built web image lost a reviewed customer download'; exit 2; }

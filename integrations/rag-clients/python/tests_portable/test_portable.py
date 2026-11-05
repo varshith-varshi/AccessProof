@@ -102,10 +102,14 @@ def tls_gateway(tmp_path_factory):
 
         def _send(self, status, obj):
             raw = json.dumps(obj).encode()
-            self.send_response(status); self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
 
     srv_http = ThreadingHTTPServer(("127.0.0.1", 0), H)
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain(d / "srv.pem", d / "srv.key")
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(d / "srv.pem", d / "srv.key")
     srv_http.socket = ctx.wrap_socket(srv_http.socket, server_side=True)
     threading.Thread(target=srv_http.serve_forever, daemon=True).start()
     yield {"url": f"https://localhost:{srv_http.server_address[1]}", "ca": str(d / "ca.pem"), "seen": seen, "dir": d}
@@ -147,7 +151,8 @@ def test_reference_remote_rag_server_runs_on_this_os(tls_gateway, framework):
         {"doc_id": "r", "chunk_id": "c", "text": "finance budget synthetic", "version": "v1", "name": "f", "attestation": "att"}]}))
     (d / "secret").write_text(SECRET_B64)
     with socket.socket() as s:
-        s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
     proc = subprocess.Popen([sys.executable, str(PKG / "examples" / "remote_rag_server.py"), "--framework", framework,
                              "--index", str(d / "index.json"), "--gateway", tls_gateway["url"], "--ca", tls_gateway["ca"],
                              "--client-id", "rag-win-01", "--client-secret-file", str(d / "secret"),
@@ -155,7 +160,8 @@ def test_reference_remote_rag_server_runs_on_this_os(tls_gateway, framework):
     try:
         for _ in range(100):
             try:
-                urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1); break
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1)
+                break
             except OSError:
                 time.sleep(0.2)
         manifest = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/accessproof-route").read())
@@ -173,4 +179,5 @@ def test_reference_remote_rag_server_runs_on_this_os(tls_gateway, framework):
         assert ask("outage-token-long-enough-x")[0] in (200, 503)
         assert ask("")[0] == 401
     finally:
-        proc.terminate(); proc.wait(10)
+        proc.terminate()
+        proc.wait(10)

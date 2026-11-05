@@ -184,6 +184,15 @@ def test_web_release_replaces_only_web_and_reloads_nginx(rig: Rig) -> None:
     assert "alembic upgrade" not in rig.calls
 
 
+def test_web_build_yields_resources_to_live_production_services(rig: Rig) -> None:
+    result = rig.run()
+    assert result.returncode == 0, result.stdout + result.stderr
+    script = (SCRIPTS / "deploy_web_only_on_ec2.sh").read_text()
+    assert 'timeout --signal=TERM --kill-after=30s 20m' in script
+    assert 'nice -n 10 ionice -c2 -n7 docker build' in script
+    assert "docker build" in rig.calls
+
+
 def test_installer_probe_uses_head_and_get(rig: Rig) -> None:
     assert rig.run().returncode == 0
     probes = [line for line in rig.calls.splitlines() if line.startswith("curl") and "downloads" in line]

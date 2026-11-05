@@ -86,7 +86,9 @@ class EvidenceSubscriber:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=self.cache_path.parent, prefix=".evidence.")
             with os.fdopen(fd, "wb") as fh:
-                fh.write(raw); fh.flush(); os.fsync(fh.fileno())
+                fh.write(raw)
+                fh.flush()
+                os.fsync(fh.fileno())
             os.replace(tmp, self.cache_path)
 
     def _load_cache(self) -> None:
