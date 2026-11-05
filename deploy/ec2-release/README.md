@@ -50,6 +50,18 @@ It then:
 4. Recreates api → worker → web with health gates, then runs internal and public checks.
 5. On any failure after migration, rolls back automatically.
 
+## Web-only releases
+
+A release ID starting with `web-` makes `deploy_on_ec2.sh` hand over to
+`deploy_web_only_on_ec2.sh` from the same checksummed artifact. It rebuilds only
+the web image, recreates only `web`, and reloads nginx gracefully so it resolves
+the new container. API, worker, db and redis keep their containers, and no
+migration runs. Any failed check restores the previous image automatically.
+
+```bash
+deploy/deployer/ship_production.sh --execute <commit> web-<label>
+```
+
 Manual rollback:
 
 ```bash

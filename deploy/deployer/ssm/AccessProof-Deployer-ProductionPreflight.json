@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "2.2",
+  "description": "Read-only preflight for AccessProof pinned production release; no input parameters.",
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "preflight",
+      "inputs": {
+        "timeoutSeconds": "80",
+        "runCommand": [
+          "set -eu",
+          "META=$(curl -fsS --max-time 2 -X PUT http://169.254.169.254/latest/api/token -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\")",
+          "SELF=$(curl -fsS --max-time 2 -H \"X-aws-ec2-metadata-token: $META\" http://169.254.169.254/latest/meta-data/instance-id)",
+          "test \"$SELF\" = \"i-0c11427d4d9c1b438\" || { echo \"Wrong production instance; refusing\" >&2; exit 2; }",
+          "cd /home/ubuntu/accessproof",
+          "echo \"DB_REVISION=$(docker compose -f docker-compose.ec2.yml exec -T db psql -U accessproof -d accessproof -tAc 'select version_num from alembic_version' | tr -d '[:space:]')\"",
+          "echo \"DISK_FREE_GB=$(df -BG --output=avail / | tail -1 | tr -dc 0-9)\"",
+          "echo \"SERVICES\"",
+          "docker compose -f docker-compose.ec2.yml ps --format '{{.Service}} {{.Status}}'",
+          "echo \"ZIP_SHA256=$(docker exec \"$(docker compose -f docker-compose.ec2.yml ps -q web)\" sha256sum /app/public/downloads/accessproof-gateway-connector.zip | cut -d' ' -f1)\""
+        ]
+      }
+    }
+  ]
+}

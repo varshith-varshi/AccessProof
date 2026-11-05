@@ -11,6 +11,16 @@ set -Eeuo pipefail
 umask 077
 
 RELEASE_ID="${1:?release id}"; ARTIFACT="${2:?artifact}"; EXPECTED_SHA="${3:?sha256}"
+# The pinned SSM release document always enters through this file. A `web-`
+# release ID selects the isolated web-only release from the same checksummed
+# artifact, leaving API, worker, db, redis and the schema untouched.
+if [[ "$RELEASE_ID" == web-* ]]; then
+  [[ "$(sha256sum "$ARTIFACT" | cut -d' ' -f1)" == "$EXPECTED_SHA" ]] || { echo "artifact checksum mismatch" >&2; exit 2; }
+  WEB_ONLY="$(dirname "$ARTIFACT")/deploy_web_only_on_ec2.sh"
+  tar -xOf "$ARTIFACT" deploy/ec2-release/deploy_web_only_on_ec2.sh > "$WEB_ONLY"
+  chmod 700 "$WEB_ONLY"
+  exec bash "$WEB_ONLY" "$RELEASE_ID" "$ARTIFACT" "$EXPECTED_SHA"
+fi
 APP_DIR=/home/ubuntu/accessproof
 COMPOSE_FILE="$APP_DIR/docker-compose.ec2.yml"
 REL="/home/ubuntu/accessproof-releases/$RELEASE_ID"

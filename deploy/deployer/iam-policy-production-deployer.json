@@ -1,0 +1,72 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "OnlyProductionReleaseAndPreflight",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:SendCommand"
+      ],
+      "Resource": [
+        "arn:aws:ec2:eu-north-1:102076848988:instance/i-0c11427d4d9c1b438",
+        "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionRelease",
+        "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionPreflight"
+      ]
+    },
+    {
+      "Sid": "ReadCommandResultsOnlyInReleaseRegion",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommands",
+        "ssm:DescribeInstanceInformation"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-north-1"
+        }
+      }
+    },
+    {
+      "Sid": "PublishReleaseArchivesOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::accessproof-release-artifacts-102076848988-eu-north-1/releases/*"
+    },
+    {
+      "Sid": "NeverUseAWSManagedShellDocument",
+      "Effect": "Deny",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:*::document/*"
+    },
+    {
+      "Sid": "NoInteractiveAccessOrAuthorityChanges",
+      "Effect": "Deny",
+      "Action": [
+        "iam:*",
+        "rolesanywhere:*",
+        "organizations:*",
+        "sts:AssumeRole",
+        "ssm:StartSession",
+        "ssm:CreateDocument",
+        "ssm:UpdateDocument",
+        "ssm:UpdateDocumentDefaultVersion",
+        "ssm:DeleteDocument",
+        "ssm:ModifyDocumentPermission",
+        "ec2-instance-connect:*",
+        "ec2:RunInstances",
+        "ec2:TerminateInstances",
+        "ec2:ModifyInstanceAttribute",
+        "s3:DeleteObject",
+        "s3:DeleteBucket",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
