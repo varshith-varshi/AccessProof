@@ -196,12 +196,15 @@ def _validate_stage(
 def _run_installer_apply(spec_path: Path, compose: Path, output: Path) -> None:
     # Reuse independently tested installer safeguards, including existing
     # Gateway refusal, credential file checks and loopback liveness.
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "apps.gateway.accessproof_gateway.installer",
          "--spec", str(spec_path), "--compose", str(compose),
          "--output", str(output), "--apply-staged"],
-        check=True, capture_output=True, timeout=240, text=True,
+        check=False, capture_output=True, timeout=240, text=True,
     )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip().splitlines()
+        raise IntegrationWizardError(detail[-1][:500] if detail else "GATEWAY_INSTALL_FAILED")
 
 
 def _read_secret(path: Path | None, name: str) -> dict[str, Any]:

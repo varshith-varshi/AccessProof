@@ -512,8 +512,15 @@ def main() -> int:
             existing = _checked([*compose_cmd, "ps", "--all", "--quiet", spec.gateway_service])
             if existing.stdout.strip():
                 raise InstallationError("An existing Gateway container requires explicit migration review")
-            _checked(["docker", "build", "-f", str(repo / "apps/gateway/Dockerfile"),
-                      "-t", spec.gateway_image, str(repo)])
+            # The customer ZIP imports a verified runtime before this point and
+            # has no Dockerfile. Rebuilding would replace that pinned image.
+            image = subprocess.run(
+                ["docker", "image", "inspect", spec.gateway_image],
+                check=False, capture_output=True, text=True, timeout=30,
+            )
+            if image.returncode != 0:
+                _checked(["docker", "build", "-f", str(repo / "apps/gateway/Dockerfile"),
+                          "-t", spec.gateway_image, str(repo)])
             started = True  # No pre-existing Gateway; even a partial Compose up is ours to clean.
             try:
                 _checked([*compose_cmd, "up", "-d", "--no-deps", spec.gateway_service])

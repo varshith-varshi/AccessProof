@@ -63,3 +63,11 @@ The website currently displays `admin@accessproof.in`. Confirm the mailbox is re
 ## Release operator note
 
 A web-only deployment must preserve the currently published customer Gateway ZIP with the reviewed SHA-256; the release script now copies it from the active web image after integrity verification and fails closed if missing or modified. The new wheel is committed under the website `public/downloads` path, but **neither download endpoint is authorized until the new web image is deployed and confirmed live**. The Guard setup copy/Entra subject-claim improvement also requires a reviewed separate customer-side Guard image or installer update. Use a dedicated least-privilege release identity, not the `accessproof-certifier` role or an AWS root session.
+
+## Fresh-install validation, 2026-11-05
+
+The Guard 0.1.6 bundle and Gateway installer `32942af5…` completed a clean synthetic install against production: Guard enrolled through its setup page, the installer imported its verified runtime, pairing succeeded, and the Gateway reported `CONNECTED` with live heartbeats.
+
+A new application stays in Shadow, and its Gateway reports `GUARD_NOT_READY`, until certification and Owner approval finish. That is correct fail-closed behaviour. Route certification remains an operator-assisted step using live employee identities.
+
+Linux Docker hosts are validated. Docker Desktop on macOS and Windows is not.

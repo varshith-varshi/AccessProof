@@ -23,6 +23,7 @@ GATEWAY_MODULES = (
     "selection_planner.py",
     "installer.py",
     "existing_gateway.py",
+    "integration_wizard.py",
 )
 RUNTIME = "accessproof-gateway-connector/accessproof-gateway-runtime.tar.gz"
 RUNTIME_MANIFEST = "accessproof-gateway-connector/runtime-release.json"

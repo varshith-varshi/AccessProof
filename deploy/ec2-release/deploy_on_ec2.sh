@@ -46,7 +46,7 @@ REUSE_EXISTING_IMAGES="${REUSE_EXISTING_IMAGES:-0}"  # 1 only for an offline reh
 # Reviewed production Gateway ZIP (observed directly 2026-11-05). The release
 # tar intentionally excludes ZIPs; copy this public, non-secret installer from
 # the currently running web image into the new build, and pin its content.
-EXPECTED_GATEWAY_INSTALLER_SHA256="2130425fed7335bda722add846bb2ba473f6007dbc2d2b3ae5a0c23233e8f13b"
+EXPECTED_GATEWAY_INSTALLER_SHA256="32942af578681ad69820351a15dbffacd6a326919bde57e686645048a93501b0"
 
 [[ "$RELEASE_ID" =~ ^[a-z0-9][a-z0-9.-]{5,80}$ ]] || { echo "bad release id"; exit 2; }
 [[ "$EXPECTED_DB_REVISION" =~ ^[0-9a-z]{12}$ ]] || { echo "bad EXPECTED_DB_REVISION"; exit 2; }
