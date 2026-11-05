@@ -24,6 +24,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from apps.gateway.accessproof_gateway.challenge_cli import read_private_json
+from apps.gateway.accessproof_gateway.existing_gateway import approved_image_ids
 from apps.gateway.accessproof_gateway.application_discovery import (
     DiscoveryError, compose_for_selected, discover, docker_inventory, published_host_ports,
 )
@@ -192,7 +193,7 @@ def verify_and_prepare_gateway_runtime(image: str) -> None:
         timeout=15,
     )
     if inspect.returncode == 0:
-        if inspect.stdout.strip() != release["image_id"]:
+        if inspect.stdout.strip() not in approved_image_ids(release):
             raise ConnectError(
                 "An unexpected Gateway image already uses this version. Review before replacing it."
             )
@@ -224,7 +225,7 @@ def verify_and_prepare_gateway_runtime(image: str) -> None:
         text=True,
         timeout=15,
     )
-    if installed.returncode != 0 or installed.stdout.strip() != release["image_id"]:
+    if installed.returncode != 0 or installed.stdout.strip() not in approved_image_ids(release):
         raise ConnectError("Installed Gateway runtime image does not match the approved release.")
     print("Official AccessProof Gateway runtime imported and verified.")
 
@@ -435,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model-url")
     p.add_argument("--ingestion-signing-key", type=Path)
     p.add_argument("--ingestion-key-id", default="customer-ingestion")
-    p.add_argument("--gateway-image", default="accessproof-gateway:customer-v3-20261031-r1")
+    p.add_argument("--gateway-image", default="accessproof-gateway:customer-v4-20261105-r1")
     p.add_argument("--model-provider", default="openai-compatible")
     p.add_argument("--model-name", default="")
     p.add_argument(

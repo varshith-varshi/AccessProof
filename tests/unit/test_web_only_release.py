@@ -136,7 +136,7 @@ class Rig:
         (src / "web-image.tar.gz").write_bytes(gzip.compress(b"synthetic image"))
         (src / "web-image.digests").write_text(APPROVED_DIGEST + "\n")
         shutil.copy(self.sdk, downloads / SDK_NAME)
-        for name in ("deploy_on_ec2.sh", "deploy_web_only_on_ec2.sh"):
+        for name in ("deploy_on_ec2.sh", "deploy_web_only_on_ec2.sh", "deploy_guard_bundle_on_ec2.sh"):
             (scripts / name).write_text(self.patched(name))
         rel = self.rel_root / rid
         rel.mkdir()

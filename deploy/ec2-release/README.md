@@ -62,6 +62,10 @@ migration runs. Any failed check restores the previous image automatically.
 deploy/deployer/ship_production.sh --execute <commit> web-<label>
 ```
 
+## Guard bundle releases
+
+A release ID starting with `guard-` hands over to `deploy_guard_bundle_on_ec2.sh`. It adds the reviewed Guard bundle to the exact API image already running, without building anything, then recreates only `api`. A failed check restores the previous image automatically.
+
 Manual rollback:
 
 ```bash

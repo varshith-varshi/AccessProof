@@ -47,3 +47,12 @@ def test_installation_claim_rejects_non_object_response(monkeypatch):
             {"control_plane_url": "https://api.accessproof.in", "pairing_token": "test"},
             {"application_id": "test"},
         )
+
+
+def test_runtime_is_approved_under_both_docker_image_stores() -> None:
+    from apps.gateway.accessproof_gateway.existing_gateway import approved_image_ids
+
+    classic, containerd = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+    assert approved_image_ids({"image_id": containerd, "image_ids": [classic, containerd]}) == {classic, containerd}
+    assert approved_image_ids({"image_id": classic}) == {classic}
+    assert approved_image_ids({"image_id": "nope", "image_ids": [None]}) == set()

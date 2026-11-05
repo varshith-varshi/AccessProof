@@ -331,14 +331,35 @@ class SetupEnrollmentRequest(BaseModel):
     tenant_id: str | None = Field(default=None, max_length=255)
 
 
+def _docker_gateway() -> str | None:
+    """Return this container's default gateway from the kernel route table."""
+    try:
+        for line in Path("/proc/net/route").read_text().splitlines()[1:]:
+            fields = line.split()
+            if len(fields) > 2 and fields[1] == "00000000":
+                return str(ip_address(int(fields[2], 16).to_bytes(4, "little")))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _require_local_setup(request: Request) -> None:
-    """Require a real loopback transport peer, not a caller-controlled Host."""
+    """Require a real loopback transport peer, not a caller-controlled Host.
+
+    Docker presents a browser on the host as the bridge gateway, not loopback.
+    The packaged Guard publishes its port on host loopback only and opts in to
+    trusting exactly that gateway. Sibling containers have their own addresses
+    and stay refused.
+    """
     hostname = request.url.hostname
     peer = request.client.host if request.client is not None else ""
     try:
         is_loopback_peer = ip_address(peer).is_loopback
     except ValueError:
         is_loopback_peer = False
+    if (not is_loopback_peer and os.getenv("ACCESSPROOF_GUARD_SETUP_TRUST_DOCKER_GATEWAY") == "1"
+            and peer == _docker_gateway()):
+        is_loopback_peer = True
     if hostname not in {"localhost", "127.0.0.1", "::1"} or not is_loopback_peer:
         raise HTTPException(403, "SETUP_REQUIRES_LOCALHOST")
 

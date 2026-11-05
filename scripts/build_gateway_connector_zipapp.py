@@ -1,7 +1,8 @@
 """Rebuild the customer installer with the verified runtime unchanged.
 
 Replaces reviewed Python entrypoint, connector, discovery, planner and matching
-Gateway modules while preserving the SHA-256-pinned container runtime.
+Gateway modules. The SHA-256-pinned container runtime is preserved unless a new
+reviewed runtime archive and its manifest are supplied together.
 Never bundles credentials or replaces a customer deployment.
 """
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import json
 import shutil
 import tempfile
 import zipfile
@@ -23,6 +25,8 @@ GATEWAY_MODULES = (
     "existing_gateway.py",
 )
 RUNTIME = "accessproof-gateway-connector/accessproof-gateway-runtime.tar.gz"
+RUNTIME_MANIFEST = "accessproof-gateway-connector/runtime-release.json"
+GUARD_ONBOARDING = "accessproof-gateway-connector/apps/guard/accessproof_guard/onboarding.py"
 
 
 def sha256(archive: zipfile.ZipFile, name: str) -> str:
@@ -33,12 +37,19 @@ def sha256(archive: zipfile.ZipFile, name: str) -> str:
     return digest.hexdigest()
 
 
-def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
+def rebuild(
+    source_zip: Path, target_zip: Path, repo: Path,
+    runtime: Path | None = None, runtime_manifest: Path | None = None,
+) -> None:
+    if (runtime is None) != (runtime_manifest is None):
+        raise ValueError("A new runtime and its manifest must be supplied together.")
     if source_zip.resolve() == target_zip.resolve():
         raise ValueError("Use a new output archive to preserve the old version for rollback.")
     replacements = {
         ENTRYPOINT: (repo / "scripts/gateway_customer_zipapp_main.py").read_bytes(),
         CONNECTOR: (repo / "apps/gateway/accessproof_gateway/customer_connect.py").read_bytes(),
+        **({RUNTIME_MANIFEST: runtime_manifest.read_bytes()} if runtime_manifest else {}),
+        GUARD_ONBOARDING: (repo / "apps/guard/accessproof_guard/onboarding.py").read_bytes(),
         **{
             "accessproof-gateway-connector/apps/gateway/accessproof_gateway/" + name:
             (repo / "apps/gateway/accessproof_gateway" / name).read_bytes()
@@ -59,7 +70,10 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
             for item in old.infolist():
                 fresh = copy.copy(item)
                 with updated.open(fresh, "w") as output:
-                    if item.filename in replacements:
+                    if runtime is not None and item.filename == RUNTIME:
+                        with runtime.open("rb") as source:
+                            shutil.copyfileobj(source, output, 1024 * 1024)
+                    elif item.filename in replacements:
                         output.write(replacements[item.filename])
                     else:
                         with old.open(item.filename) as source:
@@ -70,7 +84,12 @@ def rebuild(source_zip: Path, target_zip: Path, repo: Path) -> None:
         with zipfile.ZipFile(pending) as verified:
             assert verified.testzip() is None
             assert set(verified.namelist()) == set(names) | set(replacements)
-            assert sha256(verified, RUNTIME) == runtime_digest
+            if runtime is None:
+                assert sha256(verified, RUNTIME) == runtime_digest
+            else:
+                digest = sha256(verified, RUNTIME)
+                if json.loads(runtime_manifest.read_bytes())["archive_sha256"] != digest:
+                    raise ValueError("Runtime archive does not match its manifest.")
             for filename, expected in replacements.items():
                 if verified.read(filename) != expected:
                     raise ValueError("Installer update did not match reviewed source.")
@@ -84,8 +103,10 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--runtime", type=Path)
+    parser.add_argument("--runtime-manifest", type=Path)
     args = parser.parse_args()
-    rebuild(args.source, args.output, args.repo)
+    rebuild(args.source, args.output, args.repo, args.runtime, args.runtime_manifest)
     with args.output.open("rb") as output:
         digest = hashlib.file_digest(output, "sha256").hexdigest()
     print("Updated installer:", args.output)

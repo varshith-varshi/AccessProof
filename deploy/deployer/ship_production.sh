@@ -12,10 +12,11 @@ BUCKET=accessproof-release-artifacts-102076848988-eu-north-1
 ROLE=accessproof-production-deployer
 PREFLIGHT=AccessProof-Deployer-ProductionPreflight
 RELEASE_DOC=AccessProof-Deployer-ProductionRelease
-GATEWAY_ZIP_SHA=91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a
+GATEWAY_ZIP_SHA=2130425fed7335bda722add846bb2ba473f6007dbc2d2b3ae5a0c23233e8f13b
+PREVIOUS_GATEWAY_ZIP_SHA=91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a
 SDK_FILE=accessproof_rag-0.1.0-py3-none-any.whl
 SDK_SHA=ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072
-GATEWAY_ZIP="${GATEWAY_ZIP:-$HOME/.ap-id/release-cache/accessproof-gateway-connector.zip}"
+GATEWAY_ZIP="${GATEWAY_ZIP:-$HOME/.ap-id/release-cache/accessproof-gateway-connector-v4.zip}"
 MODE="${1:?Usage: ship_production.sh --dry-run|--build-image|--preflight|--execute [commit] [label]}"
 shift
 COMMIT="${1:-HEAD}"
@@ -119,7 +120,7 @@ case "$MODE" in
     --query "Commands[?Status=='InProgress' || Status=='Pending'].[CommandId]" --output text)
   [[ -z "$busy" ]] || { echo 'Active SSM production work; refusing overlapping deployment' >&2; exit 2; }
   preflight
-  RESULT=$(python3 - "$WORK/invocation.json" <<'PY'
+  RESULT=$(python3 - "$WORK/invocation.json" "$GATEWAY_ZIP_SHA" "$PREVIOUS_GATEWAY_ZIP_SHA" <<'PY'
 import json,re,sys
 out=json.load(open(sys.argv[1]))['Output']
 def extract(k):
@@ -129,7 +130,7 @@ def extract(k):
 rev=extract('DB_REVISION'); free=int(extract('DISK_FREE_GB')); z=extract('ZIP_SHA256')
 if not re.fullmatch(r'[a-z0-9]{12}',rev): raise SystemExit('Invalid DB revision')
 if free < 8: raise SystemExit('Insufficient production disk (<8 GB); no release attempted')
-if z!='91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a':
+if z not in sys.argv[2:]:
  raise SystemExit('Gateway ZIP checksum mismatch; no release attempted')
 print(rev)
 PY

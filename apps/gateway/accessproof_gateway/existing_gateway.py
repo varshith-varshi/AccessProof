@@ -50,6 +50,16 @@ def _container_ids(lines: list[str]) -> list[str]:
     return ids
 
 
+def approved_image_ids(release: dict[str, object]) -> set[str]:
+    """Every approved identity of the one runtime this bundle carries.
+
+    Docker reports a different image ID under its classic and containerd stores,
+    so a single pinned value refuses the genuine runtime on the other store.
+    """
+    ids = {release.get("image_id"), *(release.get("image_ids") or [])}
+    return {item for item in ids if isinstance(item, str) and item.startswith("sha256:")}
+
+
 def detect(pairing: dict[str, str], *, container_name: str | None = None,
            release_path: Path | None = None) -> dict[str, object] | None:
     """Verify a uniquely identifiable Gateway and its running RAG peer."""
@@ -86,7 +96,7 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         if (item["State"].get("Status") != "running"
                 or item["State"].get("Health", {}).get("Status") != "healthy"):
             raise ExistingGatewayError("GATEWAY_NOT_HEALTHY")
-        if item.get("Image") != release.get("image_id"):
+        if item.get("Image") not in approved_image_ids(release):
             raise ExistingGatewayError("GATEWAY_RUNTIME_HASH_MISMATCH")
         host = item.get("HostConfig") or {}
         if (host.get("ReadonlyRootfs") is not True
