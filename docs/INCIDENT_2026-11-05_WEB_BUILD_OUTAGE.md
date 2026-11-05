@@ -66,3 +66,5 @@ Afterwards the database stayed at `x8c9d0e1f2a3`, and API, worker, database, Red
 Release `web-r41-installer` reported success while production kept serving the old Gateway ZIP. Since 2026-11-01, production's Compose file has bind-mounted a file from an old release folder over the installer path, and that mount is not in the repository's Compose file. The release checked the image with `docker run`, which does not apply Compose mounts.
 
 Web releases now repoint that mount at the release's verified ZIP, restore the Compose file on rollback, and check checksums inside the running container.
+
+Release `web-r42-installer-037d0564d008` (SSM command `f706e035-161d-464c-ab2c-8d2d32e91c55`) repointed the mount from the `dashboard-choice-r15-20261102` release folder. A full download of the live ZIP matches `2130425fed7335bda722add846bb2ba473f6007dbc2d2b3ae5a0c23233e8f13b`.
