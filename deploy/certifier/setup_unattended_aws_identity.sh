@@ -34,6 +34,12 @@ SERVICE_TUNNEL="accessproof-remote-rag-tunnel.service"
 log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { log "FAILED: $*"; log "Nothing was switched. Services keep their previous configuration."; exit 1; }
 
+if [ "${1:-}" = "--encrypt-ca-key" ]; then
+  [ -f "$RA/ca.key" ] || { log "no plaintext CA key (already encrypted?)"; exit 0; }
+  mkdir -p "$HOME/.ap-id/rolesanywhere-ca"; chmod 700 "$HOME/.ap-id/rolesanywhere-ca"
+  openssl pkey -in "$RA/ca.key" -aes-256-cbc -out "$HOME/.ap-id/rolesanywhere-ca/ca.key.enc"
+  chmod 600 "$HOME/.ap-id/rolesanywhere-ca/ca.key.enc"; shred -u "$RA/ca.key"; log "CA key encrypted; plaintext removed"; exit 0
+fi
 if [ "${1:-}" = "--rollback" ]; then
   [ -d "$BACKUP_LINK" ] || die "no backup at $BACKUP_LINK"
   for u in $SERVICE_TUNNEL $SERVICES_CERTIFIER; do rm -f "$UNITS/$u.d/aws-identity.conf"
@@ -109,8 +115,11 @@ PY
   P=$(aws rolesanywhere list-profiles --region $REGION --query "profiles[?name=='$NAME'].profileArn | [0]" --output text)
   if [ "$P" = "None" ] || [ -z "$P" ]; then
     P=$(aws rolesanywhere create-profile --region $REGION --name "$NAME" --enabled --duration-seconds 3600 \
-         --role-arns "arn:aws:iam::$ACCOUNT:role/$NAME" --query profile.profileArn --output text)
+         --accept-role-session-name --role-arns "arn:aws:iam::$ACCOUNT:role/$NAME" --query profile.profileArn --output text)
   fi
+  # Fixed session names are what the "own sessions only" permission relies on.
+  aws rolesanywhere update-profile --region $REGION --profile-id "${P##*/}" --accept-role-session-name \
+      --role-arns "arn:aws:iam::$ACCOUNT:role/$NAME" --duration-seconds 3600 >/dev/null
   echo "$P"
 }
 P_TUNNEL=$(role accessproof-staging-tunnel staging-tunnel accessproof-tunnel-host "$HERE/iam-policy-staging-tunnel.json")
@@ -177,7 +186,10 @@ systemctl --user restart $SERVICE_TUNNEL
 log "services switched (backup: $B). Protect, Guards, Gateways and refreshers were not touched."
 
 # ---------------------------------------------------------------- 7. protect the CA private key
-if [ -f "$RA/ca.key" ]; then
+if [ -f "$RA/ca.key" ] && [ ! -t 0 ]; then
+  log "CA key NOT encrypted (no terminal for the passphrase). Run interactively later:"
+  log "  bash deploy/certifier/setup_unattended_aws_identity.sh --encrypt-ca-key"
+elif [ -f "$RA/ca.key" ]; then
   mkdir -p "$HOME/.ap-id/rolesanywhere-ca"; chmod 700 "$HOME/.ap-id/rolesanywhere-ca"
   log "Choose a passphrase for the CA private key (needed only to issue/revoke host certificates):"
   openssl pkey -in "$RA/ca.key" -aes-256-cbc -out "$HOME/.ap-id/rolesanywhere-ca/ca.key.enc"
