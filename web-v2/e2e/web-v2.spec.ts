@@ -128,6 +128,7 @@ test("Google Workspace sources use operator-owned OAuth without customer secrets
     route.fulfill({ status: 200, contentType: "text/html", body: "<h1>Mock Google consent</h1>" }));
   await page.goto("/sources");
   await page.getByRole("button", { name: "Connect source" }).first().click();
+  await page.getByLabel("Provider", { exact: true }).selectOption("google-drive");
   await page.getByLabel("Connection name").fill("Finance");
   await page.getByLabel("Approved Google Drive root folder ID").fill("drive-root");
   await expect(page.getByLabel("Google access token")).toHaveCount(0);
@@ -526,6 +527,7 @@ test("Google OAuth operator readiness blocks unusable customer drafts", async ({
     route.fulfill({ json: { configured: false } }));
   await page.goto("/sources");
   await page.getByRole("button", { name: "Connect source" }).first().click();
+  await page.getByLabel("Provider", { exact: true }).selectOption("google-drive");
   await expect(page.getByText(/Google connection is not yet configured on the AccessProof server/i)).toBeVisible();
   await page.getByLabel("Connection name").fill("Finance");
   await page.getByLabel("Approved Google Drive root folder ID").fill("approved-root");
@@ -612,7 +614,8 @@ test("Microsoft multitenant consent requires selected-site grant before Protect"
   await page.goto("/sources?microsoft=site-grant-required");
   await expect(page.getByRole("status").filter({ hasText: /SharePoint access still needs an explicit Sites.Selected grant/i })).toBeVisible();
   await expect(page.getByText(/Microsoft administrator consent was accepted, but AccessProof cannot yet read the selected SharePoint site/i)).toBeVisible();
-  await expect(page.getByText(/Shadow only: independent Microsoft effective-access certification is required for Protect/i)).toBeVisible();
+  await expect(page.getByText(/Effective-access certification is checked per AI application/i)).toBeVisible();
+  await expect(page.getByText("Site grant required")).toBeVisible();
   await expect(page.getByRole("button", { name: "Validate" })).toBeVisible();
 });
 

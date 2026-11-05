@@ -54,3 +54,17 @@
 .onboard-choice>span>small{font-size:11px;overflow-wrap:anywhere}
 .onboard-choice>em{font-size:10px;font-style:normal}
 @media(max-width:580px){.onboard-choice{flex-wrap:wrap}.onboard-choice>em{width:100%;padding-left:25px}}
+
+
+/* Keep picker labels readable at all widths (flex shrink previously made letters stack). */
+.onboard-discovery,.onboard-choices{min-width:0;width:100%}
+.onboard-choice{display:grid;grid-template-columns:20px minmax(0,1fr) max-content;width:100%;min-width:0;gap:12px;align-items:center}
+.onboard-choice>input{width:16px;height:16px;min-width:16px;margin:0}
+.onboard-choice>span{display:block;min-width:0;width:100%;overflow-wrap:break-word;word-break:normal}
+.onboard-choice>span>strong,.onboard-choice>span>small{display:block;white-space:normal;overflow-wrap:break-word}
+.onboard-choice>em{white-space:normal;text-align:right;max-width:155px}
+@media(max-width:580px){.onboard-choice{grid-template-columns:20px minmax(0,1fr)}.onboard-choice>em{grid-column:2;width:auto;max-width:none;padding-left:0;text-align:left}}
+/* The onboarding card itself can be only ~260px at 1180px viewport. Never allocate
+   an entire grid column to the compatibility badge: it starves the chatbot name. */
+.onboard-choice{grid-template-columns:20px minmax(0,1fr)}
+.onboard-choice>em{grid-column:2;justify-self:start;max-width:100%;text-align:left}

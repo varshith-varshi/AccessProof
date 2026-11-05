@@ -185,3 +185,27 @@ input,select{width:100%;height:42px;padding:0 11px;border:1px solid var(--line-s
 .danger-zone h3{color:var(--red)}
 .reset-scope{display:grid;gap:6px;margin:0;padding-left:18px;color:var(--ink-soft);line-height:1.6}
 .button-row{display:flex;align-items:center;gap:14px}
+
+
+/* Permission-source onboarding: explicit specificity avoids late generic .inline-form overrides. */
+.inline-form.source-form{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;width:100%}
+.inline-form.source-form>label{min-width:0;overflow-wrap:break-word}
+.inline-form.source-form>label input,.inline-form.source-form>label select{min-width:0;width:100%}
+.inline-form.source-form>.muted,.inline-form.source-form>.alert,.inline-form.source-form>.form-actions{grid-column:1/-1;min-width:0}
+.inline-form.source-form>.form-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:12px}
+.sources-table-card{max-width:100%;overflow-x:auto;scrollbar-gutter:stable}
+.sources-table{width:max-content;min-width:100%;table-layout:auto}
+.sources-table th:last-child,.sources-table td.row-actions{position:sticky;right:0;z-index:1;background:#fff;box-shadow:-7px 0 10px rgba(10,40,55,.06)}
+.sources-table thead th:last-child{z-index:2;background:#f8fafb}
+.sources-table td.row-actions{min-width:170px;padding:10px 14px;text-align:left}
+.source-action-list{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.source-action-list .text-button{white-space:normal;text-align:left;line-height:1.35}
+.sources-table td small{white-space:normal;overflow-wrap:anywhere;max-width:260px}
+@media(max-width:720px){.inline-form.source-form{grid-template-columns:minmax(0,1fr)}.sources-table td.row-actions{min-width:150px}}
+
+/* Production human approval remains independent of the Guard activation request. */
+.owner-approval-panel{display:grid;gap:12px;margin:18px 0;padding:20px;border:1px solid #bad5e8;border-radius:10px;background:#f3f8fd;max-width:780px}
+.owner-approval-panel h3,.owner-approval-panel p{margin:0}
+.owner-approval-panel label{display:grid;gap:9px;min-width:0}
+.owner-approval-panel label code{overflow-wrap:anywhere}
+.owner-approval-panel .button{justify-self:start}

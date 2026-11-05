@@ -80,15 +80,21 @@ Certificates & secrets. Do not create multiple customer-specific apps.
 3. AccessProof redirects to a **tenant-specific Microsoft admin-consent**
    screen for our single registered client ID. A tenant admin approves only
    the application permissions actually configured in the app registration.
-4. **Critical second grant:** `Sites.Selected` consent gives access to
-   **zero** sites by itself. An authorized SharePoint admin must grant
-   the customer tenant's **AccessProof enterprise service principal** access
-   to the explicitly approved site. Use read-only role for metadata/ACL
-   proof-of-connectivity. Mutation-based synthetic tests require an additional
-   precisely scoped and documented role reviewed with the customer. An admin
-   may use PnP PowerShell or Graph with an appropriately privileged
-   separate administrator identity. AccessProof must not silently request
-   tenant-wide `Sites.ReadWrite.All` to work around this.
+4. **Critical second grant:** `Sites.Selected` consent grants access to
+   **zero** sites by itself. A separate, authorized SharePoint administrator
+   must explicitly grant the AccessProof application access to the approved
+   site. The `read` role can cover basic file and metadata reads, but **do not
+   assert that it suffices for permission-certification operations.** In the
+   November 2026 production-equivalent tenant validation, `fullcontrol` was
+   needed for the effective-permissions certification path. This is an
+   elevated **site-scoped** permission and must be disclosed, approved by the
+   customer's security administrator, and revoked when no longer needed.
+   It is not equivalent to tenant-wide `Sites.FullControl.All`, which must
+   never be requested silently. The validated full-control path must not be
+   described as a least-privilege read-only integration. A future narrower
+   design requires fresh live evidence before reducing this requirement.
+   The grant uses a separate administrator's PnP PowerShell or Graph access;
+   AccessProof never auto-escalates its own privileges.
 5. After the selected-site grant, the callback validates the exact approved
    drive/folder/site/library scope and queues directory/ACL sync, storing only
    tenant-bound short-lived Graph tokens, not the operator client secret.
@@ -99,11 +105,21 @@ Certificates & secrets. Do not create multiple customer-specific apps.
 7. The customer can revoke tenant admin consent or selected-site access at
    any time; these must result in fail-closed access, never stale ALLOW.
 
-**Important:** The current source creation UI prepares the root IDs **before**
-admin consent and the callback verifies the root immediately. Therefore the
-customer must have an appropriate selected-site grant by that point; otherwise
-consent is correctly recorded as failed/not configured. A guided discovery
-flow must be built and independently reviewed before claiming one-click setup.
+**Important (current implementation):** The source creation UI requires
+site, drive and root identifiers **before** administrator consent. The
+consent callback first verifies the tenant and obtains a short-lived token;
+when the explicit selected-site grant does not exist yet, the callback
+records `MICROSOFT_SITE_ACCESS_GRANT_REQUIRED` and redirects to
+`?microsoft=site-grant-required`. It **does not discard valid admin consent**,
+mark the source connected, or enable Protect. After an authorized admin adds
+and independently reviews the selected-site grant, use **Sources → Validate**;
+the separate validation path marks the source connected and queues fresh
+permission and directory synchronization. Repeating consent is unnecessary
+unless the original consent is revoked or other credentials change.
+
+The customer must still work with an authorized technical contact for the
+site grant and route certification. No fully autonomous third-party RAG
+certification is claimed in the current product.
 
 ## Safeguards and rollout
 

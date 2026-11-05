@@ -203,3 +203,26 @@ test("post-activation observation is available only for backend-verified Protect
   await expect(page.getByRole("region", { name: "Observed live Guard decisions" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Manual RAG validation" })).toHaveCount(0);
 });
+
+test("discovered chatbot picker keeps labels horizontal on desktop and narrow screens", async ({ page }) => {
+  await mockSetup(page, { paired: false });
+  await page.route("**/api/v1/current/ai-applications/*/gateway-discovery", route => route.fulfill({
+    json: { state: "awaiting_selection", selected_id: null, production_certification: false,
+      applications: [{ stable_id: "host-001", display_name: "Example Finance Assistant", compose_project: "enterprise-finance", service: "finance-rag", state: "SUPPORTED" }] },
+  }));
+  for (const width of [1180, 480]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+    const label = page.getByText("Example Finance Assistant");
+    await expect(label).toBeVisible();
+    if (width === 1180 && process.env.AP_CAPTURE_GUIDE === "1") {
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync("../docs/assets/customer-onboarding", { recursive: true });
+      await page.locator(".onboard-discovery").screenshot({ path: "../docs/assets/customer-onboarding/chatbot-picker-fixed.png" });
+    }
+    const box = await page.locator(".onboard-choice > span").first().boundingBox();
+    expect(box?.width).toBeGreaterThan(95);
+    const style = await label.evaluate(element => getComputedStyle(element).wordBreak);
+    expect(style).not.toBe("break-all");
+  }
+});
