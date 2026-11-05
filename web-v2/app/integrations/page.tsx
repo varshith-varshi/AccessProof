@@ -6,7 +6,7 @@ import { PageHeader } from "../app-shell";
 import { ProtectedPage } from "../protected-page";
 
 const steps = [
-  { number: "01", title: "Connect permission source", description: "Authorize Google Workspace Drive or Microsoft 365 SharePoint / OneDrive through the provider. Microsoft sources remain Shadow-only until effective permission checks are independently validated.", href: "/sources", link: "Connect source", icon: Files },
+  { number: "01", title: "Connect permission source", description: "Authorize Google Workspace Drive or Microsoft 365 SharePoint / OneDrive through the provider. Microsoft sources require independently certified site-scoped effective access before Protect can activate.", href: "/sources", link: "Connect source", icon: Files },
   { number: "02", title: "Enroll your Guard", description: "Deploy the customer-hosted enforcement engine and verify machine enrollment, heartbeat and policy synchronization.", href: "/guards", link: "Manage Guards", icon: LockKeyhole },
   { number: "03", title: "Deploy AccessProof Gateway", description: "Install the reviewed Docker Gateway beside your RAG service. Supply independently attested retrieval resources and route model traffic through Gateway.", href: "/integrations/setup", link: "Open Gateway setup", icon: Server },
   { number: "04", title: "Verify the real RAG route", description: "Register the application, perform allow/deny/provenance/revocation challenges, approve the customer-side cutover and enable Protect only after all gates pass.", href: "/applications", link: "Register application", icon: ClipboardCheck },

@@ -95,9 +95,15 @@ Certificates & secrets. Do not create multiple customer-specific apps.
    design requires fresh live evidence before reducing this requirement.
    The grant uses a separate administrator's PnP PowerShell or Graph access;
    AccessProof never auto-escalates its own privileges.
-5. After the selected-site grant, the callback validates the exact approved
-   drive/folder/site/library scope and queues directory/ACL sync, storing only
-   tenant-bound short-lived Graph tokens, not the operator client secret.
+5. The one-time callback validates consent and exact tenant binding. If the
+   selected-site grant already exists, it validates the approved
+   drive/folder/site/library boundary and queues directory/ACL sync. If that
+   grant is still pending, it stores only tenant-bound, short-lived Graph
+   access credentials, records `MICROSOFT_SITE_ACCESS_GRANT_REQUIRED` and
+   stays unconfigured. After the administrator adds the approved site grant,
+   the customer clicks **Sources → Validate** to verify scope and queue fresh
+   permission/directory synchronization. No second admin consent is required.
+   The operator application secret is never put in a customer source record.
 6. Customer enrolls the normal Guard and installs the reviewed Gateway beside
    its RAG pipeline. Protect is **not** automatically enabled: site metadata,
    group membership, employee identity, effective ACL and RAG-route integrity

@@ -11,12 +11,29 @@ employee ──token──▶ your RAG (any host/OS) ──retrieve──▶ you
              AccessProof Gateway (Linux) ──Layer 1/2──▶ Guard ──▶ model
 ```
 
-## Install
+## Install (reviewed pilot package, not PyPI)
 
+As of 2026-11-05 this package has **not** been published on PyPI. Do not use
+`pip install accessproof-rag` and assume an untrusted similarly named package is
+our official build. After signing into the AccessProof workspace, obtain the
+reviewed wheel at `https://app.accessproof.in/downloads/accessproof_rag-0.1.0-py3-none-any.whl`; this download must be protected by a **server-
+validated** organization session (not a cookie-presence check).
+
+SHA-256 of this source-built v0.1.0 wheel: `ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072`.
+Verify the checksum before installing. Install from the local downloaded file:
+
+```bash
+python3 -m pip install ./accessproof_rag-0.1.0-py3-none-any.whl
+# If needed, install the relevant framework dependencies separately:
+python3 -m pip install 'langchain-core>=0.3'      # LangChain route
+# OR: python3 -m pip install 'llama-index-core>=0.12'  # LlamaIndex route
 ```
-pip install "accessproof-rag[langchain]"      # or [llamaindex], or no extra
-# from source: pip install ./integrations/rag-clients/python
-```
+
+For an approved source checkout, a technical operator can build the equivalent
+wheel: `python3 -m pip wheel --no-deps --no-build-isolation -w dist ./integrations/rag-clients/python`.
+The Gateway TLS trust, signed identity forwarding, provenance and route
+certification are **still required**. Installing the SDK alone cannot enable Protect.
+
 
 ## What your AccessProof administrator gives you
 

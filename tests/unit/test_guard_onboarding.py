@@ -70,6 +70,11 @@ def test_setup_page_is_self_contained_and_does_not_persist_token_in_browser() ->
     assert "sessionStorage" not in page
     assert "src=\"http" not in page
     assert "autocomplete=\"off\"" in page
+    assert "Create a Guard in web-v2" not in page
+    assert "Create a Guard in your AccessProof dashboard" in page
+    assert "Microsoft Entra ID employees" in page
+    assert "host==='login.microsoftonline.com'" in page
+    assert "subjectInput.value=" in page
 
 
 def test_used_or_invalid_enrollment_token_has_safe_error(tmp_path: Path) -> None:

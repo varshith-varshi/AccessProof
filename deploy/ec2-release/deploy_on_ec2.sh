@@ -25,6 +25,10 @@ WEB_IMAGE="accessproof/web-v2:$RELEASE_ID"
 MIGRATED=0
 PUBLIC_CHECKS="${PUBLIC_CHECKS:-1}"                  # 0 only for an offline rehearsal
 REUSE_EXISTING_IMAGES="${REUSE_EXISTING_IMAGES:-0}"  # 1 only for an offline rehearsal
+# Reviewed production Gateway ZIP (observed directly 2026-11-05). The release
+# tar intentionally excludes ZIPs; copy this public, non-secret installer from
+# the currently running web image into the new build, and pin its content.
+EXPECTED_GATEWAY_INSTALLER_SHA256="91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a"
 
 [[ "$RELEASE_ID" =~ ^[a-z0-9][a-z0-9.-]{5,80}$ ]] || { echo "bad release id"; exit 2; }
 [[ "$EXPECTED_DB_REVISION" =~ ^[0-9a-z]{12}$ ]] || { echo "bad EXPECTED_DB_REVISION"; exit 2; }
@@ -109,6 +113,45 @@ echo "$EXPECTED_SHA  $(basename "$ARTIFACT")" > "$REL/checksums.txt"
 # -------------------------------------------------------------------- build
 tar -xf "$ARTIFACT" -C "$REL/src"
 cat "$REL/src/RELEASE_COMMIT" > "$REL/source-commit.txt" 2>/dev/null || true
+
+preserve_reviewed_gateway_installer() {
+  # A plain Git rebuild omits the production ZIP: it is a ~98 MB runtime
+  # artifact, intentionally absent from the source checkout and release tar.
+  # Production MUST fail before image/migration work rather than publish 404.
+  local cid target digest
+  if [[ "$PUBLIC_CHECKS" == 0 ]]; then
+    log "rehearsal: production installer ZIP preservation is not required"
+    return 0
+  fi
+  cid=$(compose ps -q web || true)
+  if [[ -z "$cid" ]]; then
+    log "RELEASE REFUSED: no prior production web container to supply reviewed Gateway ZIP"
+    return 2
+  fi
+  install -d -m 700 "$REL/src/web-v2/public/downloads"
+  target="$REL/src/web-v2/public/downloads/accessproof-gateway-connector.zip"
+  [[ ! -e "$target" && ! -L "$target" ]] || { log "RELEASE REFUSED: release archive unexpectedly contains installer ZIP"; return 2; }
+  if ! docker cp "$cid:/app/public/downloads/accessproof-gateway-connector.zip" "$target" >/dev/null 2>&1; then
+    log "RELEASE REFUSED: current production installer ZIP is missing"
+    return 2
+  fi
+  [[ -f "$target" && ! -L "$target" ]] || { log "RELEASE REFUSED: copied installer is not a regular file"; return 2; }
+  digest=$(sha256sum "$target" | awk '{print $1}')
+  [[ "$digest" == "$EXPECTED_GATEWAY_INSTALLER_SHA256" ]] || {
+    log "RELEASE REFUSED: current installer checksum differs from reviewed artifact; review a fresh release first"
+    return 2
+  }
+  python3 - "$target" <<'PYZIP'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as bundle:
+    required = {'__main__.py', 'accessproof-gateway-connector/accessproof-gateway-runtime.tar.gz'}
+    if not required.issubset(bundle.namelist()) or bundle.testzip() is not None:
+        raise SystemExit('RELEASE REFUSED: existing installer integrity verification failed')
+PYZIP
+  printf '%s  %s\n' "$digest" 'web-v2/public/downloads/accessproof-gateway-connector.zip' >> "$REL/checksums.txt"
+  log "reviewed Gateway installer preserved for new web image (SHA-256 pinned)"
+}
+preserve_reviewed_gateway_installer
 if [[ "$REUSE_EXISTING_IMAGES" == 1 ]] && docker image inspect "$API_IMAGE" "$WORKER_IMAGE" "$WEB_IMAGE" >/dev/null 2>&1; then
   log "rehearsal: reusing pre-built release images"
 else
@@ -135,7 +178,10 @@ trap 'log "failure at line $LINENO"; rollback' ERR
 
 # ---------------------------------------------------------------- migrate
 owner_alembic "$API_IMAGE" upgrade head >"$REL/deployment-logs/migration.log" 2>&1
-MIGRATED=1
+# A web-only/code-only release must NOT be classified as a DB migration.
+# Otherwise rollback incorrectly enters the Ed25519-downgrade guard even
+# though the schema never changed, blocking restoration of the previous web.
+if [[ "$current_rev" != "$TARGET_DB_REVISION" ]]; then MIGRATED=1; fi
 [[ "$(db_revision)" == "$TARGET_DB_REVISION" ]]
 log "database at $TARGET_DB_REVISION"
 
@@ -153,6 +199,12 @@ compose up -d --no-deps --force-recreate worker >>"$REL/deployment-logs/deploy.l
 wait_healthy worker 120
 compose up -d --no-deps --force-recreate web >>"$REL/deployment-logs/deploy.log" 2>&1
 wait_healthy web 180
+if [[ "$PUBLIC_CHECKS" == 1 ]]; then
+  new_installer_sha=$(compose exec -T web sha256sum /app/public/downloads/accessproof-gateway-connector.zip | awk '{print $1}')
+  [[ "$new_installer_sha" == "$EXPECTED_GATEWAY_INSTALLER_SHA256" ]] || {
+    log "RELEASE REFUSED: the new web image lost the reviewed Gateway installer"; false;
+  }
+fi
 
 # --------------------------------------------- internal verification gates
 api_probe() {  # <method> <path> -> HTTP status from inside the API container
@@ -169,6 +221,11 @@ compose exec -T web wget -q -O /dev/null http://127.0.0.1:3000/login
 if [[ "$PUBLIC_CHECKS" == 1 ]]; then
   curl -fsS --max-time 15 https://api.accessproof.in/health/ready | tee "$REL/deployment-logs/health-ready.json" | grep -q '"ready"'
   curl -fsS --max-time 15 -o /dev/null https://app.accessproof.in/login
+  # An arbitrary session-cookie value must NOT grant customer ZIP access.
+  installer_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H 'Cookie: accessproof_session=synthetic-invalid-no-real-session' \
+    https://app.accessproof.in/downloads/accessproof-gateway-connector.zip)
+  [[ "$installer_status" == 307 || "$installer_status" == 302 || "$installer_status" == 401 || "$installer_status" == 403 ]]
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST -H 'Content-Type: application/json' \
     -d '{}' https://api.accessproof.in/api/v1/gateway-installations/heartbeat)
   [[ "$code" == 422 ]]   # new route reachable through nginx; schema enforced

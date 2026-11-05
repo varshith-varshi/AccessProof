@@ -211,13 +211,13 @@ h("5  Alternative RAG framework path")
 p("For an existing Python, LangChain or LlamaIndex RAG, a reviewed SDK and Gateway TLS integration can be used. This path is <b>not</b> an automatic conversion and currently requires agreed engineering assistance and route certification.")
 for item in [
     "The Python client is kept in <b>integrations/rag-clients/python</b> and was <b>not published on PyPI</b> at this review.",
-    "Receive a reviewed client wheel through a customer-approved distribution channel, then install its exact supplied wheel file with pip.",
+    "From your signed-in AccessProof workspace, download the reviewed v0.1.0 wheel from /downloads/accessproof_rag-0.1.0-py3-none-any.whl after this release is deployed, and verify its SHA-256 before installing.",
     "Configure Gateway TLS trust, delegated employee access tokens, signed retrieval and trusted document provenance.",
-    "No private key, API token, Microsoft password or customer RAG content is embedded in source code or installer archives.",
+    "Keep private keys, Microsoft tokens, API secrets and customer RAG content out of source code and installer archives; configure them securely on the customer host.",
 ]: bullet(item)
-note("<b>Correct installation command:</b> <font name='Courier'>python3 -m pip install ./accessproof_rag-0.1.0-py3-none-any.whl</font> when that reviewed wheel has been supplied. Do <b>not</b> use the previous guide's unverified <font name='Courier'>pip install accessproof-rag</font> from PyPI.", AMBER)
+note("<b>Correct installation command:</b> <font name='Courier'>python3 -m pip install ./accessproof_rag-0.1.0-py3-none-any.whl</font> after authenticated download and checksum verification. <b>SHA-256:</b> <font name='Courier'>ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072</font>. Do <b>not</b> use the previous guide's unverified PyPI install command.", AMBER)
 h2("Installer distribution checkpoint")
-p("Before providing this step to customers, the deployment owner must confirm the authenticated <b>/downloads/accessproof-gateway-connector.zip</b> route serves an actual ZIP and that its SHA-256 matches the reviewed, published release. An unauthenticated redirect to /login is not evidence that the artifact itself is present.")
+p("Before providing this step to customers, the deployment owner must confirm the <b>/downloads/accessproof-gateway-connector.zip</b> route requires a <b>server-validated AccessProof login session</b>, serves an actual ZIP, and that its SHA-256 matches the reviewed, published release. Merely seeing a redirect to /login without a cookie does not prove that arbitrary invalid cookies are rejected.")
 nextpage()
 
 # 8. Verification
