@@ -12,12 +12,16 @@ BUCKET=accessproof-release-artifacts-102076848988-eu-north-1
 ROLE=accessproof-production-deployer
 PREFLIGHT=AccessProof-Deployer-ProductionPreflight
 RELEASE_DOC=AccessProof-Deployer-ProductionRelease
-MODE="${1:?Usage: ship_production.sh --dry-run|--preflight|--execute [commit] [label]}"
+GATEWAY_ZIP_SHA=91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a
+SDK_FILE=accessproof_rag-0.1.0-py3-none-any.whl
+SDK_SHA=ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072
+GATEWAY_ZIP="${GATEWAY_ZIP:-$HOME/.ap-id/release-cache/accessproof-gateway-connector.zip}"
+MODE="${1:?Usage: ship_production.sh --dry-run|--build-image|--preflight|--execute [commit] [label]}"
 shift
 COMMIT="${1:-HEAD}"
 # A `web-` label selects the isolated web-only release in deploy_on_ec2.sh; any
 # other label runs the full API, worker, web and migration release.
-LABEL="${2:-web-r39-onboarding}"
+LABEL="${2:-web-r40-onboarding}"
 [[ "$LABEL" =~ ^[a-z0-9][a-z0-9-]{5,40}$ ]] || { echo 'Bad release label' >&2; exit 2; }
 cd "$REPO"
 COMMIT=$(git rev-parse --verify "$COMMIT^{commit}")
@@ -35,6 +39,33 @@ archive() {
   [[ "$archived_commit" == "$COMMIT" ]] || { echo 'Commit provenance mismatch' >&2; exit 2; }
   SHA=$(sha256sum "$WORK/artifact.tar" | cut -d' ' -f1)
   echo "release=$RID commit=$COMMIT sha256=$SHA bytes=$(stat -c %s "$WORK/artifact.tar")"
+}
+
+# Build the web image here, never on the 2 GB production host, then add it to the
+# artifact so the release checksum covers it. The Gateway ZIP is not in Git and
+# must match the reviewed digest.
+bundle_web_image() {
+  local image="accessproof/web-v2:$RID" context="$WORK/context" out="$WORK/image" expected actual
+  [[ "$(sha256sum "$GATEWAY_ZIP" | cut -d' ' -f1)" == "$GATEWAY_ZIP_SHA" ]] || { echo 'Gateway ZIP missing or not the reviewed digest' >&2; exit 2; }
+  install -d -m 700 "$context" "$out"
+  git archive --format=tar "$COMMIT" web-v2 | tar -xf - -C "$context"
+  cp "$GATEWAY_ZIP" "$context/web-v2/public/downloads/accessproof-gateway-connector.zip"
+  if docker image inspect "$image" >/dev/null 2>&1; then docker image rm "$image" >/dev/null; fi
+  docker build --platform linux/amd64 -t "$image" "$context/web-v2" > "$WORK/web-build.log" 2>&1 \
+    || { tail -30 "$WORK/web-build.log" >&2; echo 'Off-host web build failed' >&2; exit 2; }
+  [[ "$(docker image inspect -f '{{.Architecture}}' "$image")" == amd64 ]] || { echo 'Image is not amd64' >&2; exit 2; }
+  for expected in "$GATEWAY_ZIP_SHA  /app/public/downloads/accessproof-gateway-connector.zip" "$SDK_SHA  /app/public/downloads/$SDK_FILE"; do
+    actual=$(docker run --rm --entrypoint sha256sum "$image" "${expected#*  }" | awk '{print $1}')
+    [[ "$actual" == "${expected%%  *}" ]] || { echo 'Image lost a reviewed download' >&2; exit 2; }
+  done
+  docker save --platform linux/amd64 "$image" | gzip -6 > "$out/web-image.tar.gz"
+  # The image ID differs between Docker's classic and containerd stores, so
+  # approve each identity of this same image; the artifact checksum binds them.
+  python3 "$HERE/image_digests.py" "$out/web-image.tar.gz" "$(docker image inspect -f '{{.Id}}' "$image")" > "$out/web-image.digests"
+  tar -rf "$WORK/artifact.tar" -C "$out" web-image.tar.gz web-image.digests
+  SHA=$(sha256sum "$WORK/artifact.tar" | cut -d' ' -f1)
+  echo "bundled image=$image bytes=$(stat -c %s "$WORK/artifact.tar") sha256=$SHA"
+  sed 's/^/approved_digest=/' "$out/web-image.digests"
 }
 
 awsrelease() { env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN AWS_PROFILE="$ROLE" aws "$@"; }
@@ -78,6 +109,7 @@ PY
 
 case "$MODE" in
  --dry-run) archive; echo 'DRY_RUN_PASS: no AWS service accessed'; exit 0 ;;
+ --build-image) archive; bundle_web_image; echo 'BUILD_PASS: no AWS service accessed'; exit 0 ;;
  --preflight) check_identity; preflight; exit 0 ;;
  --execute)
   [[ -z "$(git status --porcelain)" ]] || { echo 'Dirty checkout. Commit and retest first.' >&2; exit 2; }
@@ -102,6 +134,7 @@ if z!='91a7c7d421316e882fe15003c8023bc4cc50de88cef9c6913c98cb887ae3df9a':
 print(rev)
 PY
   )
+  [[ "$RID" != web-* ]] || bundle_web_image
   awsrelease s3 cp "$WORK/artifact.tar" "s3://$BUCKET/releases/$RID.tar" --region "$REGION" --only-show-errors
   URL=$(awsrelease s3 presign "s3://$BUCKET/releases/$RID.tar" --region "$REGION" --expires-in 900)
   python3 - "$WORK/params.json" "$URL" "$RID" "$COMMIT" "$SHA" "$RESULT" <<'PY'
@@ -114,5 +147,5 @@ PY
   invoke "$RELEASE_DOC" "$WORK/params.json"
   echo "DEPLOYMENT_COMMAND_COMPLETE: $RID (verify Protect and public routes separately)"
   ;;
- *) echo 'Usage: --dry-run | --preflight | --execute [commit] [label]' >&2; exit 2 ;;
+ *) echo 'Usage: --dry-run | --build-image | --preflight | --execute [commit] [label]' >&2; exit 2 ;;
 esac

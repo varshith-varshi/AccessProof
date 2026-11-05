@@ -5,6 +5,7 @@ containers or customer data.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ SCRIPTS = ROOT / "deploy/ec2-release"
 SDK_NAME = "accessproof_rag-0.1.0-py3-none-any.whl"
 REVISION = "x8c9d0e1f2a3"
 OLD_IMAGE = "accessproof/web-v2:previous"
+APPROVED_DIGEST = "sha256:" + "a" * 64
 
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 set -u
@@ -49,8 +51,17 @@ case "$sub" in
     elif [[ "$3" == worker* ]]; then echo running
     else echo healthy; fi ;;
   cp) cp "$FIXTURE_ZIP" "$2" ;;
-  image) exit 1 ;;
-  build) [[ ! -e "$STATE/fail-build" ]] ;;
+  image)
+    [[ "${@: -1}" != accessproof/web-v2:previous || -e "$STATE/no-previous-image" ]] || exit 0
+    [[ -e "$STATE/loaded" ]] || exit 1
+    case "$*" in
+      *.Id*) cat "$STATE/loaded-id" ;;
+      *.Architecture*) echo amd64 ;;
+    esac ;;
+  load)
+    cat > /dev/null
+    [[ ! -e "$STATE/fail-load" ]] || exit 1
+    touch "$STATE/loaded" ;;
   run)
     case "${@: -1}" in
       *.zip) sha256sum "$FIXTURE_ZIP" ;;
@@ -63,7 +74,7 @@ FAKE_CURL = r"""#!/usr/bin/env bash
 echo "curl $*" >> "$STATE/calls"
 case "$*" in
   *downloads*) cat "$STATE/installer-status" ;;
-  *) echo 200 ;;
+  *) cat "$STATE/public-status" ;;
 esac
 """
 
@@ -94,6 +105,9 @@ class Rig:
         (self.state / "web-generation").write_text("0\n")
         (self.state / "db-revision").write_text(REVISION + "\n")
         (self.state / "installer-status").write_text("307\n")
+        (self.state / "public-status").write_text("200\n")
+        (self.state / "loaded-id").write_text(APPROVED_DIGEST + "\n")
+        (self.state / "meminfo").write_text("MemTotal: 2000000 kB\nMemAvailable: 900000 kB\n")
         (self.state / "calls").write_text("")
         for name, body in (("docker", FAKE_DOCKER), ("curl", FAKE_CURL)):
             stub = self.stubs / name
@@ -102,6 +116,7 @@ class Rig:
 
     def patched(self, name: str) -> str:
         text = (SCRIPTS / name).read_text().replace("/home/ubuntu", str(self.home))
+        text = text.replace("/proc/meminfo", str(self.state / "meminfo"))
         lines = []
         for line in text.splitlines():
             if line.startswith("GATEWAY_SHA="):
@@ -118,7 +133,8 @@ class Rig:
         scripts.mkdir(parents=True)
         downloads.mkdir(parents=True)
         (src / "RELEASE_COMMIT").write_text("a" * 40)
-        (src / "web-v2/Dockerfile").write_text("FROM scratch\n")
+        (src / "web-image.tar.gz").write_bytes(gzip.compress(b"synthetic image"))
+        (src / "web-image.digests").write_text(APPROVED_DIGEST + "\n")
         shutil.copy(self.sdk, downloads / SDK_NAME)
         for name in ("deploy_on_ec2.sh", "deploy_web_only_on_ec2.sh"):
             (scripts / name).write_text(self.patched(name))
@@ -184,13 +200,35 @@ def test_web_release_replaces_only_web_and_reloads_nginx(rig: Rig) -> None:
     assert "alembic upgrade" not in rig.calls
 
 
-def test_web_build_yields_resources_to_live_production_services(rig: Rig) -> None:
+def test_release_never_builds_on_the_production_host(rig: Rig) -> None:
+    assert rig.run().returncode == 0
+    assert "docker build" not in rig.calls
+    script = "\n".join(
+        line for line in (SCRIPTS / "deploy_web_only_on_ec2.sh").read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert "docker build" not in script
+    assert "--signal=TERM --kill-after=30s 10m nice -n 10 ionice -c2 -n7 gzip -dc" in script
+
+
+@pytest.mark.parametrize(
+    ("setup", "message"),
+    [
+        (lambda rig: (rig.state / "loaded-id").write_text("sha256:" + "b" * 64 + "\n"), "not approved"),
+        (lambda rig: (rig.state / "public-status").write_text("000\n"), "unreachable before release"),
+        (lambda rig: (rig.state / "no-previous-image").write_text(""), "rollback impossible"),
+        (lambda rig: (rig.state / "meminfo").write_text("MemAvailable: 100000 kB\n"), "memory available; need"),
+    ],
+    ids=["unapproved-digest", "public-route-down", "previous-image-missing", "low-memory"],
+)
+def test_unsafe_preconditions_refuse_before_switching(rig: Rig, setup, message: str) -> None:
+    setup(rig)
     result = rig.run()
-    assert result.returncode == 0, result.stdout + result.stderr
-    script = (SCRIPTS / "deploy_web_only_on_ec2.sh").read_text()
-    assert 'timeout --signal=TERM --kill-after=30s 20m' in script
-    assert 'nice -n 10 ionice -c2 -n7 docker build' in script
-    assert "docker build" in rig.calls
+    assert result.returncode != 0
+    assert message in result.stdout
+    assert "--force-recreate" not in rig.calls
+    assert rig.web_image() == OLD_IMAGE
+    assert f"ACCESSPROOF_WEB_IMAGE={OLD_IMAGE}" in (rig.app / ".env").read_text()
 
 
 def test_installer_probe_uses_head_and_get(rig: Rig) -> None:
@@ -198,6 +236,8 @@ def test_installer_probe_uses_head_and_get(rig: Rig) -> None:
     probes = [line for line in rig.calls.splitlines() if line.startswith("curl") and "downloads" in line]
     assert any(" -I " in line for line in probes)
     assert any(" -r 0-0 " in line for line in probes)
+    for name in ("accessproof-gateway-connector.zip", SDK_NAME):
+        assert sum(name in line for line in probes) == 2
 
 
 def test_open_installer_rolls_back_to_previous_image(rig: Rig) -> None:
@@ -219,8 +259,8 @@ def test_failed_nginx_reload_rolls_back_and_flags_operator(rig: Rig) -> None:
     assert f"ACCESSPROOF_WEB_IMAGE={OLD_IMAGE}" in (rig.app / ".env").read_text()
 
 
-def test_failed_build_leaves_production_untouched(rig: Rig) -> None:
-    (rig.state / "fail-build").write_text("")
+def test_failed_image_load_leaves_production_untouched(rig: Rig) -> None:
+    (rig.state / "fail-load").write_text("")
     result = rig.run()
     assert result.returncode != 0
     assert "--force-recreate" not in rig.calls
@@ -230,7 +270,7 @@ def test_failed_build_leaves_production_untouched(rig: Rig) -> None:
 def test_database_drift_refuses_before_any_work(rig: Rig) -> None:
     result = rig.run(expected="a1b2c3d4e5f6")
     assert result.returncode != 0
-    assert "docker build" not in rig.calls
+    assert "docker load" not in rig.calls
     assert "--force-recreate" not in rig.calls
 
 
