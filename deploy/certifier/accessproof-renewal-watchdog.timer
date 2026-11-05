@@ -1,0 +1,11 @@
+[Unit]
+Description=Check AccessProof certificate expiry, attestation freshness and local prerequisites every two hours
+
+[Timer]
+OnCalendar=*-*-* 00/2:15:00
+RandomizedDelaySec=5m
+Persistent=true
+Unit=accessproof-renewal-watchdog.service
+
+[Install]
+WantedBy=timers.target

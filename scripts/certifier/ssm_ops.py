@@ -77,7 +77,25 @@ def run(document: str, instance: str, params: dict, comment: str, timeout: int =
 
 
 def read_only(operation: str, **params) -> str:
-    return run(READ_ONLY, PRODUCTION, {"operation": operation, **params}, f"read-only: {operation}").strip()
+    """Retry transient AWS CLI transport errors for read-only operations only.
+
+    Never retries import, certificate issuance or any production mutation.
+    Authorization/configuration errors are terminal, including AWS exit 255.
+    """
+    for attempt in range(3):
+        try:
+            return run(READ_ONLY, PRODUCTION, {"operation": operation, **params},
+                       f"read-only: {operation}").strip()
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").lower()
+            if exc.returncode != 255 or any(key in detail for key in (
+                "accessdenied", "unauthorized", "expiredtoken", "invalidclienttokenid",
+                "unrecognizedclientexception", "validationexception", "no credentials",
+                "could not find credentials", "invalidparameter",
+            )) or attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+    raise AssertionError("unreachable")
 
 
 def import_payload(operation: str, payload: dict, **params) -> str:

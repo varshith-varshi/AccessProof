@@ -1,0 +1,16 @@
+[Unit]
+Description=AccessProof SharePoint source certificate expiry read-only monitor
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/AccessProof-universal
+Environment=AWS_PROFILE=accessproof-certifier
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=%h/Projects/AccessProof-universal/.venv/bin/python -m scripts.certifier.source_expiry_monitor
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+UMask=0077
+TimeoutStartSec=8min

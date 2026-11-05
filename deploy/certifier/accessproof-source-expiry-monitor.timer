@@ -1,0 +1,11 @@
+[Unit]
+Description=Check both AccessProof SharePoint source certificates daily
+
+[Timer]
+OnCalendar=*-*-* 10:05:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=accessproof-source-expiry-monitor.service
+
+[Install]
+WantedBy=timers.target
