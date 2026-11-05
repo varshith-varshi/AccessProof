@@ -70,3 +70,42 @@ def test_result_written_once_private_with_explicit_no_certification(tmp_path: Pa
     with pytest.raises(RouteChallengeError):
         write_private_result(output, {})
     assert json.loads(output.read_text())["production_certification"] is False
+
+
+def _issued(**overrides) -> dict:
+    """Exact field set returned by POST .../protection/challenge."""
+    from datetime import datetime, timedelta, timezone
+    body = {
+        "challenge_id": "chal-1", "nonce": "n" * 54, "guard_id": "guard-1",
+        "application_id": "reference-app",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+        "request_ids": {}, "state": "issued", "production_certification": False,
+        "message": "synthetic",
+    }
+    return {**body, **overrides}
+
+
+def test_api_challenge_response_was_rejected_directly_and_now_merges() -> None:
+    from apps.gateway.accessproof_gateway.challenge_cli import merge_issued_challenge
+    config = _data()
+    del config["challenge_nonce"]
+    with pytest.raises(RouteChallengeError, match="Unsupported"):
+        parse_challenge({**config, **_issued()})
+    challenge = parse_challenge(merge_issued_challenge(config, _issued()))
+    assert challenge.challenge_nonce == "n" * 54
+
+
+def test_issued_challenge_merge_refuses_mismatch_expiry_and_preset_nonce() -> None:
+    from datetime import datetime, timedelta, timezone
+    from apps.gateway.accessproof_gateway.challenge_cli import merge_issued_challenge
+    config = _data()
+    with pytest.raises(RouteChallengeError, match="Remove challenge_nonce"):
+        merge_issued_challenge(config, _issued())
+    del config["challenge_nonce"]
+    with pytest.raises(RouteChallengeError, match="different application"):
+        merge_issued_challenge(config, _issued(application_id="other-app"))
+    past = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    with pytest.raises(RouteChallengeError, match="expired"):
+        merge_issued_challenge(config, _issued(expires_at=past))
+    with pytest.raises(RouteChallengeError, match="not usable"):
+        merge_issued_challenge(config, _issued(state="superseded"))

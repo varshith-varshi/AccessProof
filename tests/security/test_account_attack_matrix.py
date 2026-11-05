@@ -136,3 +136,21 @@ def test_cookie_session_mutation_requires_csrf_token(client):
     client.cookies.set("accessproof_csrf", "abc")
     assert client.patch("/api/v1/organization", headers={"X-Organization-ID": org, "X-CSRF-Token": "xyz"},
                         json={"name": "Forged"}).status_code == 403
+
+
+def test_protect_approval_rejects_admin_and_owner_api_key(client):
+    """D-28: only an interactive OWNER session may approve Protect."""
+    owner = _signup(client, "approve-owner@example.com", "Approval Org")
+    admin = _join(client, owner, "approve-admin@example.com", "ADMIN")
+    assert client.post("/api/v1/current/ai-applications", headers=owner,
+                       json={"application_id": "rag", "name": "RAG"}).status_code == 201
+    key = client.post("/api/v1/api-keys", headers=owner, json={"label": "ci", "expires_in_days": 1})
+    assert key.status_code == 201
+    api = {"Authorization": f"Bearer {key.json()['api_key']}", "X-Organization-ID": owner["X-Organization-ID"]}
+    body = {"confirm_text": "APPROVE PROTECT rag", "reviewer": "Impersonator"}
+    url = "/api/v1/current/ai-applications/rag/protection/approve"
+    as_admin = client.post(url, headers=admin, json=body)
+    assert as_admin.status_code == 403 and as_admin.json()["detail"] == "OWNER_SESSION_REQUIRED"
+    assert client.post(url, headers=api, json=body).status_code in (401, 403)
+    # The owner reaches the next gate (no certified route), proving the 403s above are role refusals.
+    assert client.post(url, headers=owner, json=body).json()["detail"] == "ROUTE_CERTIFICATE_REQUIRED_BEFORE_APPROVAL"

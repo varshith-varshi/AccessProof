@@ -87,6 +87,35 @@ def parse_challenge(data: dict[str, Any]) -> GatewayRouteChallenge:
         raise RouteChallengeError("Incomplete route challenge") from exc
 
 
+def merge_issued_challenge(config: dict[str, Any], issued: dict[str, Any]) -> dict[str, Any]:
+    """Bind an operator probe config to the control plane's issued challenge.
+
+    The API response (`POST .../protection/challenge`) carries `nonce`, while
+    the probe config uses `challenge_nonce`; passing the response directly was
+    rejected. Only the nonce and application are taken from it, the config may
+    not pre-set a nonce, and an expired or mismatched challenge is refused.
+    """
+    from datetime import datetime, timezone
+
+    if "challenge_nonce" in config:
+        raise RouteChallengeError("Remove challenge_nonce from the config when --challenge is used")
+    nonce = issued.get("nonce")
+    if issued.get("state", "issued") != "issued" or not isinstance(nonce, str) or not nonce:
+        raise RouteChallengeError("Issued challenge is not usable")
+    app = issued.get("application_id")
+    if not isinstance(app, str) or not app or config.get("application_id", app) != app:
+        raise RouteChallengeError("Issued challenge belongs to a different application")
+    try:
+        expires = datetime.fromisoformat(str(issued["expires_at"]))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+    except (KeyError, ValueError) as exc:
+        raise RouteChallengeError("Issued challenge has no valid expiry") from exc
+    if expires <= datetime.now(timezone.utc):
+        raise RouteChallengeError("Issued challenge has expired; request a new one")
+    return {**config, "application_id": app, "challenge_nonce": nonce}
+
+
 def write_private_result(path: Path, result: dict[str, Any]) -> None:
     if not path.parent.is_dir():
         raise RouteChallengeError("Challenge output parent directory must exist")
@@ -111,9 +140,14 @@ def main() -> int:
     )
     parser.add_argument("--config", required=True, type=Path, help="Mode-0600 private synthetic JSON config")
     parser.add_argument("--output", required=True, type=Path, help="New private diagnostic result filename")
+    parser.add_argument("--challenge", type=Path,
+                        help="Mode-0600 JSON response saved from the control plane's challenge request")
     args = parser.parse_args()
     try:
-        challenge = parse_challenge(read_private_json(args.config))
+        config = read_private_json(args.config)
+        if args.challenge is not None:
+            config = merge_issued_challenge(config, read_private_json(args.challenge))
+        challenge = parse_challenge(config)
         evidence = challenge.run()
         write_private_result(args.output, evidence)
         print(json.dumps({
