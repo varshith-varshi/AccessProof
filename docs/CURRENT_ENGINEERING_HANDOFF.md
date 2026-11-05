@@ -39,7 +39,9 @@ LAYER1_INTEGRATION_CONFIRMED, LAYER2_INTEGRATION_CONFIRMED, PROVENANCE_READY, BU
 - State at 20:45 IST: both sessions present, tunnel active, all timers active, Guard ready.
 - Deployer cert expiry 2027-02-03 not re-verified this session.
 
-## Changes this session (uncommitted until noted)
+## Changes this session — committed `fe213b4` (on `claude/universal-rag`)
+Tests: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 TMPDIR=/dev/shm .venv/bin/python -m pytest -p pytest_asyncio.plugin tests/unit tests/security` → 1510 passed, 9 skipped (54 s). Without /dev/shm the suite is disk-bound and appears hung.
+Final synthetic install not re-run: live ZIP is byte-identical (`32942af5…`) to the one that passed the clean synthetic install at ~20:15 IST; re-running would create production resources in the pilot org.
 1. `apps/gateway/accessproof_gateway/challenge_cli.py`: `--challenge` accepts the control-plane challenge response as-is (`nonce`→`challenge_nonce`, app match, expiry/state check). Previously the API response was rejected by the CLI ("Unsupported fields"). Tests: `tests/unit/test_gateway_challenge_cli.py`.
 2. `tests/security/test_account_attack_matrix.py`: regression test — Admin and Owner-created API key are refused by `/protection/approve`.
 Not deployed: (1) ships inside the Gateway ZIP; needs a new ZIP digest + web release when the owner chooses.
