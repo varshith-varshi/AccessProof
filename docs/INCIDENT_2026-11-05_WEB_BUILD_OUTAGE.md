@@ -42,3 +42,21 @@ Use an Elastic IP. It survives stop/start, so this DNS failure cannot recur.
 - **Cost:** a separate charge is unlikely to appear, since AWS bills public IPv4 addresses at about $3.60 a month whether or not they are elastic. It would apply only while the address sits unattached.
 - **Other effects:** none expected on nginx, TLS or the security group, which use hostnames and ports. The certificate covers names, not addresses. The 600-second TTL limits the cutover window.
 - **Rollback:** an Elastic IP can be disassociated, but the instance then gets a new auto-assigned address, not the current one. Rollback therefore means keeping the Elastic IP and correcting DNS.
+
+## Resolution
+
+DNS for `app`, `api` and the apex was corrected to `13.49.134.199` on 2026-11-05, with authoritative answers confirmed on `ns75` and `ns76`.
+
+The off-host release then deployed without a build on the host:
+
+| Item | Value |
+|---|---|
+| Release ID | `web-r40-onboarding-f966bcaa6830` |
+| Commit | `f966bcaa683077cc450b70edcbb81763d8887363` |
+| SSM command | `9e115777-5a73-44de-b591-01e22c40a898` (Success) |
+| Artifact SHA-256 | `36f309b6ccf3e6a53e105b5d2aeaa53ff4ac5ac11d4d4b7e0016fc2762f262cb` |
+| Image ID on host | `sha256:0a41f8853a0f06ad7df3199f71bc6c81d318462f9b6b5c35de9209aa946de970` |
+| Host switch | About 21 seconds from release start to verified, with 1,072 MB of memory available at start |
+| Rollback | Not needed |
+
+Afterwards the database stayed at `x8c9d0e1f2a3`, and API, worker, database, Redis and nginx kept their containers. Live installer checks refused no-session, fabricated-session and unknown-token requests, returned no file for 14 bypass paths, and allowed a valid session. Full downloads matched both reviewed checksums.
