@@ -49,7 +49,23 @@ def _render(document: str, params: dict) -> list[str]:
     return [re.sub(r"\{\{ *(\w+) *\}\}", lambda m: values[m.group(1)], line) for line in lines]
 
 
+def _require_restricted_certifier_profile() -> None:
+    """Never let certifier SSM operations inherit a default AWS root/admin login.
+
+    AWS CLI environment credentials override named profiles, so refuse those
+    too. The named profile uses Roles Anywhere credential_process instead.
+    """
+    if os.environ.get("AWS_PROFILE") != "accessproof-certifier" or any(
+        os.environ.get(key) for key in (
+            "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+            "AWS_SECURITY_TOKEN", "AWS_WEB_IDENTITY_TOKEN_FILE",
+        )
+    ):
+        raise SsmOpError("RESTRICTED_CERTIFIER_AWS_PROFILE_REQUIRED")
+
+
 def run(document: str, instance: str, params: dict, comment: str, timeout: int = 600) -> str:
+    _require_restricted_certifier_profile()
     unknown = set(params) - set(json.loads((DOCS / f"{document}.json").read_text())["parameters"])
     if unknown:
         raise SsmOpError(f"UNKNOWN_PARAMETERS:{sorted(unknown)}")

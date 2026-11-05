@@ -83,10 +83,16 @@ REVOCATION_REASONS = {"LAYER2_ACCESS_REVOKED", "AUTHORIZATION_REVISION_CHANGED",
 
 # Trusted signing authority: the offline certifier key production already pins.
 CERTIFIER_KEY = Path.home() / ".config/accessproof/certifier/ap-certifier-2026-11.pem"
-CERTIFIER_KEY_ID = "ap-certifier-2026-11"
+CERTIFIER_KEY_ID = os.environ.get("AP_CERTIFIER_KMS_KEY_ID", "ap-certifier-2026-11")
 
 
 def certifier_key() -> Ed25519PrivateKey:
+    kms_key_arn = os.environ.get("AP_CERTIFIER_KMS_KEY_ARN")
+    if kms_key_arn:
+        if CERTIFIER_KEY_ID == "ap-certifier-2026-11":
+            raise SystemExit("KMS signing requires an independently registered key ID")
+        from packages.crypto.aws_kms_signer import KmsEd25519Signer
+        return KmsEd25519Signer(kms_key_arn)
     if not CERTIFIER_KEY.exists() or CERTIFIER_KEY.stat().st_mode & 0o077:
         raise SystemExit("certifier key missing or not 0600")
     key = serialization.load_pem_private_key(CERTIFIER_KEY.read_bytes(), password=None)

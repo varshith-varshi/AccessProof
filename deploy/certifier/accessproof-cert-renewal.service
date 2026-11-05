@@ -9,6 +9,7 @@ After=network-online.target
 OnFailure=accessproof-renewal-watchdog-alert.service
 
 [Service]
+Environment=AWS_PROFILE=accessproof-certifier
 Type=oneshot
 WorkingDirectory=%h/Projects/AccessProof-realtime
 Environment=PYTHONUNBUFFERED=1

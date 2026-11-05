@@ -121,7 +121,12 @@ def main() -> int:
     missing = [n for n, s in SOCKS.items() if not s.exists()]
     if missing:
         raise SystemExit(f"PRECONDITION_FAILED: employee sessions missing {missing} (sign in again)")
-    if not KEY.exists() or (KEY.stat().st_mode & 0o077):
+    kms_key_arn = os.environ.get("AP_CERTIFIER_KMS_KEY_ARN")
+    kms_key_id = os.environ.get("AP_CERTIFIER_KMS_KEY_ID")
+    if kms_key_arn:
+        if not kms_key_id or kms_key_id == KEY_ID:
+            raise SystemExit("PRECONDITION_FAILED: new KMS signer requires a distinct pinned key ID")
+    elif not KEY.exists() or (KEY.stat().st_mode & 0o077):
         raise SystemExit("PRECONDITION_FAILED: certifier key missing or not 0600")
     # A source being certified for the FIRST time cannot be "ready" (readiness requires
     # the certificate); its Guard must then be in the D-19 certification window instead.
@@ -149,7 +154,9 @@ def main() -> int:
     run([str(LIVE / "build_certificate_evidence.py"), "--dir", str(out), "--organization-id", ORG, "--source-id", SOURCE,
          "--profile", scope["profile"], "--scope-digest", scope["scope_digest"], "--out", str(evidence)], "build_evidence")
     record = out / "source-certificate-record.json"
-    r = subprocess.run(PY + [str(ROOT / "scripts/issue_source_certificate.py"), "issue", "--private-key", str(KEY), "--key-id", KEY_ID,
+    signer_args = (["--kms-key-arn", kms_key_arn, "--key-id", kms_key_id]
+                   if kms_key_arn else ["--private-key", str(KEY), "--key-id", KEY_ID])
+    r = subprocess.run(PY + [str(ROOT / "scripts/issue_source_certificate.py"), "issue", *signer_args,
                              "--evidence", str(evidence), "--organization-id", ORG, "--source-id", SOURCE,
                              "--profile", scope["profile"], "--scope-digest", scope["scope_digest"], "--days", str(a.days)],
                        cwd=ROOT, capture_output=True, text=True)

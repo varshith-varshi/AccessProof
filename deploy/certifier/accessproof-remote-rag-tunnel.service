@@ -21,6 +21,7 @@ Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
+Environment=AWS_PROFILE=accessproof-staging-tunnel
 Type=simple
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStartPre=%h/.local/bin/aws ec2-instance-connect send-ssh-public-key --region eu-north-1 --instance-id i-0e6d2256a1e5a6f67 --instance-os-user ubuntu --ssh-public-key file://%h/.ap-id/remote-gw/ssh_ed25519.pub

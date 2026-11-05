@@ -66,15 +66,21 @@ def cmd_keygen(args: argparse.Namespace) -> int:
 
 
 def cmd_issue(args: argparse.Namespace) -> int:
-    key = _load_private_key(args.private_key)
+    from packages.crypto.aws_kms_signer import KmsEd25519Signer, KmsSignerError
     evidence = json.loads(args.evidence.read_text())
     try:
+        if getattr(args, "kms_key_arn", None):
+            if args.key_id in ("certifier-1", "ap-certifier-2026-11"):
+                raise CertificateError("KMS_DISTINCT_PINNED_KEY_ID_REQUIRED")
+            key = KmsEd25519Signer(args.kms_key_arn)
+        else:
+            key = _load_private_key(args.private_key)
         record = issue_certificate(
             evidence, organization_id=args.organization_id, source_id=args.source_id,
             profile=args.profile, scope_digest=args.scope_digest, private_key=key,
             key_id=args.key_id, validity=timedelta(days=args.days),
         )
-    except CertificateError as exc:
+    except (CertificateError, KmsSignerError) as exc:
         print(f"NOT ISSUED: {exc}", file=sys.stderr)
         print("Required checks: " + ", ".join(REQUIRED_CHECKS), file=sys.stderr)
         return 2
@@ -160,7 +166,9 @@ def main(argv: list[str] | None = None) -> int:
     keygen.add_argument("--private-key", type=Path, required=True)
     keygen.add_argument("--key-id", default="certifier-1")
     issue = sub.add_parser("issue")
-    issue.add_argument("--private-key", type=Path, required=True)
+    key_source = issue.add_mutually_exclusive_group(required=True)
+    key_source.add_argument("--private-key", type=Path)
+    key_source.add_argument("--kms-key-arn", help="Optional independent KMS Ed25519 signer, never transfers a private key")
     issue.add_argument("--key-id", default="certifier-1")
     issue.add_argument("--evidence", type=Path, required=True)
     issue.add_argument("--organization-id", required=True)

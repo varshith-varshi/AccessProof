@@ -113,3 +113,16 @@ The deployed R44 web-only release remains `web-r44-challenge-0788ca3a1bc0`, Gate
 - `docs/CERTIFICATE_CONTINUITY_WATCHDOG_2026-11-05.md` documents the current monitoring and alert semantics. Route certificate due Nov 11, source certificate due Dec 4, next human owner checks in `docs/FINAL_CUSTOMER_HUMAN_STEPS_2026-11-05.md`.
 
 **Still not technically possible without authorized human/security operations:** off-laptop certificate issuance and active Microsoft employee sessions; authenticated Owner dashboard `PROTECTED_VERIFIED` confirmation; production customer-specific consent, route certification and Protect approval. Keep failure modes fail-closed. Do not treat the observer-host blueprint as an operational issuer.
+
+## Independent certifier KMS optional path (not activated, 2026-11-05)
+
+- Checked current laptop default AWS CLI identity and discovered it resolves to **AWS root**, which must NOT be used to provision production or execute routine certification. Existing installed certifier/tunnel systemd services use restricted AWS profiles; pinned the profiles in the tracked unit files and added profile-parity tests to prevent future reinstall drift. `ssm_ops.run()` now refuses to execute without `AWS_PROFILE=accessproof-certifier` or when static AWS credentials override it.
+- Official AWS KMS documentation confirms Ed25519 support (`ECC_NIST_EDWARDS25519`, `ED25519_SHA_512`, `MessageType=RAW`). Added optional KMS signer adapter (nonexportable key; strictly validated public key, algorithm, ARN and signature) and opt-in paths in source and remote-route signing scripts; **default local signer unchanged**. Current route certificate canonical message sizes ~2.4 KB fit KMS 4 KB RAW limit; fake KMS protocol tests prove format compatibility but real AWS KMS signing, a new key, and API trust pin have NOT been performed.
+- Added scoped IAM policy template (`deploy/certifier/iam-policy-kms-signer.template.json`) and cutover instructions to `docs/CERTIFIER_ALWAYS_ON_OBSERVER_CANDIDATE.md`. Host provisioning, KMS creation, trust pinning and employee-session onboarding remain human-authorized production/infrastructure operations. Do not claim the observer template or SDK adapter is an active 24/7 signer.
+- Repository test suite and role-pinning checks require rerun for final commit. Existing R44 production release is unaffected.
+
+### Final opt-in KMS clarifications
+
+- Added `scripts/certifier/kms_public_key_export.py` to emit only the KMS public-key pin in the API-compatible base64url raw Ed25519 format. Test with fake KMS and no secrets.
+- **Current source renewal units run from the distinct `~/Projects/AccessProof-realtime` checkout**, whose working tree contains existing evidence; they were left unchanged except pinning their systemd `AWS_PROFILE` environment. Do not claim universal repository's KMS opt-in is active in existing live renewal.
+- AWS Core connector as well as default local AWS CLI resolve to root; no KMS key, instance, IAM role or production trust pin was created using that overly privileged identity. The operator must first arrange an approved least-privilege provisioner and security review.

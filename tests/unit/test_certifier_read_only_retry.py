@@ -58,3 +58,19 @@ def test_import_operation_is_not_retry_wrapped(monkeypatch):
     with pytest.raises(subprocess.CalledProcessError):
         ssm_ops.import_payload("source_certificate_import", {"synthetic": True})
     assert len(calls) == 1
+
+
+def test_ssm_operations_require_explicit_certifier_aws_profile(monkeypatch):
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    with pytest.raises(ssm_ops.SsmOpError, match="RESTRICTED_CERTIFIER_AWS_PROFILE_REQUIRED"):
+        ssm_ops.run(ssm_ops.READ_ONLY, ssm_ops.PRODUCTION, {"operation": "certificate_status"}, "test")
+    monkeypatch.setenv("AWS_PROFILE", "accessproof-production-deployer")
+    with pytest.raises(ssm_ops.SsmOpError, match="RESTRICTED_CERTIFIER_AWS_PROFILE_REQUIRED"):
+        ssm_ops.run(ssm_ops.READ_ONLY, ssm_ops.PRODUCTION, {"operation": "certificate_status"}, "test")
+
+
+def test_ssm_rejects_environment_credentials_even_with_profile(monkeypatch):
+    monkeypatch.setenv("AWS_PROFILE", "accessproof-certifier")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "synthetic-not-a-key")
+    with pytest.raises(ssm_ops.SsmOpError, match="RESTRICTED_CERTIFIER_AWS_PROFILE_REQUIRED"):
+        ssm_ops.run(ssm_ops.READ_ONLY, ssm_ops.PRODUCTION, {"operation": "certificate_status"}, "test")

@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GetPinnedIndependentCertifierPublicKey",
+      "Effect": "Allow",
+      "Action": "kms:GetPublicKey",
+      "Resource": "__REPLACE_WITH_APPROVED_EU_NORTH_1_KMS_ED25519_KEY_ARN__"
+    },
+    {
+      "Sid": "SignPureEd25519OnlyWithPinnedKey",
+      "Effect": "Allow",
+      "Action": "kms:Sign",
+      "Resource": "__REPLACE_WITH_APPROVED_EU_NORTH_1_KMS_ED25519_KEY_ARN__",
+      "Condition": {
+        "StringEquals": {
+          "kms:SigningAlgorithm": "ED25519_SHA_512"
+        }
+      }
+    }
+  ]
+}
