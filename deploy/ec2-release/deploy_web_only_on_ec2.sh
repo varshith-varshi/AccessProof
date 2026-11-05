@@ -42,8 +42,8 @@ reload_nginx(){
 installer_denied(){
   # Each form must refuse a fabricated session, without transferring the file.
   local status url
-  for url in accessproof-gateway-connector.zip "$SDK_FILE"; do
-    url="https://app.accessproof.in/downloads/$url"
+  for url in downloads/accessproof-gateway-connector.zip "downloads/$SDK_FILE" downloads%2Faccessproof-gateway-connector.zip; do
+    url="https://app.accessproof.in/$url"
     status=$(curl -sS -I -o /dev/null -w '%{http_code}' --max-time 18 \
       -H 'Cookie: accessproof_session=synthetic-invalid-no-real-session' "$url")
     [[ "$status" =~ ^(302|303|307|308|401|403)$ ]] || { log "Installer session check failed (HEAD $url): $status"; return 1; }

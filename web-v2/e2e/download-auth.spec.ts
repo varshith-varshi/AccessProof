@@ -58,6 +58,22 @@ test.describe("Customer installer authorization", () => {
     expect(result.headers.get("Cache-Control")).toBe("no-store");
   });
 
+  for (const path of [
+    "/downloads%2Faccessproof-gateway-connector.zip",
+    "/downloads%252Faccessproof-gateway-connector.zip",
+    "/%64ownloads/accessproof-gateway-connector.zip",
+    "/downloads%5Caccessproof-gateway-connector.zip",
+    "/DOWNLOADS%2Faccessproof-gateway-connector.zip",
+    "/x/..%2Fdownloads/accessproof-gateway-connector.zip",
+    "/downloads/%ZZ",
+  ]) {
+    test(`encoded path ${path} cannot skip the session check`, async () => {
+      globalThis.fetch = (async () => Response.json({ detail: "Invalid or expired session" }, { status: 401 })) as typeof fetch;
+      const result = await proxy(new NextRequest(`https://app.accessproof.in${path}`, { headers: { cookie } }));
+      expect(result.status).toBe(307);
+    });
+  }
+
   test("other protected pages and public login have unchanged routing", async () => {
     globalThis.fetch = (async () => { throw new Error("No API check expected"); }) as typeof fetch;
     expect((await proxy(new NextRequest("https://app.accessproof.in/onboarding", { headers: { cookie } }))).status).toBe(200);

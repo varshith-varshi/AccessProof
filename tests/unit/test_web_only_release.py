@@ -236,7 +236,7 @@ def test_installer_probe_uses_head_and_get(rig: Rig) -> None:
     probes = [line for line in rig.calls.splitlines() if line.startswith("curl") and "downloads" in line]
     assert any(" -I " in line for line in probes)
     assert any(" -r 0-0 " in line for line in probes)
-    for name in ("accessproof-gateway-connector.zip", SDK_NAME):
+    for name in ("downloads/accessproof-gateway-connector.zip", f"downloads/{SDK_NAME}", "downloads%2Faccessproof-gateway-connector.zip"):
         assert sum(name in line for line in probes) == 2
 
 

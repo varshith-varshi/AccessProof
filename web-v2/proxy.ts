@@ -50,11 +50,31 @@ async function authenticatedInstallerRequest(request: NextRequest): Promise<Next
   }
 }
 
+/**
+ * Match the path the static file server will resolve, not the raw request path:
+ * `/downloads%2Ffile.zip` is not under `/downloads/` until it is decoded, yet it
+ * still serves the file. An undecodable path fails towards the auth gate.
+ */
+function isInstallerPath(pathname: string): boolean {
+  let path = pathname;
+  try {
+    for (let pass = 0; pass < 3; pass++) {
+      const decoded = decodeURIComponent(path);
+      if (decoded === path) break;
+      path = decoded;
+    }
+    path = new URL(path.replace(/\\/g, "/").replace(/^\/+/, "/"), "http://accessproof.invalid").pathname.toLowerCase();
+  } catch {
+    return true;
+  }
+  return path === "/downloads" || path.startsWith("/downloads/");
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (publicRoutes.has(pathname) || pathname.startsWith("/_next/") || pathname.startsWith("/api/")) return NextResponse.next();
   if (!request.cookies.has("accessproof_session")) return loginRedirect(request);
-  if (pathname === "/downloads" || pathname.startsWith("/downloads/")) {
+  if (isInstallerPath(pathname)) {
     return authenticatedInstallerRequest(request);
   }
   return NextResponse.next();
