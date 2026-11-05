@@ -66,6 +66,6 @@ def test_install_failure_reaches_the_customer_as_a_readable_message(monkeypatch:
 def test_zip_builder_ships_the_customer_install_modules() -> None:
     source = (ROOT / "scripts/build_gateway_connector_zipapp.py").read_text()
     modules = re.search(r"GATEWAY_MODULES = \((.*?)\)", source, re.S).group(1)
-    for name in ("installer.py", "integration_wizard.py", "existing_gateway.py"):
+    for name in ("installer.py", "integration_wizard.py", "existing_gateway.py", "challenge_cli.py"):
         assert name in modules
     assert subprocess.run(["bash", "-n", str(ROOT / "deploy/ec2-release/deploy_web_only_on_ec2.sh")]).returncode == 0

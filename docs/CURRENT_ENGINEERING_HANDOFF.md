@@ -55,3 +55,15 @@ Not deployed: (1) ships inside the Gateway ZIP; needs a new ZIP digest + web rel
 1. Commit this session's changes after the test run completes.
 2. Keep laptop on / sessions live through ~2026-11-09 (route recert) and ~2026-11-24 (source renewal); confirm `journalctl --user -u accessproof-route-attestation` shows `recertify+import ok`.
 3. Decide whether to ship the challenge CLI fix (requires new Gateway ZIP digest in `ship_production.sh`).
+
+## 2026-11-05 ~21:10 IST — R44 candidate work (ChatGPT/Desktop Commander)
+
+**Current production remains R43 until an independent successful R44 deployment result and live artifact comparison are recorded.**
+
+- Fixed R43→R44 packaging gap: `scripts/build_gateway_connector_zipapp.py` now replaces `challenge_cli.py` inside the customer ZIP, so `fe213b4` is actually shipped. The runtime archive and verified runtime manifest remain unchanged.
+- Prepared customer ZIP at the operator's local `~/.ap-id/release-cache/accessproof-gateway-connector-v6.zip`; **approved candidate SHA-256** `bab5f15f62c5186235677e489d7020654e72600d1f999a83554fa160a5dd91d9`; runtime digest `00e0b8c57ed39719c6896457f37fc4c0ca8286f5e6684db322ae6f42bd3bb834`.
+- Updated approved web-only deployer pin/default source to v6; previous R43 digest remains accepted at preflight for safe upgrade. Deploy label: `web-r44-challenge`. No API or Guard update required.
+- Added read-only `scripts/smoke_customer_onboarding.sh` and `scripts/smoke_gateway_customer_zip.py`. Exact v6 ZIP check passed; local installer/challenge + isolated Guard/Gateway/route HTTP tests passed (51 tests). **No new live fresh install** run for this release. See `docs/CUSTOMER_ONBOARDING_SMOKE_R44.md`.
+- Full unit+security run exited 0, 9 expected skips (log `/tmp/accessproof-r44-unit-security.log`, may not survive reboot); Ruff and shell syntax checks passed.
+- Examined renewal timers. Existing laptop prerequisites all present (3 timers, Alice/Bob sockets, tunnel, private signer file). Added read-only `scripts/certifier/check_renewal_dependencies.py` and tested its failure detection. **Moving certificate renewal to an always-on host is NOT complete**; needs explicit review of independent signer key custody, Microsoft delegated employee authentication and customer-approved RAG access. See `docs/RENEWAL_HOST_MIGRATION_PLAN_2026-11-05.md`.
+- Next: commit changes, run deployer dry-run/build and authorized isolated web release (if supported), verify live ZIP, public routes and `pilot-hr-rag`. Never mark customer ready from offline smoke alone.

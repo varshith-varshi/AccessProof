@@ -19,6 +19,7 @@ from pathlib import Path
 ENTRYPOINT = "__main__.py"
 CONNECTOR = "accessproof-gateway-connector/apps/gateway/accessproof_gateway/customer_connect.py"
 GATEWAY_MODULES = (
+    "challenge_cli.py",
     "application_discovery.py",
     "selection_planner.py",
     "installer.py",
