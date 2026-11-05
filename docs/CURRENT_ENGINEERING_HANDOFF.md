@@ -71,3 +71,14 @@ Not deployed: (1) ships inside the Gateway ZIP; needs a new ZIP digest + web rel
 ### R44 first deployment attempt — failed safely; fix prepared
 
 First attempted web-only release `web-r44-challenge-4c1dc60bd68c` (SSM `4590af5f-a56d-4219-8862-e2baa23168b1`) **FAILED BEFORE SWITCHING THE WEB IMAGE**: server-side `deploy_web_only_on_ec2.sh` still compared the new v6 ZIP against the old R43 digest. Production remained R43; no customer traffic changed. Corrected the pinned SHA in BOTH `deploy_web_only_on_ec2.sh` and `deploy_on_ec2.sh`. Added `tests/unit/test_installer_release_digest_parity.py` to require identical reviewed SHA across client and server deploy scripts. New deployment must use a NEW commit/release ID, never rerun the old RID.
+
+### R44 deployed successfully — final authoritative state (2026-11-05)
+
+- Final deployment **SUCCESS** via approved web-only releaser: `web-r44-challenge-0788ca3a1bc0` (commit `0788ca3a1bc0c1020b6fa71bd6ac6ad2b9314cec`); production SSM `bf42e0be-ded0-4051-8a23-31d2a312a317`. Output: `WEB-ONLY RELEASE VERIFIED`, API/worker/db/redis/nginx container IDs unchanged, new installer bind mount verified, unauthorized customer downloads refused.
+- Independent post-release preflight SSM `5fb3c17a-1948-4d40-8762-e13d55e6ff36`: Success, live running ZIP SHA-256 `bab5f15f62c5186235677e489d7020654e72600d1f999a83554fa160a5dd91d9`, DB revision `x8c9d0e1f2a3`, web+API+DB+Redis healthy, disk **8 GB free** (at the release minimum; avoid further large deploys without assessing disk headroom).
+- Public `https://app.accessproof.in/login` and `https://api.accessproof.in/health/ready` HTTP 200, valid TLS; unauthenticated Gateway ZIP HTTP 307 (refused).
+- Separate permitted read-only route-status checks returned `VALID` for pilot-langchain; reference app had current VALID and an older INVALIDATED certificate. Dashboard's `PROTECTED_VERIFIED` mode is **not independently visible** to this identity after release; Owner must confirm.
+- **Customer-facing R44 challenge CLI is packaged and live**. Offline smoke plus 51 targeted HTTP/unit regressions passed. Fresh physical customer installation and real employee route certification were not repeated after R44.
+- **Renewal migration not done**. Existing timers and laptop prerequisites were healthy at inspection, but real customer-safe off-laptop migration is blocked by authorized signing-key, Microsoft session and network custody decisions (see migration plan).
+
+This is a documentation-only update after deployment. Do **not** confuse the current repository HEAD with the deployed R44 commit above if further docs commits occur.
