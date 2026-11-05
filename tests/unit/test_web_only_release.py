@@ -6,7 +6,9 @@ containers or customer data.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -233,3 +235,10 @@ def test_label_without_web_prefix_keeps_full_release_path(rig: Rig) -> None:
 @pytest.mark.parametrize("script", ["deploy_on_ec2.sh", "deploy_web_only_on_ec2.sh"])
 def test_scripts_are_syntactically_valid(script: str) -> None:
     assert subprocess.run(["bash", "-n", str(SCRIPTS / script)], check=False).returncode == 0
+
+
+def test_release_document_accepts_session_signed_artifact_url() -> None:
+    document = json.loads((ROOT / "deploy/deployer/ssm/AccessProof-Deployer-ProductionRelease.json").read_text())
+    pattern = document["parameters"]["artifactUrlB64"]["allowedPattern"]
+    # A Roles Anywhere session token makes a presigned URL about 2,300 base64 characters.
+    assert re.fullmatch(pattern, "A" * 2400)

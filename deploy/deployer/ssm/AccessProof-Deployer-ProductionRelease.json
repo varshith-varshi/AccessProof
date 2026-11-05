@@ -25,7 +25,7 @@
     "artifactUrlB64": {
       "type": "String",
       "interpolationType": "ENV_VAR",
-      "allowedPattern": "^[A-Za-z0-9+/=]{100,1000}$"
+      "allowedPattern": "^[A-Za-z0-9+/=]{100,3000}$"
     }
   },
   "mainSteps": [

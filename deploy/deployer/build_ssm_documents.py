@@ -68,7 +68,7 @@ def release() -> dict:
             'commitSha': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[a-f0-9]{40}$'},
             'archiveSha256': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[a-f0-9]{64}$'},
             'expectedDbRevision': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[a-z0-9]{12}$'},
-            'artifactUrlB64': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[A-Za-z0-9+/=]{100,1000}$'},
+            'artifactUrlB64': {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^[A-Za-z0-9+/=]{100,3000}$'},
         },
         'mainSteps': [{
             'action': 'aws:runShellScript',
