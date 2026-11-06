@@ -69,6 +69,38 @@ bundle_web_image() {
   sed 's/^/approved_digest=/' "$out/web-image.digests"
 }
 
+
+# API/worker images are also built OFF the 2 GB EC2 host.  The full release
+# script still builds web on-host, so API-only releases use a separate isolated
+# server entrypoint that NEVER rebuilds or recreates web or changes the DB.
+bundle_api_images() {
+  local context="$WORK/context" out="$WORK/images" svc image digest
+  install -d -m 700 "$context" "$out"
+  git archive --format=tar "$COMMIT" | tar -xf - -C "$context"
+  for svc in api worker; do
+    image="accessproof/$svc:$RID"
+    # Local pre-build and execute may run sequentially for the same commit.
+    # Remove only that uniquely named local build tag, never the production image.
+    if docker image inspect "$image" >/dev/null 2>&1; then
+      docker image rm "$image" >/dev/null
+    fi
+    docker build --platform linux/amd64 -f "$context/apps/$svc/Dockerfile" \
+      -t "$image" "$context" > "$WORK/$svc-build.log" 2>&1 \
+      || { tail -40 "$WORK/$svc-build.log" >&2; echo "$svc off-host build failed" >&2; exit 2; }
+    [[ "$(docker image inspect -f '{{.Architecture}}' "$image")" == amd64 ]] || exit 2
+    docker run --rm --entrypoint test "$image" -f /app/apps/api/accessproof_api/gateway_presence.py
+    docker save --platform linux/amd64 "$image" | gzip -6 > "$out/$svc-image.tar.gz"
+    python3 "$HERE/image_digests.py" "$out/$svc-image.tar.gz" \
+      "$(docker image inspect -f '{{.Id}}' "$image")" > "$out/$svc-image.digests"
+    digest="$(docker image inspect -f '{{.Id}}' "$image")"
+    echo "API_BUNDLE_IMAGE $svc $digest"
+  done
+  tar -rf "$WORK/artifact.tar" -C "$out" api-image.tar.gz api-image.digests \
+    worker-image.tar.gz worker-image.digests
+  SHA=$(sha256sum "$WORK/artifact.tar" | cut -d' ' -f1)
+  echo "API/worker off-host image bundle bytes=$(stat -c %s "$WORK/artifact.tar") sha256=$SHA"
+}
+
 awsrelease() { env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN AWS_PROFILE="$ROLE" aws "$@"; }
 check_identity() {
   local arn
@@ -110,7 +142,10 @@ PY
 
 case "$MODE" in
  --dry-run) archive; echo 'DRY_RUN_PASS: no AWS service accessed'; exit 0 ;;
- --build-image) archive; bundle_web_image; echo 'BUILD_PASS: no AWS service accessed'; exit 0 ;;
+ --build-image)
+  archive
+  if [[ "$RID" == api-* ]]; then bundle_api_images; else bundle_web_image; fi
+  echo 'BUILD_PASS: no AWS service accessed'; exit 0 ;;
  --preflight) check_identity; preflight; exit 0 ;;
  --execute)
   [[ -z "$(git status --porcelain)" ]] || { echo 'Dirty checkout. Commit and retest first.' >&2; exit 2; }
@@ -135,7 +170,9 @@ if z not in sys.argv[2:]:
 print(rev)
 PY
   )
-  [[ "$RID" != web-* ]] || bundle_web_image
+  if [[ "$RID" == web-* ]]; then bundle_web_image
+  elif [[ "$RID" == api-* ]]; then bundle_api_images
+  fi
   awsrelease s3 cp "$WORK/artifact.tar" "s3://$BUCKET/releases/$RID.tar" --region "$REGION" --only-show-errors
   URL=$(awsrelease s3 presign "s3://$BUCKET/releases/$RID.tar" --region "$REGION" --expires-in 900)
   python3 - "$WORK/params.json" "$URL" "$RID" "$COMMIT" "$SHA" "$RESULT" <<'PY'

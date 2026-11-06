@@ -22,6 +22,15 @@ if [[ "$RELEASE_ID" == guard-* ]]; then
   chmod 700 "$GUARD_BUNDLE"
   exec bash "$GUARD_BUNDLE" "$RELEASE_ID" "$ARTIFACT" "$EXPECTED_SHA"
 fi
+# The API-only path loads reviewed API and worker images built off-host;
+# never build web on the small live host or change the database schema.
+if [[ "$RELEASE_ID" == api-* ]]; then
+  [[ "$(sha256sum "$ARTIFACT" | cut -d' ' -f1)" == "$EXPECTED_SHA" ]] || { echo "artifact checksum mismatch" >&2; exit 2; }
+  API_ONLY="$(dirname "$ARTIFACT")/deploy_api_only_on_ec2.sh"
+  tar -xOf "$ARTIFACT" deploy/ec2-release/deploy_api_only_on_ec2.sh > "$API_ONLY"
+  chmod 700 "$API_ONLY"
+  exec bash "$API_ONLY" "$RELEASE_ID" "$ARTIFACT" "$EXPECTED_SHA"
+fi
 if [[ "$RELEASE_ID" == web-* ]]; then
   [[ "$(sha256sum "$ARTIFACT" | cut -d' ' -f1)" == "$EXPECTED_SHA" ]] || { echo "artifact checksum mismatch" >&2; exit 2; }
   WEB_ONLY="$(dirname "$ARTIFACT")/deploy_web_only_on_ec2.sh"
