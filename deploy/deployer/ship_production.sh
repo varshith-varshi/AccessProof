@@ -77,6 +77,12 @@ bundle_api_images() {
   local context="$WORK/context" out="$WORK/images" svc image digest
   install -d -m 700 "$context" "$out"
   git archive --format=tar "$COMMIT" | tar -xf - -C "$context"
+  # This script runs under umask 077; git archive extraction would create
+  # root-owned, unreadable application directories inside the Docker image.
+  # The release archive contains tracked source only, never private secrets.
+  # Keep the staged build context private while making copied source readable
+  # to API/worker's non-root UID 10001.
+  chmod -R u+rwX,go+rX "$context"
   for svc in api worker; do
     image="accessproof/$svc:$RID"
     # Local pre-build and execute may run sequentially for the same commit.
