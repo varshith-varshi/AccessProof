@@ -47,6 +47,11 @@ def test_protect_with_all_checks_passing_is_verified():
     assert _classify(mode="protect") == "PROTECTED_VERIFIED"
 
 
+def test_protect_active_without_optional_customer_challenge_is_labeled_honestly():
+    assert _classify(mode="protect", route_certified=False) == "PROTECTED_MANUAL_VALIDATION_PENDING"
+    assert _classify(_failed("PERMISSION_SOURCE_USABLE"), mode="protect", route_certified=False) != "PROTECTED_MANUAL_VALIDATION_PENDING"
+
+
 def test_protect_with_unknown_check_failure_is_not_promoted():
     assert _classify(_failed("SOMETHING_NEW"), mode="protect") == "DEGRADED"
 

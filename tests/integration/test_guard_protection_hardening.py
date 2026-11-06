@@ -156,10 +156,16 @@ def test_readiness_requires_guard_events_not_boolean_flags():
         validated = client.post(url, headers=headers, json=proof)
         assert validated.status_code == 200, validated.text
         state = {item["code"]: item["ok"] for item in validated.json()["checks"]}
-        assert state["LAYER1_INTEGRATION_CONFIRMED"] is True
-        assert state["LAYER2_INTEGRATION_CONFIRMED"] is True
-        assert state["PROVENANCE_READY"] is True
-        assert state["BUFFERED_RESPONSE_GATE_READY"] is True
+        # Optional diagnostic still requires matching Guard audit evidence to
+        # accept legacy verification input; it no longer gates activation.
+        assert not ({"LAYER1_INTEGRATION_CONFIRMED", "LAYER2_INTEGRATION_CONFIRMED",
+                     "PROVENANCE_READY", "BUFFERED_RESPONSE_GATE_READY"} & set(state))
+        with SessionLocal() as db:
+            verified = db.scalar(select(AIApplication).where(AIApplication.application_id == "rag-test"))
+            assert verified.layer1_verified_at is not None
+            assert verified.layer2_verified_at is not None
+            assert verified.provenance_verified_at is not None
+            assert verified.buffering_verified_at is not None
 
 
 def test_protect_activation_waits_for_guard_machine_ack(monkeypatch):

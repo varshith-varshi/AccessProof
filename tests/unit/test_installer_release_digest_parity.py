@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_all_releasers_require_the_identical_reviewed_gateway_digest():
-    expected = "bab5f15f62c5186235677e489d7020654e72600d1f999a83554fa160a5dd91d9"
+    expected = "e0e78f53cf0c161044b6054ed50ac539b4feb27507503ffb339a430ddacbfba4"
     for relative in (
         "deploy/deployer/ship_production.sh",
         "deploy/ec2-release/deploy_web_only_on_ec2.sh",

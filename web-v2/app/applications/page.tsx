@@ -159,15 +159,15 @@ export default function Applications() {
       <div className="panel-head"><div><p className="label">SUPPORTED RAG GATEWAY</p><h2>Verify {gatewayApplication.name}</h2></div>
         <button type="button" className="text-button" onClick={() => setGatewayApplication(null)}>Close</button>
       </div>
-      <p className="muted">This workflow is available for the explicitly supported attested-manifest Docker Gateway route. It does not protect arbitrary RAGs or bypass required verification.</p>
+      <p className="muted">The installer and its live Guard/Gateway enforcement are required for Protect. The four synthetic allow/deny/tamper/revocation challenge scenarios are optional customer diagnostics and do not block activation.</p>
       <p><b>1. Install the Gateway locally.</b> Run the customer-side Docker installer from the private installation guide. It starts the Gateway without changing the RAG service, then saves an <code>installation.json</code> manifest.</p>
       <label>Choose your generated installation.json
         <input aria-label="Gateway installation manifest" type="file" accept=".json,application/json" onChange={event => void loadGatewayManifest(event.target.files?.[0] ?? null)} />
       </label>
       {deploymentDigest && <p className="muted small">Deployment digest verified for this application: {deploymentDigest.slice(0, 16)}…</p>}
-      <p><b>2. Run reference security challenges.</b> AccessProof issues a single-use challenge bound to this deployment, source and enrolled Guard. Use the customer-side challenge agent to run synthetic allow, deny, content-forgery and in-flight revocation tests and upload Guard audit evidence.</p>
+      <p><b>2. Optional diagnostic challenge (not required for Protect).</b> Experienced operators can issue a single-use challenge to test synthetic allow, deny, content tampering and revocation. Customer accounts named Alice or Bob are never required for activation.</p>
       <button className="button compact" type="button" disabled={gatewayBusy || !deploymentDigest || !routeDigest} onClick={() => void issueGatewayChallenge()}>
-        {gatewayBusy ? "Checking…" : "Issue security challenge"}
+        {gatewayBusy ? "Checking…" : "Issue optional security challenge"}
       </button>
       {gatewayChallenge && <div role="status" className="card section">
         <p><b>Challenge issued</b> — expires {new Date(gatewayChallenge.expires_at).toLocaleString()}</p>
@@ -175,7 +175,7 @@ export default function Applications() {
         <code style={{ overflowWrap: "anywhere" }}>{gatewayChallenge.nonce}</code>
         <p className="muted small">Reference challenge ID: {gatewayChallenge.challenge_id}</p>
       </div>}
-      <p><b>3. Verify the actual RAG cutover.</b> Once all four Guard-audited challenges pass, an explicitly approved customer-side deployment change and a separate employee-facing request must also pass. Only then can the enrolled Guard acknowledge Protect.</p>
+      <p><b>3. Activate, then test manually.</b> The activation page requires fresh permission synchronization, a healthy source-bound Guard, an enforcing Gateway and explicit owner approval. Your team can then test employee-facing access and report any problems. This optional challenge does not turn Protect on.</p>
       <button className="button compact" type="button" disabled={gatewayBusy} onClick={() => void refreshGatewayChallenge()}>Refresh challenge status</button>
       {gatewayChallengeState && <p role="status">Latest challenge: <b>{gatewayChallengeState.state.replaceAll("_", " ")}</b>. Complete customer route certified: {gatewayChallengeState.certified_for_reference_route ? "Yes — subject to remaining Guard/source checks" : "Not yet"}.</p>}
       {gatewayStatusError && <p role="alert" className="form-error">{gatewayStatusError}</p>}

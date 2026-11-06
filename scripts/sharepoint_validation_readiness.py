@@ -50,18 +50,15 @@ def summarize_checks(checks: list[dict[str, Any]]) -> dict[str, Any]:
         seen.add(code)
         if not ok:
             failed.append(code)
-    # For this SharePoint release, these are mandatory even if a caller
-    # supplies a small or incomplete checklist.
+    # This summary is only diagnostic. Post-activation customer challenge
+    # scenarios are optional, but source/Guard/Gateway readiness is not.
     mandatory = {
         "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
         "V1_PROVIDER_SCOPE",
         "PRODUCTION_OIDC_READY",
-        "LAYER1_INTEGRATION_CONFIRMED",
-        "LAYER2_INTEGRATION_CONFIRMED",
-        "PROVENANCE_READY",
-        "BUFFERED_RESPONSE_GATE_READY",
-        "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED",
-        "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED",
+        "PERMISSION_SOURCE_USABLE",
+        "GATEWAY_LIVE_AND_ENFORCEMENT_READY",
+        "HUMAN_ACTIVATION_APPROVAL_REQUIRED",
     }
     if not mandatory.issubset(seen):
         failed.extend(sorted(mandatory - seen))

@@ -101,7 +101,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   const approvalGate = review?.route.checks?.find(item => item.code === "HUMAN_ACTIVATION_APPROVAL_REQUIRED");
   // The backend revalidates every gate and enforces interactive OWNER authorization.
   // UI eligibility is only guidance; an installer receipt or Guard heartbeat is not certification.
-  const approvalEligible = account?.role === "OWNER" && routeCertified && guardReady && gatewayReady &&
+  const approvalEligible = account?.role === "OWNER" && guardReady && gatewayReady &&
     approvalGate?.ok === false && !!review?.route.checks?.length &&
     review.route.checks.every(item => item.ok || item.code === "HUMAN_ACTIVATION_APPROVAL_REQUIRED");
 
@@ -147,7 +147,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
       <div><p className="label">PROTECTION ACTIVATION</p><h2>{application.name}</h2></div>
       <button className="text-button" type="button" onClick={onClose}>Close</button>
     </div>
-    <p>First check your Guard and Gateway. Once the protection route is ready, enable protection here, then test your RAG separately. No test questions or worksheets are needed on this website.</p>
+    <p>Check that your Guard, trusted SharePoint permissions, and Gateway are enforcing the current application. After Protect is active, your team can optionally test access, denial, tampering and revocation using its own approved identities. Those four scenarios are not activation requirements.</p>
     <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(195px,1fr))" }} role="status">
       <div className="onboard-fact">
         <b>Guard connection</b>
@@ -178,7 +178,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
           : "No authenticated Gateway heartbeat received. Installers before this release report Unknown."}</small>
       </div>
       <div className="onboard-fact">
-        <b>Gateway route certificate</b>
+        <b>Optional route challenge certificate</b>
         <strong>{!review ? "Checking…" : routeCertified ? "Reference route certified" : "Not certified"}</strong>
         <small>{review?.route.route_certificate?.status
           ? `Certificate status: ${review.route.route_certificate.status}. This does not attest every customer route.`
@@ -196,7 +196,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
     {review && approvalGate?.ok === false && <section className="owner-approval-panel" aria-label="Owner Protect approval">
       <h3>Owner approval required</h3>
       {account?.role !== "OWNER" ? <p>Only a signed-in organization Owner can authorize production Protect after the verified route is certified. Ask your workspace Owner to sign in.</p> : <>
-        <p>Approval is an explicit, audited human decision. A certificate, Guard readiness and every other activation gate must pass first. Approval alone does not activate Protect.</p>
+        <p>Approval is an explicit, audited human decision. Source authorization, Guard readiness and the installed Gateway must pass all operational checks first. The four optional manual scenarios are not required for approval. Approval alone does not activate Protect.</p>
         <p className="muted small">Current reviewer: {account.user.email}</p>
         <label>Type <code>{approvalPhrase}</code> to confirm
           <input aria-label="Owner approval confirmation" autoComplete="off" spellCheck={false}
@@ -205,7 +205,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         </label>
         <button className="button compact" type="button" disabled={!approvalEligible || approvalText !== approvalPhrase || busy}
           onClick={() => void approve()}>{busy ? "Reviewing…" : "Approve Protect as Owner"}</button>
-        {!approvalEligible && <p className="muted small">Approval is unavailable until the customer-facing route is certified, both Guard and Gateway report ready, and all other backend checks pass.</p>}
+        {!approvalEligible && <p className="muted small">Approval is unavailable until Guard and Gateway report ready and all required source and runtime checks pass.</p>}
       </>}
     </section>}
     {approvalNotice && <p className="notice-ok" role="status">{approvalNotice}</p>}
@@ -225,9 +225,8 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
       {firstSourceIssue && <p><strong>Source authorization blocker:</strong> {firstSourceIssue.reason
         ?? firstSourceIssue.code.replaceAll("_", " ").toLowerCase()}</p>}
     </div>}
-    {review && activationCheckable && !routeCertified && <p role="status" className="muted">
-      Guard and Gateway pairing prerequisites are present. You may request activation, but it will remain pending until
-      the actual Gateway route and source authorization are verified by the backend.
+    {review && activationCheckable && <p role="status" className="muted">
+      You can request activation after the source authorization and live Gateway readiness checks pass. The four manual security scenarios can be run after Protect is active.
     </p>}
     {result && <div role="status" className="onboard-fact">
       <b>{result.state === "protected" && result.guard_acknowledged
@@ -239,6 +238,12 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
       {result.state !== "protected" && <small>Current blocker: {result.reason_code.replaceAll("_", " ").toLowerCase()}.
         Review the detailed security status for diagnosis; this is not a request to perform tests inside AccessProof.</small>}
     </div>}
+    {result?.state === "protected" && result.guard_acknowledged &&
+      <section className="card section" aria-label="Post-activation customer manual validation">
+        <h3>Optional manual validation after Protect is active</h3>
+        <p>Test with your own approved employee identities and test-only documents. No Alice/Bob accounts or four-probe checklist are required for your manual review. Report unexpected access or refusal to your AccessProof support contact.</p>
+        <p className="muted small">Suggested scenarios: an authorized document, a denied document, tampered test content, and permission revocation during a response. Do not use confidential canaries or disable production enforcement to run these tests.</p>
+      </section>}
     {error && <p role="alert" className="form-error">{error}</p>}
     <div style={{ display: "flex", gap: 15, flexWrap: "wrap" }}>
       <Link href="/guards">Check Guard →</Link>

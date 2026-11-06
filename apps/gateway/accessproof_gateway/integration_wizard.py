@@ -27,7 +27,7 @@ from .customer_cutover import approved_docker_cutover
 from .cutover_agent import EmployeeRouteProbe
 from .installer import (
     InstallationError, InstallationSpec, stage_installation, validate_reference_service, _labels,
-    verify_existing_staged_installation,
+    verify_existing_staged_installation, reviewed_external_guard_network,
 )
 
 class IntegrationWizardError(ValueError):
@@ -142,7 +142,8 @@ def analyze_reference(
         issues.append("EXTERNAL_MODEL_NEEDS_CUSTOM_NETWORK_REVIEW")
     if model_host in services and native_remote:
         issues.append("CLOUD_PROVIDER_MASQUERADING_AS_COMPOSE_SERVICE")
-    if guard_host not in services:
+    external_guard_network = reviewed_external_guard_network(spec, resolved)
+    if guard_host not in services and not external_guard_network:
         issues.append("GUARD_NOT_IN_REFERENCE_COMPOSE")
     def nets(item: Any) -> set[str]:
         value = item.get("networks", []) if isinstance(item, dict) else []
@@ -155,14 +156,29 @@ def analyze_reference(
     model_networks = nets(services.get(model_host))
     guard_networks = nets(services.get(guard_host))
     configs = resolved.get("networks", {})
-    if (not isinstance(configs, dict) or not rag_networks
-            or (not native_remote and not model_networks)
-            or any(not isinstance(configs.get(name), dict)
-                   or configs[name].get("internal") is not True for name in rag_networks)):
+    internal_rag_networks = {
+        name for name in rag_networks
+        if isinstance(configs, dict) and isinstance(configs.get(name), dict)
+        and configs[name].get("internal") is True
+    }
+    edge_rag_networks = rag_networks - internal_rag_networks
+    published = service.get("ports", [])
+    loopback_diagnostics_only = bool(edge_rag_networks and isinstance(published, list) and published)
+    for port in published if isinstance(published, list) else []:
+        if not isinstance(port, dict) or port.get("host_ip") not in {"127.0.0.1", "::1"}:
+            loopback_diagnostics_only = False
+            break
+    # A loopback-published diagnostic route may require a non-internal edge
+    # network on Docker. It is acceptable for *staging* only when the RAG also
+    # has a private internal network. Independent route challenges still have
+    # to prove that no employee answer bypasses Gateway before cutover.
+    if (not isinstance(configs, dict) or not internal_rag_networks
+            or (edge_rag_networks and not loopback_diagnostics_only)
+            or (not native_remote and not model_networks)):
         issues.append("RAG_NETWORK_NOT_ISOLATED")
     if rag_networks & model_networks:
         issues.append("DIRECT_RAG_MODEL_EGRESS_BYPASS")
-    if not guard_networks:
+    if not guard_networks and not external_guard_network:
         issues.append("GUARD_NETWORK_NOT_REVIEWABLE")
     if isinstance(services.get(model_host), dict) and services[model_host].get("ports"):
         issues.append("MODEL_HAS_HOST_PUBLISHED_PORT")

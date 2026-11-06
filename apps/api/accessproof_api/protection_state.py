@@ -16,6 +16,7 @@ PROTECTION_STATES: tuple[str, ...] = (
     "SHADOW",
     "PROTECT_PENDING",
     "PROTECTED_VERIFIED",
+    "PROTECTED_MANUAL_VALIDATION_PENDING",
     "DEGRADED",
     "STALE",
     "BLOCKED",
@@ -48,7 +49,8 @@ STATE_MESSAGES: dict[str, str] = {
     "VALIDATING": "Protection activation is in progress; the Guard has not acknowledged a verified Protect state.",
     "SHADOW": "The application is observing authorization decisions in Shadow mode. No response has been certified as protected.",
     "PROTECT_PENDING": "The customer-side Guard has not yet acknowledged the requested Protect mode.",
-    "PROTECTED_VERIFIED": "All current backend checks passed. This status is scoped to this application and expires when route, Guard, or source evidence becomes stale.",
+    "PROTECTED_VERIFIED": "Live source/Guard/Gateway checks and optional route certification passed. Protection is active and can degrade if enforcement evidence becomes stale.",
+    "PROTECTED_MANUAL_VALIDATION_PENDING": "Protect is active with source authorization and Guard/Gateway enforcement ready. Customer-specific allow/deny/tamper/revocation challenges have not been independently certified; manual validation is recommended.",
     "DEGRADED": "Protection is requested but one or more required security checks fail. Unsafe responses must remain blocked.",
     "STALE": "Previously configured protection cannot be verified because Guard or source evidence is stale. Treat requests as unverified.",
     "BLOCKED": "The bound Guard or permission source is revoked or disconnected. Requests must fail closed.",
@@ -68,6 +70,7 @@ def classify_protection_state(
     guard_revoked: bool,
     source_disconnected: bool,
     certification_expired: bool,
+    route_certified: bool = True,
 ) -> str:
     """Return one explicit state; never promote an unverified app to PROTECTED_VERIFIED."""
     failed = {str(check.get("code")) for check in checks if not check.get("ok")}
@@ -83,7 +86,7 @@ def classify_protection_state(
 
     if mode == "protect":
         if not failed:
-            return "PROTECTED_VERIFIED"
+            return "PROTECTED_VERIFIED" if route_certified else "PROTECTED_MANUAL_VALIDATION_PENDING"
         if failed <= STALE_CHECK_CODES:
             return "STALE"
         if failed <= CERTIFICATION_CHECK_CODES:

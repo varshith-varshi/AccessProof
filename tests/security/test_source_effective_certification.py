@@ -75,12 +75,21 @@ def test_signed_certification_requires_exact_profile_source_and_fresh_evidence(m
         assert not effective_source_certified(db, source, credentials)
         cert.signature = _certificate_signature(cert, key)
         assert effective_source_certified(db, source, credentials)
-        # A complete signed record changes only the Microsoft-specific check.
-        # A RAG challenge, Guard enrollment, live provider verification and
-        # all other independent readiness checks are still required.
+        # A signed certificate does not override separate provider identity,
+        # source synchronization, Gateway readiness or owner approval checks.
+        # The four manual customer challenges are post-activation diagnostics.
         checks = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
         assert checks["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"] is True
-        assert checks["CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"] is False
+        assert "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED" not in checks
+        for code in (
+            "LAYER1_INTEGRATION_CONFIRMED", "LAYER2_INTEGRATION_CONFIRMED",
+            "PROVENANCE_READY", "BUFFERED_RESPONSE_GATE_READY",
+            "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED",
+        ):
+            assert code not in checks
+        # Independent provider proof and identity controls must remain.
+        assert "PRODUCTION_OIDC_READY" in checks
+        assert "PERMISSION_SOURCE_USABLE" in checks
         # Production SharePoint requires both independent signed certification
         # and a separate operator release gate, never just an admin toggle.
         from apps.api.accessproof_api.config import Settings
@@ -100,7 +109,7 @@ def test_signed_certification_requires_exact_profile_source_and_fresh_evidence(m
         ))
         released = {check["code"]: check["ok"] for check in api_module._automatic_activation_checklist(db, app_row)}
         assert released["V1_PROVIDER_SCOPE"] is True
-        assert released["CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"] is False
+        assert "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED" not in released
         # D-18: a certificate alone never satisfies employee OIDC readiness;
         # a healthy, heartbeating Guard is also required ...
         assert released["PRODUCTION_OIDC_READY"] is False

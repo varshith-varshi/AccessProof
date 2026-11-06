@@ -152,5 +152,6 @@ def test_protect_approval_rejects_admin_and_owner_api_key(client):
     as_admin = client.post(url, headers=admin, json=body)
     assert as_admin.status_code == 403 and as_admin.json()["detail"] == "OWNER_SESSION_REQUIRED"
     assert client.post(url, headers=api, json=body).status_code in (401, 403)
-    # The owner reaches the next gate (no certified route), proving the 403s above are role refusals.
-    assert client.post(url, headers=owner, json=body).json()["detail"] == "ROUTE_CERTIFICATE_REQUIRED_BEFORE_APPROVAL"
+    # The owner reaches the next gate (no current Gateway installation), proving
+    # the 403s above are real privilege refusals.
+    assert client.post(url, headers=owner, json=body).json()["detail"] == "CURRENT_GATEWAY_INSTALLATION_REQUIRED"

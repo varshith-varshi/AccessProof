@@ -22,7 +22,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -187,6 +187,46 @@ def validate_reference_service(spec: InstallationSpec, resolved_compose: dict[st
     return route_env
 
 
+
+def reviewed_external_guard_network(spec: InstallationSpec, resolved: dict[str, Any]) -> str | None:
+    """Accept a *running, healthy* Guard from another Compose project for staging.
+
+    The explicit extension and runtime Docker identity must both match. This is
+    only a local network topology check, NOT an enrolled Guard attestation or
+    permission to activate Protect. No shell and no credentials are printed.
+    """
+    declaration = resolved.get("x-accessproof-external-guard")
+    if not isinstance(declaration, dict) or set(declaration) != {"container", "network"}:
+        return None
+    container, network = declaration.get("container"), declaration.get("network")
+    if (not isinstance(container, str) or not isinstance(network, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", container)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", network)
+            or urlsplit(spec.guard_url).hostname != container
+            or urlsplit(spec.guard_url).port != 8080):
+        return None
+    try:
+        proc = subprocess.run(
+            ["docker", "inspect", "--type", "container", "--format", "{{json .}}", container],
+            capture_output=True, text=True, timeout=8, check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        info = json.loads(proc.stdout)
+        state = info.get("State", {})
+        labels = info.get("Config", {}).get("Labels", {}) or {}
+        nets = info.get("NetworkSettings", {}).get("Networks", {}) or {}
+        if (info.get("Name") != "/" + container
+                or state.get("Running") is not True
+                or (state.get("Health") or {}).get("Status") != "healthy"
+                or labels.get("com.docker.compose.service") != "guard"
+                or network not in nets):
+            return None
+        return network
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
 def compose_override(spec: InstallationSpec, route_env: str, private_env_file: Path,
                      resolved_compose: dict[str, Any] | None = None) -> dict[str, Any]:
     """Stage routing configuration but do not activate customer traffic.
@@ -264,6 +304,14 @@ def compose_override(spec: InstallationSpec, route_env: str, private_env_file: P
             },
         },
     }
+    # An independently installed Guard is common in real customer onboarding.
+    # Gateway alone may join its verified external Docker network; never RAG/model.
+    declared = reviewed_external_guard_network(spec, resolved_compose) if resolved_compose else None
+    if declared:
+        manifest["networks"]["accessproof-external-guard"] = {
+            "external": True, "name": declared,
+        }
+        gateway_networks = sorted(set(gateway_networks) | {"accessproof-external-guard"})
     manifest["services"][spec.gateway_service]["networks"] = gateway_networks
     return manifest
 

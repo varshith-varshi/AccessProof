@@ -378,3 +378,25 @@ def test_custom_cache_hint_without_reference_config_is_blocked():
     compose["services"]["rag"]["environment"]["LANGCHAIN_CACHE_URL"] = "local://unknown"
     report = wizard.analyze_reference(_spec(), compose)
     assert "CACHE_POSSIBLY_UNINSTRUMENTED" in report["blocking_issues"]
+
+
+def test_loopback_only_diagnostic_edge_does_not_block_private_rag_staging():
+    compose = _resolved()
+    compose["networks"]["rag-edge"] = {"internal": False}
+    compose["services"]["rag"]["networks"] = ["rag-isolated", "rag-edge"]
+    compose["services"]["rag"]["ports"] = [{
+        "host_ip": "127.0.0.1", "published": "28189", "target": 8187,
+    }]
+    report = wizard.analyze_reference(_spec(), compose)
+    assert "RAG_NETWORK_NOT_ISOLATED" not in report["blocking_issues"]
+
+
+def test_public_rag_edge_remains_blocked_even_with_private_network():
+    compose = _resolved()
+    compose["networks"]["rag-edge"] = {"internal": False}
+    compose["services"]["rag"]["networks"] = ["rag-isolated", "rag-edge"]
+    compose["services"]["rag"]["ports"] = [{
+        "host_ip": "0.0.0.0", "published": "28189", "target": 8187,
+    }]
+    report = wizard.analyze_reference(_spec(), compose)
+    assert "RAG_NETWORK_NOT_ISOLATED" in report["blocking_issues"]

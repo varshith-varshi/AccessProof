@@ -105,11 +105,13 @@ export default function Onboarding() {
   const readiness = data.protection?.applications.find(row => row.application_id === app?.application_id);
   const sourceReady = !!source && source.status === "connected" &&
     source.acl_sync?.fresh === true && source.directory_sync?.fresh === true;
-  const reported = !!bound && (pairing?.state === "installation_reported_unverified" || !!verification?.run_id);
+  const installationReported = !!bound && (pairing?.state === "installation_reported_unverified" || !!verification?.run_id);
+  const reported = sourceReady && installationReported;
   const protectedVerified = readiness?.effective_state === "PROTECTED_VERIFIED";
+  const protectActive = protectedVerified || readiness?.effective_state === "PROTECTED_MANUAL_VALIDATION_PENDING";
   const connected = (presence?.connectivity ?? verification?.guard?.connectivity) === "CONNECTED";
   const guardReadiness = presence?.security_readiness ?? verification?.guard?.security_readiness ?? "UNKNOWN";
-  const count = Number(sourceReady) + Number(reported) + Number(protectedVerified);
+  const count = Number(sourceReady) + Number(reported) + Number(protectActive);
   const counts = observedCounts(readiness);
   // These 24-hour aggregate Guard counters can reflect other employees.
   // Their deltas provide live diagnostic feedback, NEVER certification proof.
@@ -247,28 +249,31 @@ export default function Onboarding() {
         {!app && <div className="onboard-next-action"><b>Application owner setup needed</b><p>Register your RAG and bind its approved SharePoint source and enrolled Guard.</p><Link href="/applications">Register a Gateway application →</Link><Link href="/guards">Enroll a Guard →</Link></div>}
         {app && !bound && <div className="onboard-next-action"><b>Complete the connection</b><p>Bind a SharePoint source and an enrolled Guard to this Gateway application before installation.</p><Link href="/applications">Review application →</Link><Link href="/guards">Enroll or check Guard →</Link></div>}
         {app && bound && !reported && <div className="onboard-supported-note"><b>Compatibility required</b><p>The installer supports Docker Compose RAGs implementing signed retrieval, identity forwarding, and buffered answer enforcement. An application owner may need to adapt an unsupported RAG first; AccessProof cannot safely convert arbitrary RAG code automatically.</p><Link href="/integrations">Check supported integration →</Link></div>}
-        {app && bound && !reported && <div className="onboard-actions">
+        {app && bound && !installationReported && <div className="onboard-actions">
           <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=dashboard-choice-r15-20261102" download="accessproof-gateway-connector.zip">Download Gateway</a>
-          <button type="button" className="button" disabled={busy} onClick={() => void issuePairing()}>Generate one-time pairing file</button>
+          <button type="button" className="button" disabled={busy || !sourceReady} onClick={() => void issuePairing()}>Generate one-time pairing file</button>
           <div className="onboard-command"><b>Application owner: run once on your Docker host</b><code>{installCommand}</code>
-            <small>Download the one-time pairing file first (valid 15 minutes). The installer discovers your local chatbots and waits for your selection here, without exposing Docker or changing employee routing.</small>
+            <small>{sourceReady
+              ? "Download the one-time pairing file first (valid 15 minutes). The installer discovers your local chatbots and waits for your selection here, without exposing Docker or changing employee routing."
+              : "Finish SharePoint authorization, document ACL sync, and employee directory sync before generating a pairing file."}</small>
           </div>
         </div>}
-        {app && bound && <GatewayDiscoveryPicker key={app.application_id + ":" + (pairing?.expires_at ?? "")} applicationId={app.application_id} installed={reported} />}
-        {reported && <div className="onboard-success">✓ Gateway paired. Existing RAG routing and production protection are unchanged; test the guarded route below.</div>}
+        {app && bound && sourceReady && <GatewayDiscoveryPicker key={app.application_id + ":" + (pairing?.expires_at ?? "")} applicationId={app.application_id} installed={installationReported} />}
+        {installationReported && !sourceReady && <div className="onboard-next-action" role="status"><b>Installation recorded, onboarding incomplete</b><p>The earlier installer receipt is preserved, but SharePoint ACL and employee-directory synchronization are not ready. Complete the source step; AccessProof remains fail closed.</p><Link href="/sources">Resolve source synchronization →</Link></div>}
+        {reported && <div className="onboard-success">✓ Gateway installation reported and source synchronization is current. Production protection remains unchanged until verification and approval finish.</div>}
         <Link href="/integrations">Installation and compatibility help →</Link>
       </section>
       <section className="onboard-card" data-testid="live-rag-test-card">
-        <header><span>03</span><Pill ok={!!protectedVerified} label={protectedVerified ? "Protected & verified" : "Test protection"}/></header>
+        <header><span>03</span><Pill ok={!!protectActive} label={protectedVerified ? "Protected & verified" : protectActive ? "Protect active — manual validation pending" : "Enable protection"}/></header>
         <h3>Protection status</h3>
         <p>Verify that the Guard and Gateway are connected, then enable protection in AI Applications. Once protection is verified active, test your existing RAG separately.</p>
         <div className="onboard-workflow-metrics onboard-live-status" role="status">
           <div><small>Guard connection</small><strong className={connected ? "positive" : "caution"}>{connected ? "Connected" : "Offline / checking"}</strong></div>
           <div><small>Security readiness</small><strong>{guardReadiness.toLowerCase()}</strong></div>
-          <div><small>Production protection</small><strong className={protectedVerified ? "positive" : "caution"}>{protectedVerified ? "Verified" : "Not active"}</strong></div>
+          <div><small>Production protection</small><strong className={protectActive ? "positive" : "caution"}>{protectedVerified ? "Verified" : protectActive ? "Active — manual validation pending" : "Not active"}</strong></div>
         </div>
         {!reported && <div className="onboard-next-action" role="status"><b>First, connect your Gateway</b><p>The test view becomes useful after the local installer pairs this application. Your RAG is not exposed or modified from the cloud.</p></div>}
-        {reported && protectedVerified && <section className="onboard-live-guide" aria-label="Live RAG test instructions">
+        {reported && protectActive && <section className="onboard-live-guide" aria-label="Live RAG test instructions">
           <b>Test your own RAG after protection is active</b>
           <p>On a customer-controlled device, open the RAG your employees already use. No separate test URL or new public endpoint is required.</p>
           <p>Sign in as an approved employee, ask about a document they can access, then repeat with a different employee who must be denied. Use test documents and your existing Microsoft SSO; do not paste tokens or passwords into AccessProof.</p>
@@ -278,7 +283,7 @@ export default function Onboarding() {
             <Link href="/audit">Inspect Guard audit →</Link>
           </div>
         </section>}
-        {reported && protectedVerified && <section className="onboard-live-results" aria-label="Observed live Guard decisions">
+        {reported && protectActive && <section className="onboard-live-results" aria-label="Observed live Guard decisions">
           <b>Observe Guard decisions from your separate RAG testing</b>
           <p>Start observing before sending approved test questions in your RAG. AccessProof checks the backend decision counters every 5 seconds; no RAG address is required.</p>
           <button className="button" type="button" disabled={busy} onClick={startObservation}>
@@ -298,8 +303,8 @@ export default function Onboarding() {
         {reported && <section className="onboard-live-guide" aria-label="Customer security testing status">
           <b>Production certification — separate from manual testing</b>
           <p>Before you test the chatbot, activate verified protection. The Guard and Gateway must both be ready and the route must enforce the permission boundary; a paired installer alone is not sufficient.</p>
-          <div className="onboard-fact"><b>{protectedVerified ? "Production protection verified" : guardReadiness === "READY" ? "Guard ready; route verification still required" : "Source or Guard verification still pending"}</b>
-            <small>{protectedVerified ? "The control plane reports verified protection." : "Use protection monitoring to resolve the remaining security prerequisites. No unverified challenge is offered as a one-click pass."}</small></div>
+          <div className="onboard-fact"><b>{protectedVerified ? "Production protection verified" : protectActive ? "Protect active — manual validation pending" : guardReadiness === "READY" ? "Guard ready; activation prerequisites remain" : "Source or Guard verification still pending"}</b>
+            <small>{protectedVerified ? "The control plane reports verified protection." : protectActive ? "Enforcement is active; customer-specific scenario checks are optional and can be completed after activation." : "Use protection monitoring to resolve remaining source, identity, Guard and Gateway prerequisites."}</small></div>
           <Link href={app ? `/applications?application=${encodeURIComponent(app.application_id)}` : "/applications"}>Check Guard and Gateway → Enable Protection →</Link>
         </section>}
         <div className="onboard-cutover"><b>Enable protection, then test your chatbot</b>

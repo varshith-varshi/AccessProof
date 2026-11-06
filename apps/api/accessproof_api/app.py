@@ -16,7 +16,6 @@ from apps.api.accessproof_api.protection_state import (
 )
 from apps.api.accessproof_api.route_certification import (
     describe_route_certificate,
-    reference_route_tested as _reference_challenge_tested,
     route_configuration_fingerprint as _route_configuration_fingerprint,
     valid_route_certificate as _valid_route_certificate,
 )
@@ -63,6 +62,7 @@ from apps.api.accessproof_api.config import (
     certified_sharepoint_scope_allowed,
 )
 from apps.api.accessproof_api.db import (
+    GatewayInstallation,
     AITarget,
     AlertRecord,
     ApiKey,
@@ -3541,23 +3541,10 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     ))
     checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok,
                    "reason": None if oidc_ok else "Real employee Entra issuer/JWKS identity verification remains incomplete; a healthy Guard alone is not sufficient."})
-    evidence = _verified_guard_evidence(db, row)
-    machine_route_verified = _valid_route_certificate(db, row)
-    # Reference-route machine evidence independently proves attestation
-    # tamper rejection and in-flight Layer 2 revocation. These checks are
-    # not interchangeable with the metadata-only legacy SDK's manual IDs.
-    layer1_ok = machine_route_verified or (row.layer1_verified_at is not None and bool(evidence["positive"]) and bool(evidence["denial"]))
-    layer2_ok = machine_route_verified or (row.layer2_verified_at is not None and bool(evidence["positive"]) and bool(evidence["provenance"]))
-    checks.append({"code": "LAYER1_INTEGRATION_CONFIRMED", "ok": layer1_ok,
-                   "reason": None if layer1_ok else "Recent Guard-audited allow and denial test requests required."})
-    checks.append({"code": "LAYER2_INTEGRATION_CONFIRMED", "ok": layer2_ok,
-                   "reason": None if layer2_ok else "Recent Guard-audited Layer 2 allow and provenance-block tests required."})
-    provenance_ok = machine_route_verified or (row.provenance_verified_at is not None and bool(evidence["provenance"]))
-    checks.append({"code": "PROVENANCE_READY", "ok": provenance_ok,
-                   "reason": None if provenance_ok else "Submit Guard-audited negative provenance evidence."})
-    buffering_ok = machine_route_verified or (row.buffering_verified_at is not None and layer2_ok)
-    checks.append({"code": "BUFFERED_RESPONSE_GATE_READY", "ok": buffering_ok,
-                   "reason": None if buffering_ok else "Run a real RAG buffering test and supply operator attestation with Guard audit IDs."})
+    # Manual allow/deny, tamper and in-flight revocation exercises are
+    # available after activation, but are not prerequisites for activation.
+    # The Guard continues to enforce authorization, signed provenance and
+    # fully buffered Layer 2 validation on every actual protected request.
     return checks
 
 
@@ -3744,22 +3731,10 @@ def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[
             "reason": "Run source-qualified V2 Guard, mixed-source cached answer and "
                       "real customer-route cutover challenges before enabling Protect.",
         })
-    # This is a *reference-only* machine result, not generic zero-code proof.
-    # Challenge verification separately matches all four real-response probes
-    # to uploaded authenticated Guard audit decisions. Never count an
-    # installer label, manual request IDs, or a stale/changed config.
-    reference_tested = _reference_challenge_tested(db, row)
-    reference_cutover = _valid_route_certificate(db, row)
-    checks.append({
-        "code": "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED", "ok": reference_tested,
-        "reason": None if reference_tested else
-        "An enrolled Guard must upload nonce-bound Gateway HTTP and matching Guard audit evidence.",
-    })
-    checks.append({
-        "code": "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED", "ok": reference_cutover,
-        "reason": None if reference_cutover else
-        "The employee-facing customer RAG route must be re-tested after its explicitly approved deployment cutover and matched with fresh Guard Layer 1/2 audit events.",
-    })
+    # The four customer-specific reference challenges are an optional
+    # post-activation diagnostic. An enrolled, live and enforcement-ready
+    # Gateway is still mandatory (checked below), as is trustworthy source
+    # ACL synchronization and employee identity (checked above).
     if row.adapter_type == "accessproof-gateway":
         # D-02: an old installation record is not a running Gateway.
         checks.append(gateway_presence.activation_check(db, row))
@@ -3767,34 +3742,71 @@ def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[
     checks.append({
         "code": "HUMAN_ACTIVATION_APPROVAL_REQUIRED", "ok": approved,
         "reason": None if approved else
-        "An organization owner must explicitly approve Protect activation after the route is certified.",
+        "An organization owner must approve Protect for this exact live Gateway installation after operational readiness checks pass.",
     })
     return checks
 
 
-def _human_activation_approved(db: OrmSession, row: AIApplication) -> bool:
-    """D-28: Protect is never activated by automation alone.
+def _activation_approval_binding(db: OrmSession, row: AIApplication) -> dict[str, str] | None:
+    """Current installed Gateway identity; a prior installation cannot grant Protect."""
+    record = db.scalar(select(GatewayInstallation).where(
+        GatewayInstallation.organization_id == row.organization_id,
+        GatewayInstallation.application_row_id == row.id,
+        GatewayInstallation.revoked_at.is_(None),
+    ))
+    if (record is None or record.guard_id != row.guard_id
+            or record.source_id != row.source_id):
+        return None
+    return {
+        "configuration_fingerprint": _route_configuration_fingerprint(row),
+        "installation_id": record.id,
+        "deployment_sha256": record.deployment_sha256,
+        "route_sha256": record.route_sha256,
+    }
 
-    Requires an owner's explicit approval recorded AFTER the latest verified
-    customer cutover of the currently certified route; any later re-test or
-    re-certification requires a new approval. Machines cannot create it.
+
+def _human_activation_approved(db: OrmSession, row: AIApplication) -> bool:
+    """Owner explicitly approved THIS Gateway installation and binding.
+
+    Optional customer scenarios do not grant or revoke approval. Rotating the
+    Gateway installation or rebinding source/Guard invalidates old approvals.
     """
-    cutover = db.scalar(select(RAGRouteChallenge.cutover_at).where(
-        RAGRouteChallenge.organization_id == row.organization_id,
-        RAGRouteChallenge.application_row_id == row.id,
-        RAGRouteChallenge.status == "cutover_verified",
-        RAGRouteChallenge.cutover_at.is_not(None),
-    ).order_by(RAGRouteChallenge.cutover_at.desc()).limit(1))
-    if cutover is None or not _valid_route_certificate(db, row):
-        return False
-    return db.scalar(select(AuditEvent.id).where(
+    binding = _activation_approval_binding(db, row)
+    # Preserve previously granted OWNER approvals for a STILL VALID,
+    # configuration-bound certified route. Old audit rows contain the route
+    # certificate ID, not the newer installation fingerprints. A stale or
+    # changed certificate, audit before cutover or wrong cert ID never counts.
+    legacy_certificate = describe_route_certificate(db, row)
+    legacy_cutover = None
+    if legacy_certificate.get("certified") is True and _valid_route_certificate(db, row):
+        legacy_cutover = db.scalar(select(RAGRouteChallenge.cutover_at).where(
+            RAGRouteChallenge.organization_id == row.organization_id,
+            RAGRouteChallenge.application_row_id == row.id,
+            RAGRouteChallenge.status == "cutover_verified",
+            RAGRouteChallenge.id == legacy_certificate.get("certificate_id"),
+            RAGRouteChallenge.cutover_at.is_not(None),
+        ).limit(1))
+    audits = db.scalars(select(AuditEvent).where(
         AuditEvent.organization_id == row.organization_id,
         AuditEvent.action == "PROTECT_ACTIVATION_APPROVED",
         AuditEvent.target_type == "ai_application",
         AuditEvent.target_id == row.id,
         AuditEvent.actor_user_id.is_not(None),
-        AuditEvent.created_at >= cutover,
-    ).limit(1)) is not None
+    ).order_by(AuditEvent.created_at.desc()).limit(100)).all()
+    for item in audits:
+        try:
+            details = json.loads(item.metadata_json)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(details, dict):
+            continue
+        if binding is not None and all(details.get(k) == v for k, v in binding.items()):
+            return True
+        if (legacy_cutover is not None
+                and details.get("route_certificate") == legacy_certificate.get("certificate_id")
+                and _utc(item.created_at) >= _utc(legacy_cutover)):
+            return True
+    return False
 
 
 def _activation_status(db: OrmSession, row: AIApplication) -> dict[str, Any]:
@@ -3822,6 +3834,7 @@ def _activation_status(db: OrmSession, row: AIApplication) -> dict[str, Any]:
         "last_checked_at": run.last_checked_at.isoformat() if run else None,
         "run_id": run.id if run else None,
         "guard_acknowledged": row.mode == "protect" and failed is None,
+        "manual_validation_pending": row.mode == "protect" and failed is None and not _valid_route_certificate(db, row),
         "route_certificate": describe_route_certificate(db, row),
     }
 
@@ -3976,6 +3989,7 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
             guard_revoked=bool(guard is not None and guard.revoked_at is not None),
             source_disconnected=source is not None and not source_connected,
             certification_expired=certification_expired,
+            route_certified=_valid_route_certificate(db, row),
         )
         failed_checks = [
             {"code": check["code"], "reason": check.get("reason")}
@@ -4022,7 +4036,7 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
             "gateway": (gateway_presence.connectivity(db, row, now)
                         if row.adapter_type == "accessproof-gateway" else None),
             "route_certification": {
-                "required": row.adapter_type == "accessproof-gateway",
+                "required": False,  # Manual customer challenge after Protect activation.
                 "expired": certification_expired,
                 **describe_route_certificate(db, row, now=now),
             },
@@ -4196,7 +4210,7 @@ def current_ai_application_automated_preflight(
             guard_id=row.guard_id, source_id=row.source_id,
             configuration_fingerprint=fingerprint,
             checks_json=json.dumps(checks, sort_keys=True),
-            reason_code="CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED",
+            reason_code="ACTIVATION_CHECKS_INCOMPLETE",
             created_at=now, last_checked_at=now,
         )
         db.add(run)
@@ -4206,7 +4220,7 @@ def current_ai_application_automated_preflight(
         run.configuration_fingerprint = fingerprint
         run.checks_json = json.dumps(checks, sort_keys=True)
         run.state = "action_required"
-        run.reason_code = "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"
+        run.reason_code = "ACTIVATION_CHECKS_INCOMPLETE"
         run.last_checked_at = now
     if all(check["ok"] for check in checks) and row.mode == "shadow":
         row.mode = "protect_pending"
@@ -4270,6 +4284,28 @@ def _automatic_gateway_pairing_verification(
         }
 
 
+_GATEWAY_PAIRING_PREREQUISITE_CODES = frozenset({
+    "GUARD_HEARTBEAT_RECENT",
+    "GUARD_POLICY_INSTALLED",
+    "PERMISSION_SOURCE_CONFIGURED",
+    "PERMISSION_SOURCE_TRUSTED",
+    "PERMISSION_SOURCE_SYNCED",
+    "PERMISSION_DIRECTORY_SYNCED",
+    "PERMISSION_EVENTS_RESOLVED",
+    "PERMISSION_SOURCE_USABLE",
+})
+
+
+def _gateway_pairing_prerequisite_failures(
+    db: OrmSession, row: AIApplication,
+) -> list[str]:
+    """Return operational blockers that must precede Gateway installation."""
+    return [
+        check["code"] for check in _application_checks(db, row, row.organization_id)
+        if check["code"] in _GATEWAY_PAIRING_PREREQUISITE_CODES and not check["ok"]
+    ]
+
+
 @app.post("/api/v1/current/ai-applications/{application_id}/gateway-pairing", status_code=201)
 def issue_customer_gateway_pairing(
     application_id: str,
@@ -4288,6 +4324,16 @@ def issue_customer_gateway_pairing(
     if (guard is None or guard.organization_id != row.organization_id
             or guard.revoked_at is not None or guard.enrolled_at is None):
         raise HTTPException(409, "ENROLLED_GUARD_REQUIRED")
+    # Installation is intentionally ordered after the authoritative source
+    # and Guard are operational.  A one-use installer receipt is not source
+    # evidence, and issuing it earlier made an incomplete onboarding look
+    # paired even though every enforcement path correctly remained closed.
+    failed_prerequisites = _gateway_pairing_prerequisite_failures(db, row)
+    if failed_prerequisites:
+        raise HTTPException(
+            409,
+            "GATEWAY_PAIRING_PREREQUISITES_NOT_READY:" + ",".join(failed_prerequisites),
+        )
     try:
         pairing = gateway_pairing.issue(
             org_id=row.organization_id, app_row_id=row.id,
@@ -4882,12 +4928,11 @@ def approve_protect_activation(
     actor: Actor = Depends(require(Permission.ORG_ADMIN)),
     db: OrmSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """D-28: explicit, owner-only human approval for Protect activation.
+    """Owner-only authorization for the current installed enforcement route.
 
-    Accepted only from an interactive OWNER session (never an API key or a
-    machine), only after the route certificate is valid, and only with the
-    exact confirmation text. It approves; the Guard acknowledgment and every
-    other activation check still apply.
+    Requires an interactive OWNER session, a live/ready Gateway, trusted
+    source authorization and the exact confirmation phrase. Customer-run
+    allow/deny/tamper/revoke scenarios are optional post-activation checks.
     """
     if actor.api_key_scopes is not None or actor.membership.role != Role.OWNER.value:
         raise HTTPException(403, "OWNER_SESSION_REQUIRED")
@@ -4904,14 +4949,18 @@ def approve_protect_activation(
     ).with_for_update())
     if row is None:
         raise HTTPException(404, "AI application not found")
-    if not _valid_route_certificate(db, row):
-        raise HTTPException(409, "ROUTE_CERTIFICATE_REQUIRED_BEFORE_APPROVAL")
+    # Explicit owner approval applies to this exact installed Gateway.
+    # No scripted allow/deny/tamper/revocation challenges are necessary.
+    binding = _activation_approval_binding(db, row)
+    if binding is None:
+        raise HTTPException(409, "CURRENT_GATEWAY_INSTALLATION_REQUIRED")
     pending = [c["code"] for c in _automatic_activation_checklist(db, row)
                if not c["ok"] and c["code"] != "HUMAN_ACTIVATION_APPROVAL_REQUIRED"]
     if pending:
         raise HTTPException(409, {"code": "ACTIVATION_CHECKS_INCOMPLETE", "pending": pending})
     _audit(db, actor, row.organization_id, "PROTECT_ACTIVATION_APPROVED", "ai_application", row.id, {
-        "reviewer": reviewer.strip(), "route_certificate": describe_route_certificate(db, row).get("certificate_id"),
+        "reviewer": reviewer.strip(), **binding,
+        "manual_validation": "recommended_after_activation",
     })
     db.commit()
     return {"state": "approved_awaiting_guard_ack", "application_id": application_id,

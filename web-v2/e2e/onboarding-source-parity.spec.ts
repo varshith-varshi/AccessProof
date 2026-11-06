@@ -129,6 +129,20 @@ test("pre-pairing flow explains adapter limits and how to install without RAG UR
   await expect(page.getByText("1 / 3")).toBeVisible();
 });
 
+test("unsynchronized SharePoint cannot issue pairing and an old receipt stays incomplete", async ({ page }) => {
+  await mockSetup(page);
+  await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [{
+    ...source,
+    acl_sync: { ...source.acl_sync, fresh: false, status: "degraded", last_error_code: "SYNC_REQUIRED" },
+    directory_sync: { ...source.directory_sync, fresh: false, status: "degraded", last_error_code: "SYNC_REQUIRED" },
+  }] }));
+  await page.goto("/onboarding?application=synthetic-sharepoint-rag");
+  await expect(page.getByText("Installation recorded, onboarding incomplete")).toBeVisible();
+  await expect(page.getByText(/AccessProof remains fail closed/)).toBeVisible();
+  await expect(page.getByText("Gateway paired.")).toHaveCount(0);
+  await expect(page.getByText("0 / 3")).toBeVisible();
+});
+
 test("administrator selects exactly one chatbot in the dashboard, without Protect activation", async ({ page }) => {
   await mockSetup(page, { paired: false });
   let selected = "";

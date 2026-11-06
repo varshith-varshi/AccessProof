@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from apps.gateway.accessproof_gateway.installer import (
     InstallationError, InstallationSpec, compose_override, private_environment,
-    stage_installation, validate_reference_service,
+    reviewed_external_guard_network, stage_installation, validate_reference_service,
 )
 
 
@@ -139,6 +139,36 @@ def test_installer_uses_only_internal_rag_network_when_loopback_health_bridge_ex
     assert "model-internal" in networks
     assert "rag-edge" not in networks
     assert "accessproof-gateway-host" in networks
+
+
+def test_reviewed_external_guard_requires_matching_healthy_runtime(monkeypatch) -> None:
+    import subprocess
+    runtime = {
+        "Name": "/guard",
+        "State": {"Running": True, "Health": {"Status": "healthy"}},
+        "Config": {"Labels": {"com.docker.compose.service": "guard"}},
+        "NetworkSettings": {"Networks": {"guard-net": {}}},
+    }
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
+        args[0], 0, stdout=json.dumps(runtime), stderr="",
+    ))
+    resolved = {"x-accessproof-external-guard": {"container": "guard", "network": "guard-net"}}
+    assert reviewed_external_guard_network(_spec(), resolved) == "guard-net"
+
+
+def test_external_guard_declaration_cannot_redirect_to_unrelated_container(monkeypatch) -> None:
+    import subprocess
+    runtime = {
+        "Name": "/unrelated",
+        "State": {"Running": True, "Health": {"Status": "healthy"}},
+        "Config": {"Labels": {"com.docker.compose.service": "guard"}},
+        "NetworkSettings": {"Networks": {"guard-net": {}}},
+    }
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
+        args[0], 0, stdout=json.dumps(runtime), stderr="",
+    ))
+    resolved = {"x-accessproof-external-guard": {"container": "guard", "network": "guard-net"}}
+    assert reviewed_external_guard_network(_spec(), resolved) is None
 
 
 def test_installer_rejects_unknown_contract_version() -> None:

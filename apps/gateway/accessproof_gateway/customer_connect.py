@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -90,6 +91,94 @@ def public_key_from_private(path: Path) -> str:
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     )
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+
+
+def publish_installation_manifest(
+    installation: Path, application_id: str, *, downloads: Path | None = None,
+) -> Path:
+    """Export an install-only manifest to Downloads without overwriting files.
+
+    The authoritative 0600 manifest remains in the private installation dir.
+    The copied JSON is non-secret deployment metadata used for route challenges.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", application_id):
+        raise ConnectError("Application ID is unsafe for a download filename")
+    target_dir = downloads if downloads is not None else Path.home() / "Downloads"
+    if (target_dir.is_symlink() or not target_dir.is_dir()
+            or target_dir.stat().st_uid != os.getuid()):
+        raise ConnectError("Downloads directory must be a user-owned local directory")
+    if installation.is_symlink() or not installation.is_file():
+        raise ConnectError("Installed Gateway manifest is missing or unsafe")
+    contents = installation.read_bytes()
+    if not 0 < len(contents) <= 50_000:
+        raise ConnectError("Installed Gateway manifest has unexpected size")
+    try:
+        manifest = json.loads(contents)
+    except ValueError as exc:
+        raise ConnectError("Installed Gateway manifest is not valid JSON") from exc
+    if (not isinstance(manifest, dict)
+            or manifest.get("reference_contract") != "accessproof.gateway/v1"
+            or manifest.get("application_id") != application_id
+            or not all(isinstance(manifest.get(name), str)
+                       and re.fullmatch(r"[0-9a-f]{64}", manifest[name])
+                       for name in ("deployment_sha256", "route_sha256"))
+            or any(any(term in name.lower() for term in
+                       ("secret", "password", "token", "credential", "private_key"))
+                   for name in manifest)):
+        raise ConnectError("Installed Gateway manifest is not safe for Downloads")
+    for suffix in range(1, 101):
+        extra = "" if suffix == 1 else f"-{suffix}"
+        dest = target_dir / f"{application_id}-installation{extra}.json"
+        # Never follow a pre-existing link or modify an older manifest. This
+        # includes a previous install for the same name but changed digests.
+        if dest.is_symlink():
+            continue
+        if dest.exists():
+            if (dest.is_file() and dest.stat().st_uid == os.getuid()
+                    and stat.S_IMODE(dest.stat().st_mode) == 0o600
+                    and dest.read_bytes() == contents):
+                return dest
+            continue
+        try:
+            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except FileExistsError:
+            continue
+        try:
+            with os.fdopen(fd, "wb") as output:
+                output.write(contents)
+        except BaseException:
+            dest.unlink(missing_ok=True)
+            raise
+        return dest
+    raise ConnectError("Too many existing Gateway manifest files in Downloads")
+
+
+def key_id_from_customer_rag(compose: Path, rag_service: str, configured_id: str) -> str:
+    """Bind the Gateway verifier to the RAG's declared ingestion key ID.
+
+    The signing key itself stays on the customer host. The declared ID is
+    untrusted metadata and does not constitute signed provenance evidence.
+    """
+    resolved = _resolved_compose(compose)
+    service = resolved.get("services", {}).get(rag_service, {})
+    raw = service.get("environment", {}) if isinstance(service, dict) else {}
+    if isinstance(raw, dict):
+        declared = raw.get("LAB_ATTESTATION_KEY_ID", "")
+    elif isinstance(raw, list):
+        declared = next((entry.split("=", 1)[1] for entry in raw
+                         if isinstance(entry, str) and entry.startswith("LAB_ATTESTATION_KEY_ID=")), "")
+    else:
+        declared = ""
+    if not isinstance(declared, str):
+        raise ConnectError("RAG ingestion signing key ID is invalid")
+    if declared and (not 1 <= len(declared) <= 128
+                     or not all(char.isascii() and (char.isalnum() or char in "-._") for char in declared)):
+        raise ConnectError("RAG ingestion signing key ID is invalid")
+    if declared and configured_id != "customer-ingestion" and declared != configured_id:
+        raise ConnectError("Specified signing key ID conflicts with selected RAG")
+    return declared or configured_id
 
 
 def create_spec(
@@ -617,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
             guard_url=_prompt(args.guard_url, "Guard URL inside Docker"),
             model_url=_prompt(args.model_url, "Model API URL inside Docker"),
             signing_key=source_key,
-            key_id=args.ingestion_key_id,
+            key_id=key_id_from_customer_rag(args.compose, rag_service, args.ingestion_key_id),
             gateway_image=args.gateway_image,
             model_provider=args.model_provider,
             model_name=args.model_name,
@@ -668,6 +757,13 @@ def main(argv: list[str] | None = None) -> int:
         claim = report_claim(pairing, manifest)
         print("Gateway installed and paired:", claim["state"])
         enable_gateway_presence(claim, manifest, Path(result["installation"]).parent)
+        try:
+            exported = publish_installation_manifest(Path(result["installation"]), pairing["application_id"])
+            print("Gateway verification manifest saved to Downloads:", exported)
+        except (ConnectError, OSError) as exc:
+            # Manifest export is convenience only. Never unpair a valid Gateway
+            # or claim Protect certification when Downloads is unavailable.
+            print("Gateway paired, but could not copy verification manifest to Downloads:", exc)
         for message in summarize_automatic_verification(claim):
             print(message)
         print("No RAG route cutover has occurred.")

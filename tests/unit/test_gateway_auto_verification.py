@@ -76,6 +76,29 @@ def test_green_snapshot_does_not_activate_protect(monkeypatch):
     assert not result["protect_activated"]
 
 
+def test_pairing_prerequisites_block_unsynchronized_source(monkeypatch):
+    checks = [
+        {"code": "GUARD_HEARTBEAT_RECENT", "ok": True, "reason": None},
+        {"code": "PERMISSION_SOURCE_SYNCED", "ok": False, "reason": "ACL sync missing"},
+        {"code": "PERMISSION_DIRECTORY_SYNCED", "ok": False, "reason": "Directory sync missing"},
+        # Route certification is deliberately a later verification gate.
+        {"code": "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED", "ok": False, "reason": "Later"},
+    ]
+    monkeypatch.setattr(api, "_application_checks", lambda db, row, org: checks)
+    assert api._gateway_pairing_prerequisite_failures(object(), _app()) == [
+        "PERMISSION_SOURCE_SYNCED", "PERMISSION_DIRECTORY_SYNCED",
+    ]
+
+
+def test_pairing_prerequisites_pass_only_after_operational_sync(monkeypatch):
+    checks = [
+        {"code": code, "ok": True, "reason": None}
+        for code in sorted(api._GATEWAY_PAIRING_PREREQUISITE_CODES)
+    ]
+    monkeypatch.setattr(api, "_application_checks", lambda db, row, org: checks)
+    assert api._gateway_pairing_prerequisite_failures(object(), _app()) == []
+
+
 def test_claim_runs_verification_only_after_valid_tenant_and_guard(monkeypatch):
     row = _app()
     guard = SimpleNamespace(

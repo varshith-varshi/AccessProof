@@ -50,7 +50,9 @@ def test_one_click_checks_are_durable_idempotent_and_do_not_fake_activation():
             assert payload["guard_acknowledged"] is False
             assert payload["run_id"]
             checks = {check["code"]: check for check in payload["checks"]}
-            assert not checks["CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED"]["ok"]
+            assert "CUSTOMER_RAG_CHALLENGE_AGENT_REQUIRED" not in checks
+            assert "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED" not in checks
+            assert "LAYER1_INTEGRATION_CONFIRMED" not in checks
             assert not checks["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"]["ok"]
         with SessionLocal() as db:
             assert len(list(db.scalars(select(ProtectionActivationRun)))) == 1

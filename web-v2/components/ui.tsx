@@ -9,7 +9,7 @@ export function StatusBadge({ value }: { value: string }) {
 }
 
 export function ProtectionStateBadge({ value }: { value: string }) {
-  const tone = value === "PROTECTED_VERIFIED" ? "success" : /BLOCKED|DEGRADED/.test(value) ? "danger" : /VALIDATING|PROTECT_PENDING|STALE|CERTIFICATION_EXPIRED|CONNECTED|UNKNOWN/.test(value) ? "warning" : "neutral";
+  const tone = value === "PROTECTED_VERIFIED" ? "success" : /BLOCKED|DEGRADED/.test(value) ? "danger" : /VALIDATING|PROTECT_PENDING|PROTECTED_MANUAL_VALIDATION_PENDING|STALE|CERTIFICATION_EXPIRED|CONNECTED|UNKNOWN/.test(value) ? "warning" : "neutral";
   const Icon = tone === "success" ? CheckCircle2 : tone === "danger" ? CircleSlash2 : tone === "warning" ? AlertTriangle : Info;
   return <span className={`status-badge ${tone}`}><Icon size={12}/>{titleCase(value)}</span>;
 }

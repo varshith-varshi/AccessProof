@@ -113,3 +113,19 @@ def test_many_supported_services_same_compose_requires_explicit_choice(monkeypat
     with pytest.raises(customer_connect.ConnectError, match="Choose ONE"):
         customer_connect.inspect_supported_rag(compose, None)
     assert customer_connect.inspect_supported_rag(compose, "hr-rag") == "hr-rag"
+
+
+def test_infer_key_id_from_selected_rag(monkeypatch, tmp_path):
+    compose = tmp_path / "compose.yml"
+    compose.write_text("services: {}\n")
+    monkeypatch.setattr(customer_connect, "_resolved_compose", lambda _: {
+        "services": {"rag": {"environment": {"LAB_ATTESTATION_KEY_ID": "human-validation-ingest-v1"}}},
+    })
+    assert customer_connect.key_id_from_customer_rag(compose, "rag", "customer-ingestion") == "human-validation-ingest-v1"
+    with pytest.raises(customer_connect.ConnectError, match="conflicts"):
+        customer_connect.key_id_from_customer_rag(compose, "rag", "wrong-key")
+    monkeypatch.setattr(customer_connect, "_resolved_compose", lambda _: {
+        "services": {"rag": {"environment": {"LAB_ATTESTATION_KEY_ID": "invalid/name"}}},
+    })
+    with pytest.raises(customer_connect.ConnectError, match="invalid"):
+        customer_connect.key_id_from_customer_rag(compose, "rag", "customer-ingestion")
