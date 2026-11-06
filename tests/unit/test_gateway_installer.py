@@ -116,6 +116,31 @@ def test_secret_from_local_environment_is_not_in_command_or_override(tmp_path: P
     assert "top$secret" not in json.dumps(out)
 
 
+def test_installer_uses_only_internal_rag_network_when_loopback_health_bridge_exists(tmp_path: Path) -> None:
+    """A pre-install health bridge must not disconnect Gateway from the RAG."""
+    spec = _spec()
+    resolved = {
+        "networks": {
+            "rag-internal": {"internal": True},
+            "rag-edge": {"internal": False},
+            "model-internal": {"internal": True},
+        },
+        "services": {
+            "customer-rag": {
+                "labels": _compose()["services"]["customer-rag"]["labels"],
+                "networks": ["rag-internal", "rag-edge"],
+            },
+            "model": {"networks": ["model-internal"]},
+        },
+    }
+    override = compose_override(spec, "ACCESSPROOF_CHAT_URL", tmp_path / "gateway.env", resolved)
+    networks = override["services"]["accessproof-gateway"]["networks"]
+    assert "rag-internal" in networks
+    assert "model-internal" in networks
+    assert "rag-edge" not in networks
+    assert "accessproof-gateway-host" in networks
+
+
 def test_installer_rejects_unknown_contract_version() -> None:
     with pytest.raises(InstallationError):
         validate_reference_service(_spec(), {"services": {"customer-rag": {"labels": {

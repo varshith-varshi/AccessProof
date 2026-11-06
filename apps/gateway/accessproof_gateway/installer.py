@@ -216,13 +216,21 @@ def compose_override(spec: InstallationSpec, route_env: str, private_env_file: P
         rag_networks = network_names(rag)
         model_networks = network_names(model)
         guard_networks = network_names(guard)
-        if (isinstance(networks, dict) and rag_networks
+        # A customer can expose a *pre-install* loopback health endpoint on a
+        # non-internal network while keeping its actual RAG traffic on an
+        # internal network.  Gateway must join the latter, never the health
+        # bridge.  Requiring every declared RAG network to be internal made
+        # that supported topology silently stage an unreachable Gateway.
+        internal_rag_networks = {
+            name for name in rag_networks
+            if isinstance(networks, dict)
+            and isinstance(networks.get(name), dict)
+            and networks[name].get("internal") is True
+        }
+        if (isinstance(networks, dict) and internal_rag_networks
                 and (model_networks or spec.model_provider in {"anthropic", "gemini"})
-                and not rag_networks.intersection(model_networks)
-                and all(isinstance(networks.get(name), dict)
-                            and networks[name].get("internal") is True
-                            for name in rag_networks)):
-            gateway_networks = sorted(rag_networks | model_networks | guard_networks)
+                and not internal_rag_networks.intersection(model_networks)):
+            gateway_networks = sorted(internal_rag_networks | model_networks | guard_networks)
     # Docker's fully internal bridge networks cannot reliably accept even
     # loopback-published host connections. Give ONLY Gateway a separate
     # host-access bridge; never attach RAG, model or Guard to this network.
