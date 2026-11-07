@@ -88,9 +88,27 @@ a production security gate.
   Gateway ready. RAG container no longer receives SharePoint client secret.
 - Controlled *ingester-only stop/start* recovery: passed; trusted Graph sync
   resumed, signed-index health returned, Guard/Gateway remained ready.
-- Prior real Microsoft Entra Alice/Bob permission matrix: 10/10, with
-  independent SharePoint effective-permission matrix 10/10. Additional
-  token-based matrix after this recovery release still requires an actual
-  employee session and was not repeated via an automated terminal check.
+- Real Microsoft Entra Alice/Bob permission matrix repeated on 2026-11-07
+  **after** the recovery deployment: **10/10 live protected RAG decisions**
+  (Alice 4 allow/1 deny, Bob 2 allow/3 deny). The five documents include
+  direct, shared, group-derived, and inherited permissions; no employee
+  passwords or bearer tokens were written to the RAG or repository.
+- Controlled RAG-only Docker stop followed by the installed recovery
+  controller: **passed**; existing RAG container restarted, 5/5 signed chunks
+  validated, Guard and Gateway remained running; no host reboot.
+- Controlled Human Validation Guard-only Docker restart: **passed**; application
+  policy 14, Guard, Gateway, RAG, Redis, ingester health recovered. The 10/10
+  live matrix above ran before this Guard-only restart; a full matrix after
+  that restart was not part of this recorded test.
+- An earlier 10-case live run encountered six transient Guard Layer 1 HTTP 503
+  failures (fail closed), then four successful authorization decisions.
+  Microsoft Graph also reported a transient error on a *different* legacy
+  SharePoint sync service during the same window. The cause of the Guard 503
+  has **not** been conclusively isolated. Guard /health alone is not a proof
+  that every employee-authenticated request will succeed. Subsequent 10/10
+  success is a recovery observation, not proof the intermittent dependency
+  issue cannot recur.
+- Additional targeted security regression tests: 43/43 passed (Guard OIDC,
+  binding readiness, certification window and Gateway Guard-error semantics).
 - **Not performed:** an actual Ubuntu reboot; production always-on host
   migration; live revoke/restore; independent source certification.
