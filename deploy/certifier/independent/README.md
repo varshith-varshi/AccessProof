@@ -13,17 +13,20 @@ The current accessproof-certifier delegated identity explicitly denies
 CloudFormation, IAM, infrastructure and key creation. Do not bypass that
 role with AWS root or unrestricted SSM documents. The organization must
 review the billable EC2/KMS costs and select an approved private VPC subnet
-with outbound HTTPS access (NAT or AWS endpoints).
+for dedicated NAT routing. The stack now provisions a private subnet, route table, Elastic IP and NAT Gateway. NAT Gateway, Elastic IP and EC2 have ongoing hourly/traffic costs.
 
 Only an authorized infrastructure administrator executes:
 
     aws cloudformation validate-template --region eu-north-1 --template-body file://deploy/certifier/independent/isolated-certifier-stack.json
 
-    aws cloudformation deploy --region eu-north-1 --stack-name accessproof-independent-certifier-2026 --template-file deploy/certifier/independent/isolated-certifier-stack.json --capabilities CAPABILITY_IAM --parameter-overrides VpcId=vpc-REPLACE PrivateSubnetId=subnet-REPLACE
+    aws cloudformation deploy --region eu-north-1 --stack-name accessproof-independent-certifier-2026 --template-file deploy/certifier/independent/isolated-certifier-stack.json --capabilities CAPABILITY_IAM --parameter-overrides VpcId=vpc-0be4dc69e57c09b2f PublicSubnetId=subnet-0152c2e25be9200e3 PrivateSubnetCidr=172.31.48.0/24 CertifierAvailabilityZone=eu-north-1c
 
     aws cloudformation describe-stacks --region eu-north-1 --stack-name accessproof-independent-certifier-2026 --query 'Stacks[0].Outputs'
 
-The stack sets: no public IP or ingress security-group rules, IMDSv2-only,
+The VPC/subnet IDs above were discovered read-only on 2026-11-07. An administrator MUST confirm they are still current, that 172.31.48.0/24 does not overlap other private routing, that the public subnet has an active internet gateway route, that NAT cost is approved, and that the proposed corporate egress route follows policy. Do not launch if any condition fails.
+
+The stack sets: no public IP on the dedicated EC2 host and no ingress security-group rules,
+a new private subnet and NAT Gateway placed in the existing eu-north-1c public subnet, IMDSv2-only,
 encrypted gp3 volume, AWS SSM instance management, outbound HTTPS only,
 new distinct Ed25519 KMS key retained on stack deletion, and a restricted
 assumable execution role with GetPublicKey but NO KMS Sign, NO certificate

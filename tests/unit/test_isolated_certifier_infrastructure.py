@@ -31,6 +31,26 @@ def test_no_inbound_listener_and_only_https_egress():
     }]
 
 
+def test_only_private_subnet_has_certifier_and_nat_has_public_route():
+    stack = json.loads(TEMPLATE.read_text())
+    resources = stack["Resources"]
+    subnet = resources["CertifierPrivateSubnet"]["Properties"]
+    assert subnet["MapPublicIpOnLaunch"] is False
+    assert subnet["VpcId"] == {"Ref": "VpcId"}
+    assert subnet["AvailabilityZone"] == {"Ref": "CertifierAvailabilityZone"}
+    instance_subnet = resources["CertifierInstance"]["Properties"]["NetworkInterfaces"][0]["SubnetId"]
+    assert instance_subnet == {"Ref": "CertifierPrivateSubnet"}
+    nat = resources["CertifierNatGateway"]["Properties"]
+    assert nat["SubnetId"] == {"Ref": "PublicSubnetId"}
+    assert nat["AllocationId"] == {"Fn::GetAtt": ["CertifierNatElasticIp", "AllocationId"]}
+    route = resources["CertifierPrivateDefaultRoute"]["Properties"]
+    assert route["DestinationCidrBlock"] == "0.0.0.0/0"
+    assert route["NatGatewayId"] == {"Ref": "CertifierNatGateway"}
+    assert resources["CertifierPrivateRouteAssociation"]["Properties"]["SubnetId"] == {
+        "Ref": "CertifierPrivateSubnet"}
+    assert "CertifierPrivateDefaultRoute" in resources["CertifierInstance"]["DependsOn"]
+
+
 def test_new_ed25519_key_cannot_sign_before_trust_approval():
     resources = json.loads(TEMPLATE.read_text())["Resources"]
     key = resources["CertifierSigningKey"]
