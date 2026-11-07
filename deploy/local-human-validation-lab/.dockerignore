@@ -1,0 +1,9 @@
+# Strict allowlist. Never send customer credentials, signing keys, Gateway
+# installer state, employee OAuth sessions, indexes or audit witnesses to
+# BuildKit. The image is built from Python application sources only.
+*
+!Dockerfile
+!requirements.txt
+!app/
+app/*
+!app/*.py
