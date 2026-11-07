@@ -1,0 +1,27 @@
+[Unit]
+Description=AccessProof independent, read-only route availability observer
+Documentation=https://app.accessproof.in
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+ExecStart=/usr/bin/python3 /opt/accessproof-observer/always_on_route_observer.py --ca-file /opt/accessproof-observer/gateway-ca.pem
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectClock=true
+LockPersonality=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=96M
+TimeoutStartSec=35s
+StandardOutput=journal
+StandardError=journal

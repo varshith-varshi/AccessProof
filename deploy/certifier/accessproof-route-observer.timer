@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll AccessProof external dependencies from staging without certifier secrets
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=10s
+Persistent=true
+Unit=accessproof-route-observer.service
+
+[Install]
+WantedBy=timers.target
