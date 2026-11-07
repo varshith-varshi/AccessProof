@@ -105,6 +105,62 @@ def test_explicit_legacy_name_is_inspected_not_implicitly_selected():
     assert len(calls) == 3
 
 
+def test_pinned_https_doctor_never_overrides_missing_heartbeat(tmp_path, monkeypatch):
+    ca = tmp_path / "customer-ca.pem"
+    ca.write_text("synthetic-not-a-real-ca")
+    entries = ["ACCESSPROOF_GATEWAY_APPLICATION_ID=reference-rag"]
+    container = {"Config": {"Env": entries}, "NetworkSettings": {
+        "Ports": {"8443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8443"}]}
+    }}
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[1] == "ps":
+            return subprocess.CompletedProcess(command, 0,
+                stdout=json.dumps({"Names": "ap-remote-gateway", "Status": "Up 3 days"}) + "\n")
+        if command[1] == "inspect":
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps([container]))
+        raise AssertionError("HTTPS diagnosis must not shell into the container")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    with patch.object(module, "pinned_tls_gateway_health", return_value=True) as tls:
+        ready, notes = module.diagnose_local_gateway(
+            project="manual", gateway_container="ap-remote-gateway",
+            gateway_ca_file=ca, gateway_hostname="gateway.example.com",
+        )
+    assert not ready
+    assert any("verified HTTPS readiness passed" in note for note in notes)
+    assert any("heartbeat: NOT CONFIGURED" in note for note in notes)
+    assert [cmd[1] for cmd in commands] == ["ps", "inspect"]
+    assert tls.call_count == 1
+
+
+def test_https_health_refuses_unsafe_bindings_and_tls_files(tmp_path):
+    ca = tmp_path / "trusted.pem"
+    ca.write_text("synthetic")
+    for mapping in (
+        [{"HostIp": "0.0.0.0", "HostPort": "8443"}],
+        [{"HostIp": "127.0.0.1", "HostPort": "abc"}],
+        [{"HostIp": "127.0.0.1", "HostPort": "8443"}] * 2,
+        None,
+    ):
+        container = {"NetworkSettings": {"Ports": {"8443/tcp": mapping}}}
+        assert not module.pinned_tls_gateway_health(
+            container, ca_file=ca, hostname="gateway.example.com",
+        )
+    good = {"NetworkSettings": {"Ports": {"8443/tcp": [{
+        "HostIp": "127.0.0.1", "HostPort": "8443"}]}}}
+    assert not module.pinned_tls_gateway_health(
+        good, ca_file=ca, hostname="bad..name",
+    )
+    link = tmp_path / "ca-link.pem"
+    link.symlink_to(ca)
+    assert not module.pinned_tls_gateway_health(
+        good, ca_file=link, hostname="gateway.example.com",
+    )
+
+
 def test_install_runs_automatic_doctor_even_when_guard_is_not_ready(tmp_path, monkeypatch, capsys):
     """Installer succeeds as an install but never falsely certifies Guard."""
     import sys

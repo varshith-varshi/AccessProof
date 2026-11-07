@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_all_releasers_require_the_identical_reviewed_gateway_digest():
-    expected = "ef85f28e48d4078d75cf128eb60adc87cd0962ef9fde86f1fd6a95f16ee7d159"
+    expected = "9db1c5a90e52e22097183c84c670a6dc71046d530a4c7627787d1344ba98ffc6"
     for relative in (
         "deploy/deployer/ship_production.sh",
         "deploy/ec2-release/deploy_web_only_on_ec2.sh",
@@ -34,9 +34,9 @@ def test_all_releasers_require_the_identical_reviewed_gateway_digest():
 def test_release_pin_validator_accepts_real_reviewed_zip_if_present():
     from scripts.verify_release_installer_pins import verify
 
-    archive = Path.home() / "Downloads/accessproof-gateway-connector-20261107-recovery-r52.zip"
+    archive = Path.home() / "Downloads/accessproof-gateway-connector-20261107-manual-tls-r54.zip"
     if archive.exists():
-        assert verify(archive) == "ef85f28e48d4078d75cf128eb60adc87cd0962ef9fde86f1fd6a95f16ee7d159"
+        assert verify(archive) == "9db1c5a90e52e22097183c84c670a6dc71046d530a4c7627787d1344ba98ffc6"
 
 
 def test_release_pin_validator_rejects_mismatched_server_pin(tmp_path):

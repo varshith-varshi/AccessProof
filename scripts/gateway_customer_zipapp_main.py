@@ -67,7 +67,58 @@ def verify_cached_payload(bundle: Path, destination: Path) -> None:
                         fail("Cached installer files differ from the downloaded ZIP.")
 
 
-def diagnose_local_gateway(*, project: str, gateway_container: str | None = None) -> tuple[bool, list[str]]:
+def pinned_tls_gateway_health(
+    container: dict, *, ca_file: Path, hostname: str,
+) -> bool:
+    """Read /health/ready over operator-pinned TLS and a loopback binding.
+
+    Local diagnostic evidence only, not cloud presence or certification.
+    """
+    import json
+    import re
+    import socket
+    import ssl
+
+    if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", hostname)
+            or ".." in hostname or hostname.endswith(".")
+            or ca_file.is_symlink() or not ca_file.is_file()
+            or not 0 < ca_file.stat().st_size <= 65536):
+        return False
+    mapped = ((container.get("NetworkSettings") or {}).get("Ports") or {}).get("8443/tcp")
+    if (not isinstance(mapped, list) or len(mapped) != 1
+            or mapped[0].get("HostIp") != "127.0.0.1"):
+        return False
+    port = mapped[0].get("HostPort")
+    if not isinstance(port, str) or not port.isdecimal() or not 1 <= int(port) <= 65535:
+        return False
+    try:
+        ctx = ssl.create_default_context(cafile=str(ca_file))
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=4) as raw:
+            with ctx.wrap_socket(raw, server_hostname=hostname) as tls:
+                tls.settimeout(4)
+                tls.sendall(
+                    b"GET /health/ready HTTP/1.1\r\nHost: " + hostname.encode("ascii")
+                    + b"\r\nConnection: close\r\nAccept: application/json\r\n\r\n"
+                )
+                data = b""
+                while len(data) <= 4096:
+                    chunk = tls.recv(min(4097 - len(data), 1024))
+                    if not chunk:
+                        break
+                    data += chunk
+        head, sep, body = data.partition(b"\r\n\r\n")
+        if not sep or len(data) > 4096 or not head.startswith(b"HTTP/1.1 200 "):
+            return False
+        payload = json.loads(body)
+        return isinstance(payload, dict) and payload.get("status") == "ok"
+    except (OSError, ValueError, UnicodeError, TypeError, ssl.SSLError):
+        return False
+
+
+def diagnose_local_gateway(
+    *, project: str, gateway_container: str | None = None,
+    gateway_ca_file: Path | None = None, gateway_hostname: str | None = None,
+) -> tuple[bool, list[str]]:
     """Read-only host diagnostics for the *selected Gateway*, never another Guard.
 
     Docker can report a running Gateway with no authenticated control-plane
@@ -77,6 +128,8 @@ def diagnose_local_gateway(*, project: str, gateway_container: str | None = None
     import json
 
     notes: list[str] = []
+    if (gateway_ca_file is None) != (gateway_hostname is None):
+        return False, ["Gateway TLS: both --gateway-ca-file and --gateway-hostname are required."]
     try:
         proc = subprocess.run(
             ["docker", "ps", "--format", "{{json .}}"],
@@ -151,6 +204,21 @@ def diagnose_local_gateway(*, project: str, gateway_container: str | None = None
                      "to THIS Gateway service, and check for a fresh dashboard heartbeat. "
                      "Never install a duplicate Gateway.")
 
+    # For existing HTTPS Gateways, require an operator-pinned CA, hostname,
+    # and loopback Docker port. No TLS verification bypass.
+    if gateway_ca_file is not None and gateway_hostname is not None:
+        tls_ready = pinned_tls_gateway_health(
+            container, ca_file=gateway_ca_file, hostname=gateway_hostname,
+        )
+        if tls_ready:
+            notes.append("Gateway-to-Guard: verified HTTPS readiness passed for this Gateway.")
+        else:
+            notes.append("Gateway-to-Guard: pinned HTTPS readiness failed (CA, hostname, "
+                         "loopback binding or Guard readiness).")
+        if "(unhealthy)" in state:
+            return False, notes
+        return tls_ready and presence_configured, notes
+
     # Probe inside the selected Gateway's own network namespace. An unrelated
     # Guard published on localhost:8080 could pass while this Gateway's actual
     # configured Guard is unresolvable or not ready.
@@ -195,9 +263,13 @@ except Exception:
     return docker_healthy and guard_ready and presence_configured, notes
 
 
-def run_doctor(*, gateway_container: str | None = None) -> int:
+def run_doctor(
+    *, gateway_container: str | None = None,
+    gateway_ca_file: Path | None = None, gateway_hostname: str | None = None,
+) -> int:
     ready, messages = diagnose_local_gateway(
         project=Path.cwd().resolve().name, gateway_container=gateway_container,
+        gateway_ca_file=gateway_ca_file, gateway_hostname=gateway_hostname,
     )
     print("AccessProof local preflight (read-only; never activates Protect):")
     for message in messages:
@@ -273,7 +345,15 @@ def main() -> None:
     parser.add_argument("--pairing-file", type=Path, default=Path.home() / "Downloads" / "accessproof-gateway-pairing.json")
     parser.add_argument("--compose", type=Path, help="Explicit Compose file (if multiple or not in project folder)")
     parser.add_argument("--gateway-container", help="Explicit existing Gateway container for a multi-project host")
+    parser.add_argument("--gateway-ca-file", type=Path, help="Trusted CA for an existing HTTPS Gateway (doctor only)")
+    parser.add_argument("--gateway-hostname", help="TLS certificate hostname of the existing HTTPS Gateway (doctor only)")
     args = parser.parse_args()
+    if (args.gateway_ca_file is not None or args.gateway_hostname is not None) and (
+        not args.doctor or args.gateway_ca_file is None
+        or args.gateway_hostname is None or not args.gateway_container
+    ):
+        fail("Pinned HTTPS diagnosis requires --doctor, --gateway-container, "
+             "--gateway-ca-file and --gateway-hostname together.")
     if sys.version_info < (3, 11):
         fail("Python 3.11+ is required.")
     if args.discover or args.plan or args.select:
@@ -300,7 +380,11 @@ def main() -> None:
     if args.doctor:
         if args.check or args.challenge_file:
             fail("Choose --doctor OR --check/--challenge-file, not both.")
-        raise SystemExit(run_doctor(gateway_container=args.gateway_container))
+        raise SystemExit(run_doctor(
+            gateway_container=args.gateway_container,
+            gateway_ca_file=args.gateway_ca_file,
+            gateway_hostname=args.gateway_hostname,
+        ))
     if args.challenge_file is not None:
         # This diagnostic must not require (or consume) a new pairing token.
         import json
