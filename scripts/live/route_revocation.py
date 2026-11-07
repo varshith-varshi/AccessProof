@@ -50,6 +50,12 @@ except urllib.error.HTTPError as e:
 
 HOLD = Path.home() / "Downloads/sharepoint-rag-lab/witness/ap-hold"
 
+_spec_profile = importlib.util.spec_from_file_location("_ap_route_revocation_profile", HERE / "_profile.py")
+_pm = importlib.util.module_from_spec(_spec_profile)
+_spec_profile.loader.exec_module(_pm)
+PROFILE = _pm.apply("route_revocation", globals())
+HOLD = Path(HOLD)
+
 
 def _ask(token: str, question: str, *, pause: bool = False) -> dict:
     """``pause`` holds the model answer with the lab bridge's hold marker

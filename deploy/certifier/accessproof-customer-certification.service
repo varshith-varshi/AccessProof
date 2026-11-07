@@ -1,0 +1,14 @@
+[Unit]
+Description=AccessProof source-scoped independent customer SharePoint certification
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=AWS_PROFILE=accessproof-certifier
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=%h/Projects/AccessProof-universal
+ExecStart=%h/Projects/AccessProof-universal/.venv/bin/python -u scripts/certifier/customer_certification.py --registrations %h/.config/accessproof/certifier/customer-registrations --execute
+TimeoutStartSec=3h
+NoNewPrivileges=yes
+UMask=0077

@@ -50,8 +50,12 @@ SOCKS = {a: Path.home() / f".ap-id/{a}.sock" for a in ("alice", "bob")}
 GUARD_CONTAINER = "accessproof-guard"
 import importlib.util as _ilu  # noqa: E402
 _ps = _ilu.spec_from_file_location("_ap_profile", LIVE / "_profile.py")
-_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
+_pm = _ilu.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
 PROFILE = _pm.apply("renew_source_certificate", globals())
+# Profiles are JSON, so socket and key paths require explicit conversion.
+SOCKS = {k: Path(v) for k, v in SOCKS.items()}
+EVIDENCE_HOME = Path(os.environ.get("AP_CERTIFIER_EVIDENCE_HOME", str(ROOT / "docs/evidence/certificate-renewals")))
 
 
 def log(msg: str) -> None:
@@ -89,7 +93,7 @@ def buffered_release(out: Path) -> None:
         rows.append({"test": r["test_identifier"], "gateway_decision_id": did, "layer1": l1[:1], "layer2": l2[:1],
                      "pass": bool(l1 and l2 and l1[0]["created_at"] <= l2[0]["created_at"] and r["observed"]["http_status"] == 200)})
     (out / "buffered-release.json").write_text(json.dumps({
-        "schema": "accessproof.buffered_release/v1", "observed_at": datetime.now(timezone.utc).isoformat(),
+        "schema": "accessproof.buffered_release/v1", "organization_id": ORG, "source_id": SOURCE, "application_id": APP, "observed_at": datetime.now(timezone.utc).isoformat(),
         "results": rows, "pass": bool(rows) and all(x["pass"] for x in rows)}, indent=1))
 
 
@@ -99,7 +103,7 @@ def identity_bindings(out: Path) -> None:
     ok = len(bindings) == 2 and all(b["oid_equals_source_principal"] and b["method"] == "directory_verified"
                                      and b["status"] == "VERIFIED" for b in bindings)
     (out / "identity-bindings.json").write_text(json.dumps({
-        "schema": "accessproof.identity_bindings_snapshot/v1", "observed_at": datetime.now(timezone.utc).isoformat(),
+        "schema": "accessproof.identity_bindings_snapshot/v1", "organization_id": ORG, "source_id": SOURCE, "observed_at": datetime.now(timezone.utc).isoformat(),
         "bindings": bindings, "pass": ok}, indent=1))
 
 
@@ -138,11 +142,12 @@ def main() -> int:
     cursors = ssm_ops.read_only("sync_cursors", organizationId=ORG, sourceId=SOURCE)
     if cursors.count(":connected") < 2:
         raise SystemExit(f"PRECONDITION_FAILED: source sync not healthy ({cursors})")
-    out = ROOT / "docs/evidence/certificate-renewals" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out.mkdir(parents=True, exist_ok=False)
+    out = ((EVIDENCE_HOME / ORG / SOURCE) if os.getenv("AP_SOURCE_BOUND_EVIDENCE") == "1" else EVIDENCE_HOME) / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out.mkdir(parents=True, mode=0o700, exist_ok=False)
+    os.chmod(out, 0o700)
     env = {"AP_TOKEN_KIND": "api_token"}
     run([str(LIVE / "sharepoint_effective_matrix.py"), "--out", str(out / "sharepoint-effective-matrix.json")], "effective_matrix")
-    run([str(LIVE / "layer1_matrix.py"), "--out", str(out / "layer1.json")], "layer1_matrix")
+    run([str(LIVE / "layer1_matrix.py"), "--sockets", str(SOCKS["alice"].parent), "--out", str(out / "layer1.json")], "layer1_matrix")
     identity_bindings(out)
     run([str(LIVE / "rag_e2e.py"), "--alice", str(SOCKS["alice"]), "--bob", str(SOCKS["bob"]), "--out", str(out / "rag-e2e.json")], "rag_e2e", env)
     buffered_release(out)

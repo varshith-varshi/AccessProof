@@ -45,6 +45,12 @@ FILES = {
 }
 G = "https://graph.microsoft.com/v1.0"
 
+_ps = importlib.util.spec_from_file_location("_ap_fixture_profile", HERE / "_profile.py")
+_pm = importlib.util.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("sharepoint_fixtures", globals())
+STATE = Path(STATE)
+
 
 def az(*args: str) -> str:
     return subprocess.run(["az", *args], check=True, capture_output=True, text=True).stdout.strip()

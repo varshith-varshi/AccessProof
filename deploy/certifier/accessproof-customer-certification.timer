@@ -1,0 +1,11 @@
+[Unit]
+Description=Check registered SharePoint sources for first-time certification and renewals
+
+[Timer]
+OnCalendar=*:0/30
+RandomizedDelaySec=60
+Persistent=true
+Unit=accessproof-customer-certification.service
+
+[Install]
+WantedBy=timers.target

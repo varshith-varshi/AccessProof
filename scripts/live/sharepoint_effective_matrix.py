@@ -10,6 +10,7 @@ it is tied to the immutable oid by the verified-employees record.
 from __future__ import annotations
 
 import argparse
+import importlib.util as _ilu
 import asyncio
 import hashlib
 import importlib.util
@@ -30,6 +31,8 @@ ei = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ei)
 
 CFG = Path.home() / ".config/accessproof"
+ORG = "48ee8c86-d4d8-4cde-b00b-bc779f965f4f"
+SOURCE = "2fa9562b-b765-4098-bebf-222ea53ec667"
 SITE = "https://neuralmatrix093.sharepoint.com/sites/AccessProof-Validation-20261027"
 EXPECTED = {
     "alice": {"finance_alice.txt": True, "engineering_bob.txt": False, "shared_control.txt": True,
@@ -38,13 +41,22 @@ EXPECTED = {
             "group_finance_alice.txt": False, "inherited_finance_alice.txt": False},
 }
 
+PEOPLE_FILE = CFG / "sharepoint-rest-validation/synthetic-verified-employees.json"
+SHAREPOINT_CERT_DIR = CFG / "sharepoint-rest-validation"
+GRAPH_REGISTRATION = CFG / "entra-app-registration.json"
+FIXTURE_STATE = CFG / "lab-fixtures.json"
+_ps = _ilu.spec_from_file_location("_ap_effective_profile", Path(__file__).with_name("_profile.py"))
+_pm = _ilu.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("sharepoint_effective_matrix", globals())
+
 
 def list_items() -> dict[str, tuple[str, int]]:
     """document -> (list guid, list item id), resolved with the AccessProof app."""
     with httpx.Client(timeout=30, trust_env=False) as http:
         h = {"Authorization": "Bearer " + ei._app_only_token(http)}
         drive, items = ei.item_refs(http)
-        st = json.loads((CFG / "lab-fixtures.json").read_text())
+        st = json.loads(Path(FIXTURE_STATE).read_text())
         items["inherited_finance_alice.txt"] = st["inherited_file_id"]
         out = {}
         for name, iid in items.items():
@@ -55,11 +67,11 @@ def list_items() -> dict[str, tuple[str, int]]:
 
 
 async def effective(items: dict[str, tuple[str, int]], people: dict) -> list[dict]:
-    reg = json.loads((CFG / "entra-app-registration.json").read_text())
-    private = CFG / "sharepoint-rest-validation"
+    reg = json.loads(Path(GRAPH_REGISTRATION).read_text())
+    private = Path(SHAREPOINT_CERT_DIR)
     async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
         token = await sharepoint_rest_app_token(
-            tenant_id=reg["home_tenant"], client_id=reg["client_id"], sharepoint_host="neuralmatrix093.sharepoint.com",
+            tenant_id=reg["home_tenant"], client_id=reg["client_id"], sharepoint_host=__import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(SITE).hostname,
             private_key_file=private / "client-private.pem", certificate_der_file=private / "client-public.cer",
             client=client)
         probe = SharePointEffectiveAccessProbe(site_url=SITE, sharepoint_access_token=token, client=client)
@@ -81,9 +93,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--out", required=True)
     a = p.parse_args()
-    people = json.loads((CFG / "sharepoint-rest-validation/synthetic-verified-employees.json").read_text())
+    people = json.loads(Path(PEOPLE_FILE).read_text())
     rows = asyncio.run(effective(list_items(), people))
     body = json.dumps({"schema": "accessproof.sharepoint_effective_matrix/v1",
+                       "organization_id": ORG, "source_id": SOURCE, "tenant_id": ei.TENANT, "site_url": SITE,
                        "method": "SharePoint REST ListItem.GetUserEffectivePermissions (app-only certificate)",
                        "results": rows, "pass": all(r["pass"] for r in rows)}, indent=1)
     Path(a.out).write_text(body)

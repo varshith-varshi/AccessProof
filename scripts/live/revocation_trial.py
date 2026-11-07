@@ -57,7 +57,7 @@ sem = _load("sharepoint_effective_matrix")
 def sharepoint_effective_view(document: str, actor: str = "alice") -> bool:
     """SharePoint's own verdict (GetUserEffectivePermissions) for this employee."""
     import asyncio
-    people = json.loads((Path.home() / ".config/accessproof/sharepoint-rest-validation/synthetic-verified-employees.json").read_text())
+    people = json.loads((Path(sem.PEOPLE_FILE)).read_text())
     items = sem.list_items()
     if document not in items:
         return False  # deleted: nothing to view
@@ -79,10 +79,13 @@ RECOVERY = Path.home() / ".config/accessproof/revocation-recovery.json"
 
 import importlib.util as _ilu  # noqa: E402
 _ps = _ilu.spec_from_file_location("_ap_profile", Path(__file__).resolve().parent / "_profile.py")
-_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
-PROFILE = _pm.apply("revocation_trial", globals())
+_pm = _ilu.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
 TRIALS = {"A": "finance_alice.txt", "B": "group_finance_alice.txt",
           "C": "inherited_finance_alice.txt", "D": "delete_canary_alice.txt"}
+RAG_CONTAINER = "sharepoint-rag-lab-rag-1"
+PROFILE = _pm.apply("revocation_trial", globals())
+RECOVERY = Path(RECOVERY)
 G = fx.G
 
 
@@ -145,7 +148,7 @@ def indexed_version(resource_id: str) -> str | None:
     """The document version the lab RAG indexed (what the Gateway sends since r31)."""
     code = ("import sqlite3;c=sqlite3.connect('file:/data/index.db?mode=ro',uri=True);"
             f"r=c.execute(\"select max(version) from chunks where doc_id='{resource_id}'\").fetchone();print(r[0] or '')")
-    out = subprocess.run(["docker", "exec", "sharepoint-rag-lab-rag-1", "python", "-c", code],
+    out = subprocess.run(["docker", "exec", RAG_CONTAINER, "python", "-c", code],
                          capture_output=True, text=True).stdout.strip()
     return out or None
 
@@ -338,7 +341,7 @@ def main() -> int:
     if baseline["guard"] != "ALLOW" or not baseline["sharepoint_effective_view"]:
         print("baseline is not ALLOW through the Guard; refusing to revoke", file=sys.stderr)
         return 1
-    result = {"schema": "accessproof.revocation_trial/v1", "trial": a.trial, "document": t.doc,
+    result = {"schema": "accessproof.revocation_trial/v1", "organization_id": ORG, "source_id": SOURCE, "application_id": APP, "trial": a.trial, "document": t.doc,
               "item_id": item, "baseline": baseline, "phases": []}
     def save() -> str:
         # Written after every phase and on any failure: a lost token session or

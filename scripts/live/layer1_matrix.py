@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import os
 import subprocess
 import sys
 import time
@@ -31,19 +30,24 @@ spec.loader.exec_module(ei)
 
 GUARD = "http://127.0.0.1:8080/guard/v1/filter-resources"
 APP = "sharepoint-rag-staging"
+ORG = "48ee8c86-d4d8-4cde-b00b-bc779f965f4f"
 SRC = "2fa9562b-b765-4098-bebf-222ea53ec667"
 GUARD_CONTAINER = "accessproof-guard"
+RAG_CONTAINER = "sharepoint-rag-lab-rag-1"
+FIXTURE_STATE = Path.home() / ".config/accessproof/lab-fixtures.json"
 
 import importlib.util as _ilu  # noqa: E402
 _ps = _ilu.spec_from_file_location("_ap_profile", Path(__file__).resolve().parent / "_profile.py")
-_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
-PROFILE = _pm.apply("layer1_matrix", globals())
+_pm = _ilu.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
 EXPECT = {
     "alice": {"finance_alice.txt": "ALLOW", "engineering_bob.txt": "DENY", "shared_control.txt": "ALLOW",
               "group_finance_alice.txt": "ALLOW", "inherited_finance_alice.txt": "ALLOW"},
     "bob": {"finance_alice.txt": "DENY", "engineering_bob.txt": "ALLOW", "shared_control.txt": "ALLOW",
             "group_finance_alice.txt": "DENY", "inherited_finance_alice.txt": "DENY"},
 }
+
+PROFILE = _pm.apply("layer1_matrix", globals())
 
 
 def now() -> str:
@@ -54,7 +58,7 @@ def indexed_versions() -> dict[str, str]:
     """Document versions exactly as the lab RAG indexed them (what a real RAG sends)."""
     code = ("import sqlite3,json;c=sqlite3.connect('file:/data/index.db?mode=ro',uri=True);"
             "print(json.dumps(dict(c.execute('select doc_id, max(version) from chunks group by doc_id').fetchall())))")
-    out = subprocess.run(["docker", "exec", "sharepoint-rag-lab-rag-1", "python", "-c", code],
+    out = subprocess.run(["docker", "exec", RAG_CONTAINER, "python", "-c", code],
                          capture_output=True, text=True, check=True).stdout
     return json.loads(out)
 
@@ -87,7 +91,7 @@ def main() -> int:
     a = p.parse_args()
     with httpx.Client(timeout=30, trust_env=False) as h:
         _drive, items = ei.item_refs(h)
-    fixtures = json.load(open(os.path.expanduser("~/.config/accessproof/lab-fixtures.json")))
+    fixtures = json.load(open(str(FIXTURE_STATE)))
     items["inherited_finance_alice.txt"] = fixtures["inherited_file_id"]
     VERSIONS.update(indexed_versions())
     rows, controls = [], []
@@ -122,7 +126,7 @@ def main() -> int:
             print(f"{actor:5s} control {kind:28s} HTTP {status} {'PASS' if ok else 'FAIL'}")
     image = subprocess.run(["docker", "inspect", "-f", "{{.Config.Image}}", GUARD_CONTAINER],
                            capture_output=True, text=True).stdout.strip()
-    out = {"schema": "accessproof.layer1_guard_matrix/v3", "content_versions": "as indexed by the lab RAG (Graph eTag)", "guard_image": image, "generated_at": now(),
+    out = {"schema": "accessproof.layer1_guard_matrix/v3", "organization_id": ORG, "source_id": SRC, "application_id": APP, "content_versions": "as indexed by the lab RAG (Graph eTag)", "guard_image": image, "generated_at": now(),
            "token": "Entra v2 user-delegated access token for the RAG API (scp=access_as_user); "
                     "identity via automatic directory_verified binding",
            "results": rows, "negative_controls": controls,

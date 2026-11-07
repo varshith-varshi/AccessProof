@@ -30,6 +30,9 @@ spec = importlib.util.spec_from_file_location("ei", HERE / "employee_identity.py
 ei = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ei)
 
+ORG = "48ee8c86-d4d8-4cde-b00b-bc779f965f4f"
+SOURCE = "2fa9562b-b765-4098-bebf-222ea53ec667"
+APP = "sharepoint-rag-staging"
 RAG = "sharepoint-rag-lab-rag-1"
 GUARD = "accessproof-guard"
 RAG_ROUTE = "/chat/protected"
@@ -37,8 +40,8 @@ TAMPER_VIA_GATEWAY = None   # profile: {"url","sni","ca","client_id","secret_fil
 
 import importlib.util as _ilu  # noqa: E402
 _ps = _ilu.spec_from_file_location("_ap_profile", Path(__file__).resolve().parent / "_profile.py")
-_pm = _ilu.module_from_spec(_ps); _ps.loader.exec_module(_pm)
-PROFILE = _pm.apply("rag_e2e", globals())
+_pm = _ilu.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
 WITNESS = Path.home() / "Downloads/sharepoint-rag-lab/witness/model-context.jsonl"
 CANARY = {
     "finance_alice.txt": "ACCESSPROOF_SYNTHETIC_FINANCE_ALICE_20261027_X51",
@@ -59,6 +62,9 @@ CHECKS = [
     ("E2E-05", "alice", "shared", "ALLOW", "shared_control.txt"),
     ("E2E-06", "bob", "shared", "ALLOW", "shared_control.txt"),
 ]
+
+PROFILE = _pm.apply("rag_e2e", globals())
+WITNESS = Path(WITNESS)
 
 _CALL = r'''
 import json, sys, urllib.request, urllib.error
@@ -122,7 +128,13 @@ def witness_since(start: int) -> list[dict]:
 def _tamper_via_gateway(stdin: dict) -> dict:
     """Remote-mode Gateway: the tampered request must be a VALIDLY SIGNED application
     request (otherwise it would be rejected for authentication, not provenance)."""
-    import base64, hashlib, hmac, secrets as _s, socket, ssl, uuid as _u
+    import base64
+    import hashlib
+    import hmac
+    import secrets as _s
+    import socket
+    import ssl
+    import uuid as _u
     cfg = TAMPER_VIA_GATEWAY
     m = json.loads(Path(cfg["manifest"]).read_text())
     name_to_id = {d["name"]: d["resource_id"] for d in m["documents"]}
@@ -250,7 +262,7 @@ def main() -> int:
             print(cid, results[-1]["status"], json.dumps(results[-1]["observed"]), flush=True)
             if cid == "E2E-10":
                 time.sleep(30)  # let the Guard resync before anything else runs
-    body = json.dumps({"schema": "accessproof.rag_e2e/v1", "generated_at": now(), "results": results}, indent=1)
+    body = json.dumps({"schema": "accessproof.rag_e2e/v1", "organization_id": ORG, "source_id": SOURCE, "application_id": APP, "generated_at": now(), "results": results}, indent=1)
     Path(a.out).write_text(body)
     print("sha256", hashlib.sha256(body.encode()).hexdigest())
     return 0 if all(r["status"] == "PASS" for r in results) else 1

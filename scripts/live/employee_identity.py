@@ -21,6 +21,7 @@ to stdout for a pipe and refuses to write to a terminal).
 from __future__ import annotations
 
 import argparse
+import importlib.util as _ilu
 import base64
 import hashlib
 import json
@@ -59,6 +60,14 @@ EXPECTED = {
     "bob": {"finance_alice.txt": "DENY", "engineering_bob.txt": "ALLOW", "shared_control.txt": "ALLOW"},
 }
 APP_ONLY_CONFIG = Path.home() / ".config/accessproof/entra-client-secret.json"
+
+# Bind a new customer to their own tenant, users and test site; defaults are
+# reference-only and never sufficient for independent source certification.
+_ps = _ilu.spec_from_file_location("_ap_identity_profile", Path(__file__).with_name("_profile.py"))
+_pm = _ilu.module_from_spec(_ps)
+_ps.loader.exec_module(_pm)
+PROFILE = _pm.apply("employee_identity", globals())
+APP_ONLY_CONFIG = Path(APP_ONLY_CONFIG)
 
 
 class IdentityFailure(RuntimeError):

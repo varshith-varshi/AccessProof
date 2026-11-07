@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -36,12 +37,34 @@ FRESH = {
     "buffered-release-r30.json": "buffered-release.json",
 }
 _FRESH_DIR: Path | None = None
+_BOUND_ORG = ""
+_BOUND_SOURCE = ""
 
 
 def load(name: str) -> tuple[dict, str]:
     path = (_FRESH_DIR / FRESH[name]) if _FRESH_DIR is not None else (M / name)
     raw = path.read_bytes()
-    return json.loads(raw), hashlib.sha256(raw).hexdigest()
+    artifact = json.loads(raw)
+    if os.getenv("AP_SOURCE_BOUND_EVIDENCE") == "1":
+        if artifact.get("organization_id") != _BOUND_ORG or artifact.get("source_id") != _BOUND_SOURCE:
+            raise ValueError(f"EVIDENCE_ARTIFACT_SOURCE_MISMATCH:{name}")
+        if name == "sharepoint-effective-matrix.json":
+            expected = json.loads(os.environ["AP_EXPECTED_EMPLOYEE_OIDS_JSON"])
+            if ({"alice", "bob"} != set(expected) or
+                    not artifact.get("results") or any(
+                        row.get("object_id") != expected.get(row.get("actor"))
+                        for row in artifact["results"]
+                    )):
+                raise ValueError("EFFECTIVE_MATRIX_EMPLOYEE_OIDS_MISMATCH")
+            if (artifact.get("tenant_id") != os.environ["AP_EXPECTED_SOURCE_TENANT_ID"]
+                    or artifact.get("site_url") != os.environ["AP_EXPECTED_CANARY_SITE_URL"]):
+                raise ValueError("EFFECTIVE_MATRIX_SITE_OR_TENANT_MISMATCH")
+        if name == "identity-bindings-r30.json":
+            expected = set(json.loads(os.environ["AP_EXPECTED_EMPLOYEE_OIDS_JSON"]).values())
+            actual = {row.get("oidc_subject_oid") for row in artifact.get("bindings", [])}
+            if actual != expected:
+                raise ValueError("DIRECTORY_BINDING_EMPLOYEE_OIDS_MISMATCH")
+    return artifact, hashlib.sha256(raw).hexdigest()
 
 
 def latest(*stamps: str | None) -> str:
@@ -52,7 +75,7 @@ def checks() -> list[dict]:
     out: list[dict] = []
 
     def add(code: str, ok: bool, artifact: str, sha: str, observed_at: str, detail: str) -> None:
-        where = str((_FRESH_DIR / FRESH[artifact]).relative_to(ROOT)) if _FRESH_DIR is not None else f"docs/evidence/live-2026-11-03/matrix/{artifact}"
+        where = str(_FRESH_DIR / FRESH[artifact]) if _FRESH_DIR is not None else f"docs/evidence/live-2026-11-03/matrix/{artifact}"
         out.append({"code": code, "status": "PASS" if ok else "FAIL", "artifact": where,
                     "artifact_sha256": sha, "observed_at": observed_at, "detail": detail})
 
@@ -132,6 +155,8 @@ def main() -> int:
     a = p.parse_args()
     global _FRESH_DIR
     _FRESH_DIR = Path(a.dir).resolve() if a.dir else None
+    global _BOUND_ORG, _BOUND_SOURCE
+    _BOUND_ORG, _BOUND_SOURCE = a.organization_id, a.source_id
     found = checks()
     evidence = {"schema": EVIDENCE_SCHEMA, "organization_id": a.organization_id, "source_id": a.source_id,
                 "profile": a.profile, "scope_digest": a.scope_digest, "checks": found}
