@@ -630,7 +630,10 @@ def main(argv: list[str] | None = None) -> int:
                     if enable_gateway_presence(claim, local, Path(local["installation_dir"])):
                         print("RAG routes and all other containers were not changed.")
                     else:
+                        print("SETUP_INCOMPLETE: the existing Gateway has not resumed authenticated heartbeats.",
+                              file=sys.stderr)
                         print("No other Docker containers or RAG routes changed.")
+                        return 2
                 else:
                     # D-17: a Gateway without installer metadata used to lose the
                     # claim-issued heartbeat credential, so it could never report
@@ -639,11 +642,19 @@ def main(argv: list[str] | None = None) -> int:
                     print("No Docker containers or RAG routes changed.")
                     if saved is not None:
                         print(f"Heartbeat credential saved privately to {saved} (mode 0600).")
-                        print("Add these variables to THIS Gateway's environment and recreate only "
-                              "the Gateway. Live status shows DISCONNECTED until heartbeats arrive.")
+                        print("SETUP_INCOMPLETE: this manually managed Gateway has no verified "
+                              "installer-managed Compose override. The credential was NOT installed "
+                              "into its running process. Add this private env file to THIS "
+                              "Gateway service only, then recreate only the Gateway and verify "
+                              "the dashboard's authenticated heartbeat.", file=sys.stderr)
                     else:
-                        print("Control plane did not issue a Gateway heartbeat credential; "
-                              "live status will show UNKNOWN.")
+                        print("SETUP_INCOMPLETE: the control plane did not issue a Gateway "
+                              "heartbeat credential. No live connection has been verified.",
+                              file=sys.stderr)
+                    # A successful pairing claim is NOT a successful live
+                    # Gateway connection. Keep the receipt and encrypted key,
+                    # but exit nonzero until the operator completes adoption.
+                    return 2
                 for message in summarize_automatic_verification(claim):
                     print(message)
                 return 0
@@ -763,7 +774,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = read_private_json(Path(result["installation"]))
         claim = report_claim(pairing, manifest)
         print("Gateway installed and paired:", claim["state"])
-        enable_gateway_presence(claim, manifest, Path(result["installation"]).parent)
+        presence_enabled = enable_gateway_presence(claim, manifest, Path(result["installation"]).parent)
         try:
             exported = publish_installation_manifest(Path(result["installation"]), pairing["application_id"])
             print("Gateway verification manifest saved to Downloads:", exported)
@@ -774,6 +785,11 @@ def main(argv: list[str] | None = None) -> int:
         for message in summarize_automatic_verification(claim):
             print(message)
         print("No RAG route cutover has occurred.")
+        if not presence_enabled:
+            print("SETUP_INCOMPLETE: pairing was recorded, but authenticated Gateway "
+                  "heartbeat delivery was not established. Check the existing Gateway "
+                  "Compose service; no protection has been certified.", file=sys.stderr)
+            return 2
         return 0
     except (ConnectError, DiscoveryError, SelectionPlanError, IntegrationWizardError, ValueError, OSError, KeyError) as exc:
         guidance = {

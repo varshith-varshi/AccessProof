@@ -26,12 +26,13 @@ def _run(monkeypatch, tmp_path, capsys, presence):
     pairing.write_text("{}")
     out = tmp_path / "out"
     rc = cc.main(["--pairing-file", str(pairing), "--adopt-existing", "--approve-install", "--output", str(out)])
-    return rc, out, capsys.readouterr().out, called
+    messages = capsys.readouterr()
+    return rc, out, messages.out, called, messages.err
 
 
 def test_manual_gateway_credential_is_saved_privately(monkeypatch, tmp_path, capsys):
-    rc, out, printed, called = _run(monkeypatch, tmp_path, capsys, PRESENCE)
-    assert rc == 0 and not called  # no Docker recreate for a non-installer Gateway
+    rc, out, printed, called, errors = _run(monkeypatch, tmp_path, capsys, PRESENCE)
+    assert rc == 2 and not called  # no Docker recreate; unconnected must not report success
     env = out / "gateway-presence.env"
     assert env.is_file()
     assert stat.S_IMODE(env.stat().st_mode) == 0o600 and stat.S_IMODE(out.stat().st_mode) == 0o700
@@ -40,9 +41,12 @@ def test_manual_gateway_credential_is_saved_privately(monkeypatch, tmp_path, cap
     assert "ACCESSPROOF_GATEWAY_PRESENCE_INSTALLATION_ID=inst-1" in body
     assert "never-printed-heartbeat-credential" not in printed
     assert "saved privately" in printed
+    assert "SETUP_INCOMPLETE" in errors
+    assert "No Docker containers or RAG routes changed" in printed
 
 
 def test_no_credential_issued_reports_unknown(monkeypatch, tmp_path, capsys):
-    rc, out, printed, _ = _run(monkeypatch, tmp_path, capsys, None)
-    assert rc == 0 and not (out / "gateway-presence.env").exists()
-    assert "UNKNOWN" in printed
+    rc, out, printed, _, errors = _run(monkeypatch, tmp_path, capsys, None)
+    assert rc == 2 and not (out / "gateway-presence.env").exists()
+    assert "SETUP_INCOMPLETE" in errors
+    assert "Existing Gateway paired" in printed

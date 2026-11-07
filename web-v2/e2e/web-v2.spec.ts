@@ -727,14 +727,16 @@ test("Durable installation history survives missing temporary Redis pairing rece
   await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
   await page.route("**/api/v1/current/ai-applications/finance-rag/gateway-pairing", route => route.fulfill({
     json: { state: "installation_reported_historical", live_gateway_verified: false,
-      received_at: "2026-11-01T18:45:14Z", production_certification: false },
+      received_at: "2026-11-01T18:45:14Z", production_certification: false,
+      gateway_connectivity: { connection: "DISCONNECTED", enforcement_ready_reported: false,
+        heartbeat_age_seconds: 84440, reason: "HEARTBEAT_EXPIRED" } },
   }));
   await page.route("**/api/v1/current/ai-applications/finance-rag/verification-run", route => route.fulfill({
     json: { run_id: "run", state: "PENDING",
       guard: { connectivity: "CONNECTED", security_readiness: "DEGRADED", heartbeat_age_seconds: 1.2 } },
   }));
   await page.route("**/api/v1/current/ai-applications/finance-rag/protection/status", route => route.fulfill({
-    json: { route_certificate: { certified: false, status: "MISSING" },
+    json: { route_certificate: { certified: false, status: "EXPIRED" },
       checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
         reason: "Microsoft SharePoint effective rights not certified." }] },
   }));
@@ -744,11 +746,14 @@ test("Durable installation history survives missing temporary Redis pairing rece
   await expect(review.getByText("Previously installed", { exact: true })).toBeVisible();
   await expect(review.getByText(/Durable installation record found/)).toBeVisible();
   await expect(review.getByText(/Historical installation needs fresh verification/)).toBeVisible();
+  await expect(review.getByRole("status", { name: "Gateway heartbeat recovery" })).toBeVisible();
+  await expect(review.getByText(/Do not create a second Gateway/)).toBeVisible();
+  await expect(review.getByRole("status", { name: "Expired route certificate" })).toBeVisible();
   await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
   await expect(review.getByText("Not certified", { exact: true })).toBeVisible();
   await expect(review.getByText("Microsoft SharePoint effective rights not certified.")).toBeVisible();
   await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
-  await expect(review.getByRole("link", { name: "Get Started" }))
+  await expect(review.getByRole("link", { name: "Get Started" }).first())
     .toHaveAttribute("href", "/onboarding?application=finance-rag");
 });
 

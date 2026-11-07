@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from apps.api.accessproof_api.app import app
+from apps.api.accessproof_api import gateway_presence
 from apps.api.accessproof_api.db import (
     Base, engine, SessionLocal, AIApplication, GuardRegistration, GuardAuditEvent,
     ProviderSyncCursor, GuardPolicy, GuardPolicyDistribution, SourceConnection,
@@ -74,6 +75,29 @@ def test_machine_proof_requires_current_guard_audits_and_real_ack():
         prefix = f"/api/v1/current/ai-applications/{APP}/protection"
         preflight = client.post(prefix + "/enable", headers=owner)
         assert preflight.status_code == 202, preflight.text
+        # The real challenge API refuses historical installer receipts and
+        # requires current, authenticated Gateway presence. Exercise both
+        # the negative path and the exact machine-bound successful path.
+        missing_gateway = client.post(prefix + "/challenge", headers=owner, json={
+            "deployment_sha256": DEPLOY, "route_sha256": ROUTE,
+        })
+        assert missing_gateway.status_code == 409
+        assert missing_gateway.json()["detail"] == "LIVE_ENFORCEMENT_READY_GATEWAY_REQUIRED"
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(AIApplication.application_id == APP))
+            installation, presence_credential = gateway_presence.issue_installation(
+                db, row, deployment_sha256=DEPLOY, route_sha256=ROUTE,
+            )
+            installation_id = installation.id
+            db.commit()
+        presence = client.post(
+            "/api/v1/gateway-installations/heartbeat",
+            headers={"Authorization": "Bearer " + presence_credential},
+            json={"organization_id": org, "installation_id": installation_id,
+                  "application_id": APP, "route_sha256": ROUTE, "sequence": 1,
+                  "version": "gateway-test-v1", "ready": True},
+        )
+        assert presence.status_code == 200, presence.text
         started = client.post(prefix + "/challenge", headers=owner, json={
             "deployment_sha256": DEPLOY, "route_sha256": ROUTE,
         })

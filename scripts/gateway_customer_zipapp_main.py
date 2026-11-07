@@ -68,9 +68,13 @@ def verify_cached_payload(bundle: Path, destination: Path) -> None:
 
 
 def diagnose_local_gateway(*, project: str, gateway_container: str | None = None) -> tuple[bool, list[str]]:
-    """Read-only, no pairing token, no Protect mutation. Host-local signals only."""
+    """Read-only host diagnostics for the *selected Gateway*, never another Guard.
+
+    Docker can report a running Gateway with no authenticated control-plane
+    heartbeat, and an unrelated local Guard may be healthy while the Gateway's
+    configured Guard is unavailable. Neither state is proof of Protect.
+    """
     import json
-    import http.client
 
     notes: list[str] = []
     try:
@@ -80,55 +84,115 @@ def diagnose_local_gateway(*, project: str, gateway_container: str | None = None
         )
         rows = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
     except (OSError, subprocess.SubprocessError, ValueError):
-        return False, ["Docker is unavailable. Start Docker and check your local access permissions."]
+        return False, ["Docker is unavailable. Check the customer host's Docker access."]
+
     candidates = [
         row for row in rows
-        if "accessproof-gateway" in str(row.get("Names", ""))
-        and (gateway_container and row.get("Names") == gateway_container
-             or not gateway_container and (
-                 str(row.get("Names", "")).startswith(project + "-")
-                 or str(row.get("Names", "")) == project + "_accessproof-gateway_1"
-             ))
+        if (
+            (gateway_container is not None and row.get("Names") == gateway_container)
+            or (gateway_container is None
+                and "accessproof-gateway" in str(row.get("Names", ""))
+                and (
+                    str(row.get("Names", "")).startswith(project + "-")
+                    or str(row.get("Names", "")) == project + "_accessproof-gateway_1"
+                ))
+        )
     ]
     if len(candidates) != 1:
-        notes.append(
+        return False, [
             "Gateway: no unique running Gateway found for this RAG project. "
-            "Run from its Docker Compose directory or choose --gateway-container NAME."
-        )
+            "Run from the matching Compose directory or select --gateway-container NAME. "
+            "Never adopt a different application's Gateway."
+        ]
+
+    name = str(candidates[0].get("Names"))
+    state = str(candidates[0].get("Status", "")).lower()
+    docker_healthy = "(healthy)" in state
+    if docker_healthy:
+        notes.append("Gateway: Docker healthcheck passed (not proof of live enrollment).")
+    elif "(unhealthy)" in state:
+        notes.append("Gateway: Docker healthcheck is UNHEALTHY; inspect its configured Guard.")
     else:
-        row = candidates[0]
-        # This is a *liveness* signal, not attested route verification.
-        state = str(row.get("Status", "")).lower()
-        if "(healthy)" in state:
-            notes.append("Gateway: running and Docker reports healthy (not a Protect certificate).")
-        else:
-            notes.append("Gateway: not healthy; inspect the customer Gateway container.")
+        notes.append("Gateway: no healthy Docker status established; local Guard checks still required.")
+
     try:
-        connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=4)
-        connection.request("GET", "/health")
-        response = connection.getresponse()
-        body = response.read(8193)
-        connection.close()
-        if response.status != 200 or len(body) > 8192:
-            raise ValueError("Guard readiness response invalid")
-        health = json.loads(body)
-    except (OSError, ValueError, KeyError):
-        notes.append("Guard: cannot get local readiness from 127.0.0.1:8080/health. Check Guard installation.")
+        inspected = subprocess.run(
+            ["docker", "inspect", "--type", "container", name],
+            capture_output=True, text=True, check=True, timeout=8,
+        )
+        values = json.loads(inspected.stdout)
+        if not isinstance(values, list) or len(values) != 1:
+            raise ValueError("Invalid Docker inspection")
+        container = values[0]
+        # Never print or export environment values; these may hold secrets.
+        entries = container.get("Config", {}).get("Env", [])
+        if not isinstance(entries, list):
+            raise ValueError("Invalid Gateway environment")
+        env = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in entries
+               if isinstance(item, str) and "=" in item}
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return False, notes + ["Gateway: cannot safely inspect enrollment configuration."]
+
+    if not env.get("ACCESSPROOF_GATEWAY_APPLICATION_ID"):
+        return False, notes + ["Gateway: selected Docker container has no application binding."]
+    keys = (
+        "ACCESSPROOF_GATEWAY_PRESENCE_CONTROL_PLANE_URL",
+        "ACCESSPROOF_GATEWAY_PRESENCE_ORGANIZATION_ID",
+        "ACCESSPROOF_GATEWAY_PRESENCE_INSTALLATION_ID",
+        "ACCESSPROOF_GATEWAY_PRESENCE_CREDENTIAL",
+        "ACCESSPROOF_GATEWAY_PRESENCE_ROUTE_SHA256",
+    )
+    presence_configured = all(env.get(key) for key in keys)
+    if presence_configured:
+        notes.append("Gateway heartbeat: locally configured; check the dashboard for a fresh authenticated receipt.")
     else:
-        if health.get("ready") is True and health.get("status") == "ok":
-            notes.append("Guard: ready (current policy, source health and bound applications).")
-        elif health.get("policy_fresh") is False:
-            notes.append("Guard: source policy stale. Restore Guard synchronization and check the source connection.")
-        elif health.get("sync_error"):
-            notes.append("Guard: sync failed; inspect Guard sync diagnostics.")
+        notes.append("Gateway heartbeat: NOT CONFIGURED for this container. "
+                     "Adopt or re-pair this existing installation, apply the private credential "
+                     "to THIS Gateway service, and check for a fresh dashboard heartbeat. "
+                     "Never install a duplicate Gateway.")
+
+    # Probe inside the selected Gateway's own network namespace. An unrelated
+    # Guard published on localhost:8080 could pass while this Gateway's actual
+    # configured Guard is unresolvable or not ready.
+    probe = """import json
+import urllib.error
+import urllib.request
+url = "http://127.0.0.1:8090/health/ready"
+try:
+    with urllib.request.urlopen(url, timeout=4) as response:
+        print(json.dumps({"status": response.status, "body": response.read(2048).decode()}))
+except urllib.error.HTTPError as exc:
+    print(json.dumps({"status": exc.code, "body": exc.read(2048).decode()}))
+except Exception:
+    print(json.dumps({"status": 0}))
+"""
+    try:
+        checked = subprocess.run(
+            ["docker", "exec", name, "python3", "-c", probe],
+            capture_output=True, text=True, check=True, timeout=8,
+        )
+        result = json.loads(checked.stdout)
+        status = result.get("status")
+        if status == 200 and json.loads(result.get("body", "{}")).get("status") == "ok":
+            guard_ready = True
+            notes.append("Gateway-to-Guard: enforcement readiness passed for this Gateway.")
         else:
-            notes.append(
-                "Guard: NOT READY despite its policy version. Check source ACL certification, "
-                "bound applications, and cloud readiness checks; do not bypass this condition."
-            )
-    ready = len(candidates) == 1 and "(healthy)" in str(candidates[0].get("Status", "")).lower() \
-        and any(note.startswith("Guard: ready") for note in notes)
-    return ready, notes
+            guard_ready = False
+            response = json.loads(result.get("body", "{}"))
+            code = response.get("detail") if isinstance(response, dict) else None
+            if code == "GUARD_UNAVAILABLE":
+                notes.append("Gateway-to-Guard: GUARD_UNAVAILABLE; inspect its Docker DNS and Guard network.")
+            elif code == "GUARD_NOT_READY":
+                notes.append("Gateway-to-Guard: GUARD_NOT_READY; inspect the app-bound Guard policy and sync.")
+            else:
+                notes.append("Gateway-to-Guard: not ready; investigate this Gateway's /health/ready response.")
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
+        guard_ready = False
+        notes.append("Gateway-to-Guard: cannot verify the selected Gateway's internal readiness.")
+
+    # Local readiness is not cloud connectivity; even a true result must never
+    # be presented as a certified or activated protected route.
+    return docker_healthy and guard_ready and presence_configured, notes
 
 
 def run_doctor(*, gateway_container: str | None = None) -> int:

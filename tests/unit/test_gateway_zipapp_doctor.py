@@ -10,57 +10,99 @@ spec = importlib.util.spec_from_file_location("gateway_zipapp_main", PATH)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
-class FakeHTTP:
-    def __init__(self, response):
-        self.response = response
-    def request(self, method, path):
-        assert (method, path) == ("GET", "/health")
-    def getresponse(self):
-        return self.response
-    def close(self):
-        pass
+def check(
+    health: dict, *,
+    status: str = "Up 1 hour (healthy)",
+    name: str = "sharepoint-rag-lab-accessproof-gateway-1",
+    presence: bool = True,
+    requested: str | None = None,
+):
+    env = ["ACCESSPROOF_GATEWAY_APPLICATION_ID=demo-rag"]
+    if presence:
+        env.extend([
+            "ACCESSPROOF_GATEWAY_PRESENCE_CONTROL_PLANE_URL=https://api.accessproof.in",
+            "ACCESSPROOF_GATEWAY_PRESENCE_ORGANIZATION_ID=org",
+            "ACCESSPROOF_GATEWAY_PRESENCE_INSTALLATION_ID=install",
+            "ACCESSPROOF_GATEWAY_PRESENCE_CREDENTIAL=SECRET-MUST-NOT-APPEAR",
+            "ACCESSPROOF_GATEWAY_PRESENCE_ROUTE_SHA256=" + "a" * 64,
+        ])
+    responses = {
+        "ps": subprocess.CompletedProcess(["docker", "ps"], 0,
+            stdout=json.dumps({"Names": name, "Status": status}) + "\n"),
+        "inspect": subprocess.CompletedProcess(["docker", "inspect"], 0,
+            stdout=json.dumps([{"Config": {"Env": env}}])),
+        "exec": subprocess.CompletedProcess(["docker", "exec"], 0,
+            stdout=json.dumps({"status": health.get("http_status", 200),
+                               "body": json.dumps(health)})),
+    }
+    calls = []
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        assert command[0] == "docker"
+        assert all(part != "--privileged" for part in command)
+        return responses[command[1]]
+    with patch.object(module.subprocess, "run", side_effect=fake_run):
+        result = module.diagnose_local_gateway(
+            project="sharepoint-rag-lab", gateway_container=requested,
+        )
+    return result, calls
 
-def check(guard, status="Up 1 hour (healthy)", *, name="sharepoint-rag-lab-accessproof-gateway-1"):
-    process = subprocess.CompletedProcess(
-        args=["docker", "ps"], returncode=0,
-        stdout=json.dumps({"Names": name, "Status": status}) + "\n",
-    )
-    response = MagicMock()
-    response.status = 200
-    response.read.return_value = json.dumps(guard).encode()
-    with patch.object(module.subprocess, "run", return_value=process) as docker, patch(
-        "http.client.HTTPConnection", return_value=FakeHTTP(response)
-    ) as client:
-        result = module.diagnose_local_gateway(project="sharepoint-rag-lab")
-    assert docker.call_count == 1
-    assert client.call_count == 1
-    return result
 
-def test_only_healthy_guard_and_gateway_ready():
-    ready, notes = check({"ready": True, "status": "ok"})
+def test_ready_requires_actual_gateway_guard_and_presence():
+    (ready, notes), calls = check({"status": "ok"})
     assert ready
-    assert any("Guard: ready" in x for x in notes)
+    assert any("Gateway-to-Guard: enforcement readiness passed" in note for note in notes)
+    assert any("heartbeat: locally configured" in note for note in notes)
+    assert [call[1] for call in calls] == ["ps", "inspect", "exec"]
+    assert "SECRET-MUST-NOT-APPEAR" not in repr(notes)
 
-def test_source_acl_not_ready_fails_closed():
-    ready, notes = check({"ready": False, "status": "degraded", "policy_version": 8})
-    assert not ready
-    assert any("NOT READY" in x for x in notes)
-    assert not any(x.startswith("Guard: ready") for x in notes)
 
-def test_stale_guard_fails_closed():
-    ready, notes = check({"ready": False, "status": "degraded", "policy_fresh": False})
+def test_missing_presence_fails_even_when_gateway_and_guard_are_healthy():
+    (ready, notes), _ = check({"status": "ok"}, presence=False)
     assert not ready
-    assert any("stale" in x for x in notes)
+    assert any("heartbeat: NOT CONFIGURED" in note for note in notes)
+
+
+def test_gateway_guard_unavailable_has_specific_diagnosis():
+    (ready, notes), _ = check(
+        {"detail": "GUARD_UNAVAILABLE", "http_status": 503},
+    )
+    assert not ready
+    assert any("GUARD_UNAVAILABLE" in note for note in notes)
+
+
+def test_gateway_guard_not_ready_has_specific_diagnosis():
+    (ready, notes), _ = check(
+        {"detail": "GUARD_NOT_READY", "http_status": 503},
+    )
+    assert not ready
+    assert any("GUARD_NOT_READY" in note for note in notes)
+
 
 def test_unhealthy_gateway_fails_closed():
-    ready, notes = check({"ready": True, "status": "ok"}, status="Up 1 hour (unhealthy)")
+    (ready, notes), _ = check(
+        {"status": "ok"}, status="Up 1 hour (unhealthy)",
+    )
     assert not ready
-    assert any("Gateway: not healthy" in x for x in notes)
+    assert any("UNHEALTHY" in note for note in notes)
+
 
 def test_another_tenant_gateway_does_not_match():
-    ready, notes = check({"ready": True, "status": "ok"}, name="other-customer-accessproof-gateway-1")
+    (ready, notes), calls = check(
+        {"status": "ok"}, name="other-customer-accessproof-gateway-1",
+    )
     assert not ready
-    assert any("no unique" in x for x in notes)
+    assert any("no unique" in note for note in notes)
+    assert [call[1] for call in calls] == ["ps"]
+
+
+def test_explicit_legacy_name_is_inspected_not_implicitly_selected():
+    (ready, notes), calls = check(
+        {"status": "ok"}, name="ap-remote-gateway",
+        requested="ap-remote-gateway",
+    )
+    assert ready
+    assert len(calls) == 3
 
 
 def test_install_runs_automatic_doctor_even_when_guard_is_not_ready(tmp_path, monkeypatch, capsys):

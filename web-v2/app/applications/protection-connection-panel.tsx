@@ -98,6 +98,17 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   const gatewayPaired = review?.pairing.state === "installation_reported_unverified" || gatewayReady;
   const routeCertified = review?.route.route_certificate?.certified === true;
   const installationState = review?.pairing.state;
+  const gatewayReason = gatewayLive?.reason ?? null;
+  const gatewayOffline = !!review && !gatewayConnected;
+  const gatewayNeedsPairing = gatewayOffline && (
+    gatewayReason === "HEARTBEAT_EXPIRED"
+    || gatewayReason === "NO_HEARTBEAT_YET"
+    || gatewayReason === "NO_HEARTBEAT_CAPABLE_INSTALLATION"
+    || gatewayReason === "INSTALLATION_REVOKED"
+    || gatewayReason === "GATEWAY_BINDING_CHANGED_REPAIR_REQUIRED"
+  );
+  const gatewaySecurityIssue = gatewayConnected && !gatewayReady;
+  const certificateExpired = review?.route.route_certificate?.status === "EXPIRED";
   const installationLabel = installationState === "installation_reported_unverified"
     ? "Installation reported"
     : installationState === "installation_reported_historical" ? "Previously installed"
@@ -189,6 +200,35 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
           : "Current route certification has not been confirmed."}</small>
       </div>
     </div>
+    {gatewayNeedsPairing && <section className="onboard-next-action" role="status" aria-label="Gateway heartbeat recovery">
+      <strong>Gateway connection expired or has not been verified.</strong>
+      <p>The cloud has no fresh authenticated heartbeat for this exact application. A running
+        Docker container or an old installer receipt is not proof of an active Gateway.</p>
+      <p>On the customer Docker host, verify the intended Gateway container and its Guard target.
+        In <Link href={`/onboarding?application=${id}`}>Get Started</Link>, generate a fresh
+        pairing file and use the reviewed installer to <strong>adopt the existing Gateway</strong>.
+        Do not create a second Gateway. Manually managed Gateways must install the newly
+        issued private heartbeat environment into that same service; pairing alone will not
+        make them connected.</p>
+      <p>Wait for <strong>Connected · ready</strong> and refresh this check. Keep Protect
+        unverified while heartbeat or readiness evidence is absent.</p>
+    </section>}
+    {gatewaySecurityIssue && <section className="onboard-next-action" role="status" aria-label="Gateway enforcement recovery">
+      <strong>Gateway is connected but not enforcement-ready.</strong>
+      <p>{gatewayReason === "GUARD_UNAVAILABLE"
+        ? "The Gateway cannot contact its configured Guard. Check its Docker network and Guard service hostname; do not bypass the Guard."
+        : gatewayReason === "GUARD_NOT_READY"
+          ? "The Gateway reached its Guard, but the Guard did not confirm app-scoped readiness. Check the exact application binding, current policy and source sync."
+          : "Inspect the Gateway readiness code and Guard binding before attempting Protect."}</p>
+    </section>}
+    {certificateExpired && <section className="onboard-next-action" role="status" aria-label="Expired route certificate">
+      <strong>Reference route certificate expired.</strong>
+      <p>This reference-route certificate is no longer current. Independently certified
+        remote routes may have different valid certificates: review their actual status
+        under <Link href="/protection">Protection</Link> before deciding which route needs
+        renewal. Re-run an authorized challenge only for a route that requires it.
+        Refreshing this page or restarting a container cannot renew a certificate.</p>
+    </section>}
     {sourceCertificatePending && <p className="onboard-next-action" role="status">
       <strong>Source certification pending — manual validation comes after activation.</strong>
       <br />This is a validation-first activation with fail-closed authorization, not independent SharePoint certification.
