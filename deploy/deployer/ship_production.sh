@@ -12,11 +12,11 @@ BUCKET=accessproof-release-artifacts-102076848988-eu-north-1
 ROLE=accessproof-production-deployer
 PREFLIGHT=AccessProof-Deployer-ProductionPreflight
 RELEASE_DOC=AccessProof-Deployer-ProductionRelease
-GATEWAY_ZIP_SHA=e0e78f53cf0c161044b6054ed50ac539b4feb27507503ffb339a430ddacbfba4
-PREVIOUS_GATEWAY_ZIP_SHA=bab5f15f62c5186235677e489d7020654e72600d1f999a83554fa160a5dd91d9
+GATEWAY_ZIP_SHA=d0226438e6f255ef4dc5079ba894b57b47db7e5924dfaa9e94ffb9bcb0ef0b3d
+PREVIOUS_GATEWAY_ZIP_SHA=e0e78f53cf0c161044b6054ed50ac539b4feb27507503ffb339a430ddacbfba4
 SDK_FILE=accessproof_rag-0.1.0-py3-none-any.whl
 SDK_SHA=ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072
-GATEWAY_ZIP="${GATEWAY_ZIP:-$HOME/Downloads/accessproof-gateway-connector-20261106-downloads-manifest.zip}"
+GATEWAY_ZIP="${GATEWAY_ZIP:-$HOME/Downloads/accessproof-gateway-connector-20261107-multirag-ports.zip}"
 MODE="${1:?Usage: ship_production.sh --dry-run|--build-image|--preflight|--execute [commit] [label]}"
 shift
 COMMIT="${1:-HEAD}"

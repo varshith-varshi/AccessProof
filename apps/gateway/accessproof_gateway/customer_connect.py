@@ -193,6 +193,7 @@ def create_spec(
     model_provider: str,
     model_name: str,
     output_allowed_hosts: list[str] | None = None,
+    listen_port: int = 8090,
 ) -> dict[str, object]:
     # Server uses the application_id from the issued, short-lived pairing, not
     # an operator-edited manifest field. Source private key never leaves host.
@@ -206,6 +207,7 @@ def create_spec(
         "model_name": model_name,
         "trusted_public_keys": {key_id: public_key_from_private(signing_key)},
         "gateway_image": gateway_image,
+        "listen_port": listen_port,
         "output_allowed_hosts": list(output_allowed_hosts or []),
     }
 
@@ -647,6 +649,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if args.adopt_existing:
                 raise ConnectError("No existing healthy Gateway matches this application. Use --auto-detect from your RAG project folder.")
+        planned_gateway = None
+        chosen = None
         if args.dashboard_select:
             rows = docker_inventory()
             applications = discover(rows)
@@ -676,10 +680,12 @@ def main(argv: list[str] | None = None) -> int:
                 if args.select:
                     raise ConnectError("Selected chatbot is unavailable.")
             if chosen is not None:
-                # The current product installs ONE standard Gateway on 8090.
-                # Do not offer an install if another service already publishes it.
-                plan_selection(applications, [chosen.stable_id],
-                               occupied_ports=published_host_ports(rows))
+                # One Gateway per selected RAG, but another RAG's Gateway must
+                # not make a new installation fail on the same host port.
+                planned_gateway = plan_selection(
+                    applications, [chosen.stable_id],
+                    occupied_ports=published_host_ports(rows),
+                )[0]
                 args.compose = compose_for_selected(chosen, rows, explicit_compose=args.compose)
                 if args.rag_service and args.rag_service != chosen.service:
                     raise ConnectError("Selected chatbot conflicts with --rag-service.")
@@ -702,6 +708,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         spec = create_spec(
             pairing,
+            listen_port=planned_gateway.listen_port if chosen is not None else 8090,
             rag_service=rag_service,
             guard_url=_prompt(args.guard_url, "Guard URL inside Docker"),
             model_url=_prompt(args.model_url, "Model API URL inside Docker"),

@@ -42,10 +42,18 @@ def test_planner_rejects_unselected_stale_or_unsupported_apps():
         plan_selection([supported], [supported.stable_id, supported.stable_id])
 
 
+def test_planner_allocates_a_separate_loopback_port_for_another_gateway():
+    app = _app("finance", "finance", "finance-rag")
+    plan = plan_selection([app], [app.stable_id], occupied_ports=[8090])[0]
+    assert plan.listen_port == 18090
+    plan = plan_selection([app], [app.stable_id], occupied_ports=[8090, 18090])[0]
+    assert plan.listen_port == 18091
+
+
 def test_planner_fails_closed_when_approved_port_range_is_exhausted():
     app = _app("finance", "finance", "finance-rag")
-    with pytest.raises(SelectionPlanError, match="already published"):
-        plan_selection([app], [app.stable_id], occupied_ports=[8090])
+    with pytest.raises(SelectionPlanError, match="approved Gateway loopback ports"):
+        plan_selection([app], [app.stable_id], occupied_ports=[8090, *range(18090, 18110)])
 
 
 def test_connector_plan_requires_explicit_selection_and_changes_nothing(monkeypatch, capsys):

@@ -18,6 +18,11 @@ type GatewayChallengeState = {
   verified_at: string | null; certified_for_reference_route: boolean;
   production_certification: false;
 };
+type GatewayConnectivity = {
+  connection: "CONNECTED" | "DISCONNECTED" | "UNKNOWN";
+  enforcement_ready_reported: boolean;
+  reason: string | null;
+};
 
 export default function Applications() {
   const [applications, setApplications] = useState<AIApplication[]>([]);
@@ -30,6 +35,7 @@ export default function Applications() {
   const [activationApplication, setActivationApplication] = useState<AIApplication | null>(null);
   const [deploymentDigest, setDeploymentDigest] = useState("");
   const [routeDigest, setRouteDigest] = useState("");
+  const [gatewayConnection, setGatewayConnection] = useState<GatewayConnectivity | null>(null);
   const [gatewayChallenge, setGatewayChallenge] = useState<GatewayIssuedChallenge | null>(null);
   const [gatewayChallengeState, setGatewayChallengeState] = useState<GatewayChallengeState | null>(null);
   const [gatewayStatusError, setGatewayStatusError] = useState("");
@@ -77,8 +83,25 @@ export default function Applications() {
     } catch (cause) { window.alert(cause instanceof Error ? cause.message : "Could not remove the application."); }
   }
 
+  useEffect(() => {
+    if (!gatewayApplication) return;
+    let active = true;
+    const refreshGateway = async () => {
+      try {
+        const result = await api<{ gateway_connectivity: GatewayConnectivity }>(
+          `/api/v1/current/ai-applications/${encodeURIComponent(gatewayApplication.application_id)}/gateway-pairing`,
+        );
+        if (active) setGatewayConnection(result.gateway_connectivity ?? null);
+      } catch { if (active) setGatewayConnection(null); }
+    };
+    queueMicrotask(() => void refreshGateway());
+    const timer = setInterval(() => void refreshGateway(), 15_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [gatewayApplication]);
+
   function beginGatewaySetup(row: AIApplication) {
     setGatewayApplication(row);
+    setGatewayConnection(null);
     setDeploymentDigest("");
     setRouteDigest("");
     setGatewayChallenge(null);
@@ -106,7 +129,8 @@ export default function Applications() {
     }
   }
   async function issueGatewayChallenge() {
-    if (!gatewayApplication) return;
+    if (!gatewayApplication || gatewayConnection?.connection !== "CONNECTED" ||
+        !gatewayConnection.enforcement_ready_reported) return;
     setGatewayBusy(true); setGatewayStatusError(""); setGatewayChallenge(null);
     try {
       const challenge = await api<GatewayIssuedChallenge>(
@@ -164,9 +188,13 @@ export default function Applications() {
       <label>Choose your generated installation.json
         <input aria-label="Gateway installation manifest" type="file" accept=".json,application/json" onChange={event => void loadGatewayManifest(event.target.files?.[0] ?? null)} />
       </label>
-      {deploymentDigest && <p className="muted small">Deployment digest verified for this application: {deploymentDigest.slice(0, 16)}…</p>}
+      {deploymentDigest && <p className="muted small">Manifest loaded (not proof of installation): {deploymentDigest.slice(0, 16)}…</p>}
       <p><b>2. Optional diagnostic challenge (not required for Protect).</b> Experienced operators can issue a single-use challenge to test synthetic allow, deny, content tampering and revocation. Customer accounts named Alice or Bob are never required for activation.</p>
-      <button className="button compact" type="button" disabled={gatewayBusy || !deploymentDigest || !routeDigest} onClick={() => void issueGatewayChallenge()}>
+      <p role="status" className="muted small">Authenticated Gateway: {gatewayConnection?.connection === "CONNECTED"
+        ? gatewayConnection.enforcement_ready_reported ? "Connected and enforcement-ready" : "Connected; Guard not ready"
+        : "Not verified. Uploading a JSON manifest cannot make this step ready."}</p>
+      <button className="button compact" type="button" disabled={gatewayBusy || !deploymentDigest || !routeDigest ||
+        gatewayConnection?.connection !== "CONNECTED" || gatewayConnection.enforcement_ready_reported !== true} onClick={() => void issueGatewayChallenge()}>
         {gatewayBusy ? "Checking…" : "Issue optional security challenge"}
       </button>
       {gatewayChallenge && <div role="status" className="card section">

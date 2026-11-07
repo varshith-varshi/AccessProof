@@ -11,6 +11,12 @@ import { GatewayDiscoveryPicker } from "./gateway-discovery-picker";
 type Pairing = {
   state: string; expires_at?: string | null;
   deployment_sha256?: string | null; route_sha256?: string | null;
+  gateway_connectivity?: {
+    connection: "CONNECTED" | "DISCONNECTED" | "UNKNOWN";
+    enforcement_ready_reported: boolean;
+    heartbeat_age_seconds: number | null;
+    reason: string | null;
+  };
 };
 type Verification = {
   run_id: string | null; state: string;
@@ -105,8 +111,11 @@ export default function Onboarding() {
   const readiness = data.protection?.applications.find(row => row.application_id === app?.application_id);
   const sourceReady = !!source && source.status === "connected" &&
     source.acl_sync?.fresh === true && source.directory_sync?.fresh === true;
-  const installationReported = !!bound && (pairing?.state === "installation_reported_unverified" || !!verification?.run_id);
-  const reported = sourceReady && installationReported;
+  const installationReported = !!bound && (pairing?.state === "installation_reported_unverified" ||
+    pairing?.state === "installation_reported_historical" || !!verification?.run_id);
+  // A paired receipt is NOT an installed, communicating Gateway.
+  const gatewayConnected = pairing?.gateway_connectivity?.connection === "CONNECTED";
+  const reported = sourceReady && gatewayConnected;
   const protectedVerified = readiness?.effective_state === "PROTECTED_VERIFIED";
   const protectActive = protectedVerified || readiness?.effective_state === "PROTECTED_MANUAL_VALIDATION_PENDING";
   const connected = (presence?.connectivity ?? verification?.guard?.connectivity) === "CONNECTED";
@@ -236,7 +245,8 @@ export default function Onboarding() {
         <Link href="/sources">Manage SharePoint →</Link>
       </section>
       <section className="onboard-card">
-        <header><span>02</span><Pill ok={reported} label={reported ? "Installed" : "Install Gateway"}/></header>
+        <header><span>02</span><Pill ok={reported} label={reported ? "Gateway connected" :
+          installationReported ? "Installation unverified" : "Install Gateway"}/></header>
         <h3>Connect your RAG</h3>
         <p>An application owner installs Gateway beside a supported Docker RAG. AccessProof does not need a public RAG URL or your credentials.</p>
         <label className="onboard-select">AI application
@@ -249,7 +259,7 @@ export default function Onboarding() {
         {!app && <div className="onboard-next-action"><b>Application owner setup needed</b><p>Register your RAG and bind its approved SharePoint source and enrolled Guard.</p><Link href="/applications">Register a Gateway application →</Link><Link href="/guards">Enroll a Guard →</Link></div>}
         {app && !bound && <div className="onboard-next-action"><b>Complete the connection</b><p>Bind a SharePoint source and an enrolled Guard to this Gateway application before installation.</p><Link href="/applications">Review application →</Link><Link href="/guards">Enroll or check Guard →</Link></div>}
         {app && bound && !reported && <div className="onboard-supported-note"><b>Compatibility required</b><p>The installer supports Docker Compose RAGs implementing signed retrieval, identity forwarding, and buffered answer enforcement. An application owner may need to adapt an unsupported RAG first; AccessProof cannot safely convert arbitrary RAG code automatically.</p><Link href="/integrations">Check supported integration →</Link></div>}
-        {app && bound && !installationReported && <div className="onboard-actions">
+        {app && bound && !gatewayConnected && <div className="onboard-actions">
           <a className="button secondary" href="/downloads/accessproof-gateway-connector.zip?v=dashboard-choice-r15-20261102" download="accessproof-gateway-connector.zip">Download Gateway</a>
           <button type="button" className="button" disabled={busy || !sourceReady} onClick={() => void issuePairing()}>Generate one-time pairing file</button>
           <div className="onboard-command"><b>Application owner: run once on your Docker host</b><code>{installCommand}</code>
@@ -258,9 +268,10 @@ export default function Onboarding() {
               : "Finish SharePoint authorization, document ACL sync, and employee directory sync before generating a pairing file."}</small>
           </div>
         </div>}
-        {app && bound && sourceReady && <GatewayDiscoveryPicker key={app.application_id + ":" + (pairing?.expires_at ?? "")} applicationId={app.application_id} installed={installationReported} />}
+        {app && bound && sourceReady && <GatewayDiscoveryPicker key={app.application_id + ":" + (pairing?.expires_at ?? "")} applicationId={app.application_id} installed={gatewayConnected} />}
         {installationReported && !sourceReady && <div className="onboard-next-action" role="status"><b>Installation recorded, onboarding incomplete</b><p>The earlier installer receipt is preserved, but SharePoint ACL and employee-directory synchronization are not ready. Complete the source step; AccessProof remains fail closed.</p><Link href="/sources">Resolve source synchronization →</Link></div>}
-        {reported && <div className="onboard-success">✓ Gateway installation reported and source synchronization is current. Production protection remains unchanged until verification and approval finish.</div>}
+        {installationReported && !gatewayConnected && <div className="onboard-next-action" role="status"><b>Installation receipt received, Gateway not verified</b><p>No fresh authenticated Gateway heartbeat is available. A JSON file alone cannot prove the container is running. Check the existing Gateway and re-pair it using a new one-time pairing file. Do not install a second Guard or disable authorization checks.</p></div>}
+        {reported && <div className="onboard-success">✓ Gateway authenticated heartbeat received and source synchronization is current. Protect still requires independent source certification and Guard enforcement readiness.</div>}
         <Link href="/integrations">Installation and compatibility help →</Link>
       </section>
       <section className="onboard-card" data-testid="live-rag-test-card">
@@ -268,6 +279,7 @@ export default function Onboarding() {
         <h3>Protection status</h3>
         <p>Verify that the Guard and Gateway are connected, then enable protection in AI Applications. Once protection is verified active, test your existing RAG separately.</p>
         <div className="onboard-workflow-metrics onboard-live-status" role="status">
+          <div><small>Gateway heartbeat</small><strong className={gatewayConnected ? "positive" : "caution"}>{gatewayConnected ? "Connected" : "Not verified"}</strong></div>
           <div><small>Guard connection</small><strong className={connected ? "positive" : "caution"}>{connected ? "Connected" : "Offline / checking"}</strong></div>
           <div><small>Security readiness</small><strong>{guardReadiness.toLowerCase()}</strong></div>
           <div><small>Production protection</small><strong className={protectActive ? "positive" : "caution"}>{protectedVerified ? "Verified" : protectActive ? "Active — manual validation pending" : "Not active"}</strong></div>

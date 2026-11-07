@@ -4770,6 +4770,20 @@ def issue_current_reference_rag_challenge(
         raise HTTPException(409, "REGISTERED_REFERENCE_GATEWAY_WITH_ENROLLED_GUARD_REQUIRED")
     if row.mode == "protect":
         raise HTTPException(409, "ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION")
+    # An uploaded installation.json is only untrusted metadata. A diagnostic
+    # nonce requires the exact Gateway's fresh, authenticated enforcement-ready
+    # heartbeat; never issue a challenge against a missing/stale container.
+    gateway = gateway_presence.connectivity(db, row)
+    if gateway["connection"] != "CONNECTED" or not gateway["enforcement_ready_reported"]:
+        raise HTTPException(409, "LIVE_ENFORCEMENT_READY_GATEWAY_REQUIRED")
+    if gateway["installation_id"] is None:
+        raise HTTPException(409, "LIVE_GATEWAY_INSTALLATION_REQUIRED")
+    from apps.api.accessproof_api.db import GatewayInstallation
+    installed = db.get(GatewayInstallation, gateway["installation_id"])
+    if (installed is None or installed.organization_id != row.organization_id
+            or installed.deployment_sha256 != payload.deployment_sha256
+            or installed.route_sha256 != payload.route_sha256):
+        raise HTTPException(409, "GATEWAY_INSTALLATION_DIGEST_MISMATCH")
     now = datetime.now(timezone.utc)
     # Mark previous unconsumed nonce unusable. A new issue invalidates it.
     for prior in db.scalars(select(RAGRouteChallenge).where(

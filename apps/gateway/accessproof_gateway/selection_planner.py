@@ -12,6 +12,8 @@ from typing import Iterable
 from .application_discovery import DiscoveredApplication
 
 DEFAULT_GATEWAY_PORT = 8090
+# Loopback ports only; each installed Gateway stays in its own Compose project.
+FALLBACK_GATEWAY_PORTS = tuple(range(18090, 18110))
 DEFAULT_GATEWAY_SERVICE = "accessproof-gateway"
 
 
@@ -51,15 +53,20 @@ def plan_selection(
         raise SelectionPlanError("Only a chatbot with the declared adapter contract can be planned")
     if not app.compose_project or not app.service:
         raise SelectionPlanError("Selected chatbot lacks a Compose project or service identity")
-    for port in occupied_ports:
+    occupied = set(occupied_ports)
+    for port in occupied:
         if type(port) is not int or not 1 <= port <= 65535:
             raise SelectionPlanError("Host port inventory is invalid")
-        if port == DEFAULT_GATEWAY_PORT:
-            raise SelectionPlanError("Default Gateway port 8090 is already published; review the existing installation")
+    listen_port = next(
+        (port for port in (DEFAULT_GATEWAY_PORT, *FALLBACK_GATEWAY_PORTS) if port not in occupied),
+        None,
+    )
+    if listen_port is None:
+        raise SelectionPlanError("All approved Gateway loopback ports are occupied; review existing installations")
     return [PlannedApplication(
         stable_id=app.stable_id,
         compose_project=app.compose_project,
         rag_service=app.service,
         gateway_service=DEFAULT_GATEWAY_SERVICE,
-        listen_port=DEFAULT_GATEWAY_PORT,
+        listen_port=listen_port,
     )]

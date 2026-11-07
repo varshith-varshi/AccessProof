@@ -93,3 +93,47 @@ test("Missing source certification disables activation, not an approval form", a
   await expect(page.getByText(/Live SharePoint certification required/)).toBeVisible();
   await expect(page.getByLabel("Owner approval confirmation")).toHaveCount(0);
 });
+
+test("Unverified installation receipt cannot complete Gateway onboarding", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", route => route.fulfill({
+    json: {
+      state: "installation_reported_unverified",
+      gateway_connectivity: { connection: "DISCONNECTED", enforcement_ready_reported: false,
+        heartbeat_age_seconds: null, reason: "NO_HEARTBEAT_YET" },
+    },
+  }));
+  await page.goto("/onboarding?application=finance-rag");
+  await expect(page.getByText("Installation receipt received, Gateway not verified")).toBeVisible();
+  await expect(page.getByText("Installation unverified")).toBeVisible();
+  await expect(page.getByText("Gateway heartbeat", { exact: true })).toBeVisible();
+  await expect(page.getByText("Not verified", { exact: true })).toBeVisible();
+});
+
+test("Uploaded manifest cannot issue challenge without a live enforcement-ready Gateway", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", route => route.fulfill({
+    json: {
+      state: "installation_reported_unverified",
+      gateway_connectivity: { connection: "DISCONNECTED", enforcement_ready_reported: false,
+        heartbeat_age_seconds: null, reason: "NO_HEARTBEAT_YET" },
+    },
+  }));
+  let issued = 0;
+  await page.route("**/api/v1/current/ai-applications/*/protection/challenge", route => {
+    issued++;
+    return route.fulfill({ status: 409, json: { detail: "LIVE_ENFORCEMENT_READY_GATEWAY_REQUIRED" } });
+  });
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Set up Gateway" }).click();
+  await page.getByLabel("Gateway installation manifest").setInputFiles({
+    name: "installation.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({
+      reference_contract: "accessproof.gateway/v1", application_id: "finance-rag",
+      deployment_sha256: "a".repeat(64), route_sha256: "b".repeat(64),
+    })),
+  });
+  await expect(page.getByText(/Manifest loaded \(not proof of installation\)/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Issue optional security challenge" })).toBeDisabled();
+  expect(issued).toBe(0);
+});
