@@ -149,12 +149,15 @@ PY
 case "$MODE" in
  --dry-run) archive; echo 'DRY_RUN_PASS: no AWS service accessed'; exit 0 ;;
  --build-image)
+  [[ "$RID" != web-* ]] || python3 "$REPO/scripts/verify_release_installer_pins.py" --zip "$GATEWAY_ZIP"
   archive
   if [[ "$RID" == api-* ]]; then bundle_api_images; else bundle_web_image; fi
   echo 'BUILD_PASS: no AWS service accessed'; exit 0 ;;
  --preflight) check_identity; preflight; exit 0 ;;
  --execute)
   [[ -z "$(git status --porcelain)" ]] || { echo 'Dirty checkout. Commit and retest first.' >&2; exit 2; }
+  # Verify *all* server-side pins before uploading a candidate web image.
+  [[ "$RID" != web-* ]] || python3 "$REPO/scripts/verify_release_installer_pins.py" --zip "$GATEWAY_ZIP"
   archive
   check_identity
   busy=$(awsrelease ssm list-commands --region "$REGION" --instance-id "$INSTANCE" \

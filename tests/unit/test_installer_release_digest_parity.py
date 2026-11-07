@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_all_releasers_require_the_identical_reviewed_gateway_digest():
-    expected = "e0e78f53cf0c161044b6054ed50ac539b4feb27507503ffb339a430ddacbfba4"
+    expected = "d0226438e6f255ef4dc5079ba894b57b47db7e5924dfaa9e94ffb9bcb0ef0b3d"
     for relative in (
         "deploy/deployer/ship_production.sh",
         "deploy/ec2-release/deploy_web_only_on_ec2.sh",
@@ -26,3 +26,38 @@ def test_all_releasers_require_the_identical_reviewed_gateway_digest():
         assert match, f"Missing pinned digest in {relative}"
         assert match.group(1) == expected, f"Inconsistent published installer in {relative}"
         assert subprocess.run(["bash", "-n", str(script)], capture_output=True).returncode == 0
+
+
+def test_release_pin_validator_accepts_real_reviewed_zip_if_present():
+    from scripts.verify_release_installer_pins import verify
+
+    archive = Path.home() / "Downloads/accessproof-gateway-connector-20261107-multirag-ports.zip"
+    if archive.exists():
+        assert verify(archive) == "d0226438e6f255ef4dc5079ba894b57b47db7e5924dfaa9e94ffb9bcb0ef0b3d"
+
+
+def test_release_pin_validator_rejects_mismatched_server_pin(tmp_path):
+    from scripts.verify_release_installer_pins import PINS, verify
+    import hashlib
+    import pytest
+
+    archive = tmp_path / "reviewed.zip"
+    archive.write_bytes(b"reviewed")
+    good = hashlib.sha256(archive.read_bytes()).hexdigest()
+    bad = "0" * 64
+    for index, (name, _) in enumerate(PINS.items()):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if index == 0:
+            path.write_text("GATEWAY_ZIP_SHA=" + good + "\n")
+        elif index == 1:
+            path.write_text("GATEWAY_SHA='" + bad + "'\n")
+        else:
+            path.write_text('EXPECTED_GATEWAY_INSTALLER_SHA256="' + good + '"\n')
+    with pytest.raises(ValueError, match="pin mismatch"):
+        verify(archive, root=tmp_path)
+
+
+def test_web_release_invokes_predeployment_digest_parity():
+    script = (ROOT / "deploy/deployer/ship_production.sh").read_text()
+    assert script.count('python3 "$REPO/scripts/verify_release_installer_pins.py" --zip "$GATEWAY_ZIP"') == 2
