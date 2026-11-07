@@ -231,7 +231,7 @@ test("AI applications check Guard and Gateway before protection activation", asy
   await expect(review).toBeVisible();
   await expect(review.getByText("Guard connection")).toBeVisible();
   await expect(review.getByText("Gateway installation record")).toBeVisible();
-  await expect(review.getByText("Gateway route certificate")).toBeVisible();
+  await expect(review.getByText("Optional route challenge certificate")).toBeVisible();
   await expect(review.getByText("No installation report")).toBeVisible();
   await expect(review.getByText(/missing or expired pairing receipt does not mean your Gateway stopped running/)).toBeVisible();
   await expect(review.getByRole("button", { name: "Enable Protection" })).toBeDisabled();
@@ -635,7 +635,9 @@ test("Guard and paired Gateway can request activation without claiming Protect o
   }] }));
   await page.route("**/api/v1/current/sources", route => route.fulfill({ json: [] }));
   await page.route("**/api/v1/current/ai-applications/rag-e2e/gateway-pairing", route => route.fulfill({
-    json: { state: "installation_reported_unverified" },
+    json: { state: "installation_reported_unverified", gateway_connectivity: {
+      connection: "CONNECTED", enforcement_ready_reported: false, heartbeat_age_seconds: 0.4, reason: null,
+    } },
   }));
   await page.route("**/api/v1/current/ai-applications/rag-e2e/verification-run", route => route.fulfill({
     json: { state: "PENDING", run_id: "run-test",
@@ -644,6 +646,7 @@ test("Guard and paired Gateway can request activation without claiming Protect o
   await page.route("**/api/v1/current/ai-applications/rag-e2e/protection/status", route => route.fulfill({
     json: { route_certificate: { certified: false, status: "MISSING" },
       checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+        required_for_activation: false,
         reason: "Live-provider SharePoint permission certification is required." }] },
   }));
   let requests = 0;
@@ -661,7 +664,7 @@ test("Guard and paired Gateway can request activation without claiming Protect o
   const review = page.getByRole("region", { name: "Guard and Gateway connection check" });
   await expect(review.getByText("Installation reported", { exact: true })).toBeVisible();
   await expect(review.getByText("Not certified", { exact: true })).toBeVisible();
-  await expect(review.getByText(/Live-provider SharePoint permission certification is required/)).toHaveCount(0);
+  await expect(review.getByText(/Source certification pending/)).toBeVisible();
   await review.getByRole("button", { name: "Enable Protection" }).click();
   await expect(review.getByText("Protection not active yet")).toBeVisible();
   await expect(review.getByText("Effective source permissions require certification.")).toBeVisible();

@@ -15,8 +15,8 @@ const sections: Array<{ id: string; title: string; body: React.ReactNode }> = [
     <p><b>Shared conversations.</b> When an answer is shown to several people, a document is used only if every participant may read it.</p>
     <p><b>Output safety.</b> Links and images to hosts you haven&rsquo;t approved are removed from answers, so injected instructions can&rsquo;t exfiltrate data through auto-loaded content.</p>
   </> },
-  { id: "fail-closed", title: "Fail closed, always", body: <>
-    <p>Unknown is treated as deny. If identity can&rsquo;t be verified, a permission source goes stale, the Guard is unreachable, or a check can&rsquo;t run, the request is blocked rather than answered. The Guard keeps enforcing the last verified policy only for a short, bounded window during a control-plane outage, then denies.</p>
+  { id: "fail-closed", title: "Fail-closed protected routes", body: <>
+    <p>On a certified protected route, unknown is treated as deny. If identity can&rsquo;t be verified, a permission source goes stale, the Guard is unreachable, or a required check can&rsquo;t run, the Gateway does not release the protected answer. A bounded last-known-good policy is used only where that offline policy is configured and verified.</p>
   </> },
   { id: "identity", title: "Verified identity", body: <>
     <p>Employees are identified by signed tokens from your identity provider (OIDC, such as Microsoft Entra ID), validated for issuer, audience, signature, expiry and tenant. An email address or user ID supplied in a request is never trusted. Production Guards refuse shared-secret identity.</p>
@@ -33,7 +33,7 @@ const sections: Array<{ id: string; title: string; body: React.ReactNode }> = [
     <p>Protection status is derived from real evidence: authenticated heartbeats, authorization revisions and audited Guard decisions. It never comes from a configuration flag. Reports are signed and verifiable, and a Gateway that was installed once is never shown as online without a fresh authenticated heartbeat.</p>
   </> },
   { id: "status", title: "Current certification status", body: <>
-    <p>We are transparent about what has been independently verified. Google Drive is generally available. Microsoft SharePoint is in early access: Protect mode is enabled for a SharePoint source only after live, source-specific permission certification for that tenant. AccessProof has not yet completed a third-party security audit such as SOC 2; contact us for our current security documentation.</p>
+    <p>AccessProof is preparing guided Microsoft SharePoint and Entra pilots. Protect activation is gated by backend readiness and explicit authorization. A deployment may report Protect active with manual validation pending, but only current source-specific and customer-route evidence qualifies it as independently verified. Google Drive and other adapters remain validation environments unless a customer scope is explicitly certified. AccessProof has not yet completed a third-party security audit such as SOC 2; contact us for current evidence and limitations.</p>
   </> },
 ];
 

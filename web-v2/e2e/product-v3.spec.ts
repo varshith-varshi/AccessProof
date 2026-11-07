@@ -98,9 +98,20 @@ test("invitation link asks anonymous users to sign in and keeps the token", asyn
   await expect(signIn).toHaveAttribute("href", "/login?next=%2Faccept-invitation%3Ftoken%3Dabc123");
 });
 
-test("landing page offers self-serve signup and a security page", async ({ page }) => {
+test("landing page offers a guided pilot, accurate architecture and a security page", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Start free" }).first()).toHaveAttribute("href", "/register");
+  if ((await page.viewportSize())?.width && page.viewportSize()!.width < 980) {
+    await page.getByRole("button", { name: "Open website navigation" }).click();
+    await expect(page.locator(".marketing-menu").getByRole("link", { name: "Integrations" })).toBeVisible();
+    await expect(page.locator(".marketing-menu").getByRole("link", { name: "Request a pilot" })).toHaveAttribute("href", /mailto:admin@accessproof\.in/);
+  }
+  await expect(page.getByRole("link", { name: /Request a pilot/ }).first()).toHaveAttribute("href", /mailto:admin@accessproof\.in/);
+  await expect(page.getByRole("link", { name: "Create workspace" }).first()).toHaveAttribute("href", "/register");
+  await expect(page.getByRole("heading", { name: "Control-plane evidence. Customer-side enforcement." })).toBeVisible();
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /Source-aware permission enforcement/);
+  await expect(page.getByText("Start free")).toHaveCount(0);
+  await expect(page.getByText("Google Drive is generally available")).toHaveCount(0);
+  await expect(page.getByText("Unlimited applications")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "What happens when Bob asks" }).or(page.getByText("What happens when Bob asks"))).toBeVisible();
   await page.goto("/security");
   await expect(page.getByRole("heading", { name: "How AccessProof protects your data" })).toBeVisible();

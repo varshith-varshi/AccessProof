@@ -37,6 +37,9 @@ async function mockSetup(page: import("@playwright/test").Page, options?: { pair
   await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", route => route.fulfill({
     json: options?.paired === false ? { state: "awaiting_customer_install" } : {
       state: "installation_reported_unverified", deployment_sha256: "a".repeat(64), route_sha256: "b".repeat(64),
+      gateway_connectivity: {
+        connection: "CONNECTED", enforcement_ready_reported: true, heartbeat_age_seconds: 0.4, reason: null,
+      },
       verification: {
         state: "action_required", checked_at: "2026-11-01T12:00:00Z",
         checks_passed: 14, checks_total: 23,
