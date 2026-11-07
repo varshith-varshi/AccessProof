@@ -76,6 +76,13 @@ class Settings:
     microsoft_certified_protect: bool = os.getenv(
         "ACCESSPROOF_MICROSOFT_CERTIFIED_PROTECT_ENABLED", "0"
     ).strip().lower() in {"1", "true", "yes"}
+    # Validation-first onboarding: ONLY a never-before-certified SharePoint
+    # source, released in production and backed by fresh Guard/ACL/identity
+    # checks, may activate before running optional manual canary exercises.
+    # Existing expired/revoked certificates never fall back to this path.
+    microsoft_validation_first: bool = os.getenv(
+        "ACCESSPROOF_MICROSOFT_VALIDATION_FIRST_PROTECT_ENABLED", "1"
+    ).strip().lower() in {"1", "true", "yes"}
 
 
 def certified_sharepoint_scope_allowed(

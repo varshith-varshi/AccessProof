@@ -137,3 +137,59 @@ test("Uploaded manifest cannot issue challenge without a live enforcement-ready 
   await expect(page.getByRole("button", { name: "Issue optional security challenge" })).toBeDisabled();
   expect(issued).toBe(0);
 });
+
+test("First-time SharePoint source can stage Protect before independent certificate", async ({ page }) => {
+  await setup(page);
+  let enableRequests = 0;
+  await page.route("**/api/v1/current/ai-applications/*/verification-run", route => route.fulfill({
+    json: { state: "paired", guard: { connectivity: "CONNECTED", security_readiness: "DEGRADED",
+      heartbeat_age_seconds: 1 } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", route => route.fulfill({
+    json: { state: "installation_reported_unverified", gateway_connectivity: {
+      connection: "CONNECTED", enforcement_ready_reported: false,
+      heartbeat_age_seconds: 1, reason: "GUARD_NOT_READY",
+    } },
+  }));
+  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({
+    json: { state: "protection_not_enabled", route_certificate: { certified: false, status: "missing" },
+      checks: [
+        { code: "PERMISSION_SOURCE_USABLE", ok: true, reason: null },
+        { code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+          required_for_activation: false, reason: "Validation-first Protect may be enabled." },
+        { code: "PRODUCTION_OIDC_READY", ok: false, reason: "Guard waiting for Protect binding" },
+        { code: "GATEWAY_LIVE_AND_ENFORCEMENT_READY", ok: false, reason: "Guard waiting for Protect binding" },
+      ] },
+  }));
+  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => {
+    enableRequests++;
+    return route.fulfill({ status: 202, json: {
+      state: "validating", guard_acknowledged: false,
+      reason_code: "WAITING_FOR_GUARD_AND_GATEWAY_READINESS",
+      message: "Integration verification is incomplete.",
+    } });
+  });
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  await expect(page.getByText(/Source certification pending — manual validation/)).toBeVisible();
+  const button = page.getByRole("button", { name: "Enable Protection", exact: true });
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(page.getByText("Protection not active yet")).toBeVisible();
+  expect(enableRequests).toBe(1);
+});
+
+test("Missing source authorization still blocks validation-first Protect", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({
+    json: { checks: [
+      { code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+        required_for_activation: false, reason: "Certification pending" },
+      { code: "PERMISSION_SOURCE_USABLE", ok: false, reason: "ACL synchronization incomplete" },
+    ] },
+  }));
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  await expect(page.getByRole("button", { name: "Enable Protection", exact: true })).toBeDisabled();
+  await expect(page.getByText(/ACL synchronization incomplete/)).toBeVisible();
+});

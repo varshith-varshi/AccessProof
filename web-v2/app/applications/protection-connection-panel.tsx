@@ -22,7 +22,7 @@ type Verification = {
 };
 type Route = {
   route_certificate?: { certified: boolean; status: string };
-  checks?: Array<{ code: string; ok: boolean; reason: string | null }>;
+  checks?: Array<{ code: string; ok: boolean; reason: string | null; required_for_activation?: boolean }>;
 };
 type Review = {
   guard: Guard | null;
@@ -84,7 +84,11 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
     : installationState === "awaiting_customer_install" ? "Awaiting installer"
     : installationState === "pairing_expired" ? "Pairing expired"
     : "No installation report";
-  const missingEvidence = review?.route.checks?.filter(check => !check.ok) ?? [];
+  const missingEvidence = review?.route.checks?.filter(check => !check.ok && check.required_for_activation !== false) ?? [];
+  const sourceCertificatePending = review?.route.checks?.some(check =>
+    check.code === "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED" && !check.ok &&
+    check.required_for_activation === false,
+  ) ?? false;
   const firstSourceIssue = missingEvidence.find(check => (
     check.code === "PERMISSION_SOURCE_USABLE"
     || check.code === "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"
@@ -92,10 +96,18 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   ));
   // A pairing report proves installer contact, not a live Gateway. Likewise a
   // heartbeat proves Guard connectivity, not security readiness.
-  // Every backend prerequisite, including signed Microsoft authorization,
-  // must pass before an authenticated administrator can request Protect.
-  const activationCheckable = !!guardReady && !!gatewayReady &&
-    !!review?.route.checks?.length && review.route.checks.every(item => item.ok) && !busy;
+  // All *required* backend prerequisites must pass. For a never-certified,
+  // exact SharePoint profile, the signed source certificate can instead be
+  // earned by human testing after validation-first Protect activation.
+  // A newly paired Gateway cannot be enforcement-ready until the Guard
+  // receives the explicit admin-requested protect_pending binding. Allow
+  // staging with a connected Guard+Gateway, but the backend must keep Protect
+  // pending until machine health and all mandatory checks are green.
+  const readinessHandshake = ["PRODUCTION_OIDC_READY", "GATEWAY_LIVE_AND_ENFORCEMENT_READY"];
+  const activationCheckable = !!guardConnected && !!gatewayConnected &&
+    !!review?.route.checks?.length && review.route.checks.every(item =>
+      item.ok || item.required_for_activation === false || readinessHandshake.includes(item.code)
+    ) && !busy;
 
   const enable = async () => {
     if (!activationCheckable || busy) return;
@@ -118,7 +130,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
       <div><p className="label">PROTECTION ACTIVATION</p><h2>{application.name}</h2></div>
       <button className="text-button" type="button" onClick={onClose}>Close</button>
     </div>
-    <p>Check that your Guard, trusted SharePoint permissions, and Gateway are enforcing the current application. After Protect is active, your team can optionally test access, denial, tampering and revocation using its own approved identities. Those four scenarios are not activation requirements.</p>
+    <p>Check that your Guard, fresh SharePoint permissions, identity mappings, and Gateway are ready. For a first-time source, you can enable validation-first Protect before receiving the optional independent source certificate, then test using approved synthetic documents. Uncertified protection must never be described as production-certified.</p>
     <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(195px,1fr))" }} role="status">
       <div className="onboard-fact">
         <b>Guard connection</b>
@@ -156,6 +168,11 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
           : "Current route certification has not been confirmed."}</small>
       </div>
     </div>
+    {sourceCertificatePending && <p className="onboard-next-action" role="status">
+      <strong>Source certification pending — manual validation comes after activation.</strong>
+      <br />This is a validation-first activation with fail-closed authorization, not independent SharePoint certification.
+      Use only approved test documents until Alice/Bob permission and revocation tests pass.
+    </p>}
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
       <button className="button compact secondary" disabled={busy} type="button" onClick={() => void check()}>
         {busy ? "Checking…" : "Check Guard & Gateway"}
@@ -181,9 +198,9 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         ?? firstSourceIssue.code.replaceAll("_", " ").toLowerCase()}</p>}
     </div>}
     {review && activationCheckable && <p role="status" className="muted">
-      All required security checks have passed. A signed-in Owner or Admin can
-      enable protection directly; the Guard must acknowledge it before it is active.
-      Manual chatbot testing is optional afterward.
+      Required source, policy, and identity-mapping checks have passed. An Owner or Admin may
+      request Protect; the Guard/Gateway must become enforcement-ready before protection is active.
+      If independent source certification is pending, test with approved canary documents first.
     </p>}
     {result && <div role="status" className="onboard-fact">
       <b>{result.state === "protected" && result.guard_acknowledged
@@ -197,8 +214,8 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
     </div>}
     {result?.state === "protected" && result.guard_acknowledged &&
       <section className="card section" aria-label="Post-activation customer manual validation">
-        <h3>Optional manual validation after Protect is active</h3>
-        <p>Test with your own approved employee identities and test-only documents. No Alice/Bob accounts or four-probe checklist are required for your manual review. Report unexpected access or refusal to your AccessProof support contact.</p>
+        <h3>Manual validation after Protect activation</h3>
+        <p>Use two distinct approved Entra employees and test-only documents. Verify allowed and forbidden content, then revoke test access and confirm denial. A source certificate is not a prerequisite to start these tests, but a successful chatbot response is not independent certification. Report unexpected access or refusal to AccessProof support.</p>
         <p className="muted small">Suggested scenarios: an authorized document, a denied document, tampered test content, and permission revocation during a response. Do not use confidential canaries or disable production enforcement to run these tests.</p>
       </section>}
     {error && <p role="alert" className="form-error">{error}</p>}

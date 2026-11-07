@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from apps.api.accessproof_api.app import app
 from apps.api.accessproof_api.db import (
     Base, SessionLocal, AIApplication, GuardPolicy,
-    GuardPolicyDistribution, engine,
+    GuardPolicyDistribution, ProtectionActivationRun, engine,
 )
 from sqlalchemy import select
 
@@ -259,3 +259,91 @@ def test_protect_activation_waits_for_guard_machine_ack(monkeypatch):
         assert heartbeat.status_code == 200, heartbeat.text
         with SessionLocal() as db:
             assert db.scalar(select(AIApplication).where(AIApplication.application_id == "secure-rag")).mode == "protect"
+
+
+def test_admin_enable_stages_pending_while_guard_gateway_handshake_is_unready(monkeypatch):
+    from apps.api.accessproof_api import app as api_module
+
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        _, headers = signup(client)
+        guard_id, _machine = provision(client, headers)
+        created = client.post("/api/v1/current/ai-applications", headers=headers, json={
+            "application_id": "stage-validation-rag", "name": "Stage validation",
+            "guard_id": guard_id,
+            "adapter_type": "accessproof-gateway",
+            "adapter_contract_version": "accessproof.rag/v1",
+        })
+        assert created.status_code == 201, created.text
+        # An optional certificate and two liveness/identity handshake states
+        # must not permanently deadlock explicit admin activation.
+        checklist = [
+            {"code": "PERMISSION_SOURCE_USABLE", "ok": True},
+            {"code": "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", "ok": False,
+             "required_for_activation": False},
+            {"code": "PRODUCTION_OIDC_READY", "ok": False},
+            {"code": "GATEWAY_LIVE_AND_ENFORCEMENT_READY", "ok": False},
+        ]
+        monkeypatch.setattr(api_module, "_automatic_activation_checklist", lambda *args: checklist)
+        requested = client.post(
+            "/api/v1/current/ai-applications/stage-validation-rag/protection/enable",
+            headers=headers,
+        )
+        assert requested.status_code == 202, requested.text
+        assert requested.json()["state"] == "validating"
+        assert not requested.json()["guard_acknowledged"]
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(
+                AIApplication.application_id == "stage-validation-rag"
+            ))
+            assert row.mode == "protect_pending"
+            run = db.scalar(select(ProtectionActivationRun).where(
+                ProtectionActivationRun.application_row_id == row.id
+            ))
+            assert run is not None and run.state == "awaiting_guard_ack"
+            assert run.reason_code == "WAITING_FOR_GUARD_AND_GATEWAY_READINESS"
+        # The pending mode is never itself a Protect acknowledgment.
+        status = client.get(
+            "/api/v1/current/ai-applications/stage-validation-rag/protection/status",
+            headers=headers,
+        )
+        assert status.status_code == 200
+        assert status.json()["state"] == "validating"
+
+
+def test_admin_enable_does_not_stage_without_actual_acl_sync_even_in_validation_mode(monkeypatch):
+    from apps.api.accessproof_api import app as api_module
+
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        _, headers = signup(client)
+        guard_id, _machine = provision(client, headers)
+        created = client.post("/api/v1/current/ai-applications", headers=headers, json={
+            "application_id": "unhealthy-source-rag", "name": "Unhealthy source",
+            "guard_id": guard_id,
+            "adapter_type": "accessproof-gateway",
+            "adapter_contract_version": "accessproof.rag/v1",
+        })
+        assert created.status_code == 201, created.text
+        monkeypatch.setattr(api_module, "_automatic_activation_checklist", lambda *args: [
+            {"code": "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", "ok": False,
+             "required_for_activation": False},
+            {"code": "PERMISSION_SOURCE_USABLE", "ok": False},
+            {"code": "GATEWAY_LIVE_AND_ENFORCEMENT_READY", "ok": False},
+        ])
+        requested = client.post(
+            "/api/v1/current/ai-applications/unhealthy-source-rag/protection/enable",
+            headers=headers,
+        )
+        assert requested.status_code == 202, requested.text
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(
+                AIApplication.application_id == "unhealthy-source-rag"
+            ))
+            assert row.mode == "shadow"
+            run = db.scalar(select(ProtectionActivationRun).where(
+                ProtectionActivationRun.application_row_id == row.id
+            ))
+            assert run.state == "action_required"

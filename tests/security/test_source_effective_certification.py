@@ -159,3 +159,91 @@ def test_signed_certification_requires_exact_profile_source_and_fresh_evidence(m
 def test_microsoft_ambiguous_drive_cannot_claim_sharepoint_or_onedrive():
     source = SourceConnection(id="source", organization_id="org", provider="microsoft365", boundary="root")
     assert _source_scope(source, {"tenant_id": "11111111-2222-3333-4444-555555555555", "drive_id": "drive-A", "test_root_item_id": "root"}) is None
+
+def test_validation_first_sharepoint_is_eligible_without_certificate_but_never_after_revocation(monkeypatch):
+    from apps.api.accessproof_api.config import Settings
+
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    credentials = {
+        "tenant_id": "11111111-2222-3333-4444-555555555555",
+        "drive_id": "drive-A", "test_root_item_id": "root",
+        "site_id": "site-valid", "list_id": "library-valid",
+    }
+    monkeypatch.setattr(api_module, "settings", Settings(
+        env="production", microsoft_certified_protect=True,
+        microsoft_validation_first=True,
+    ))
+    with SessionLocal() as db:
+        org = Organization(name="Validation-first isolated")
+        db.add(org)
+        db.flush()
+        project = Project(organization_id=org.id, name="Validation project")
+        db.add(project)
+        db.flush()
+        source = SourceConnection(
+            organization_id=org.id, project_id=project.id,
+            provider="sharepoint", name="Test SharePoint",
+            boundary="root", status="connected",
+            last_validated_at=datetime.now(timezone.utc),
+        )
+        db.add(source)
+        db.flush()
+        source.encrypted_credentials = api_module._secret_box.encrypt(json.dumps(credentials))
+        row = AIApplication(
+            organization_id=org.id, application_id="first-validation-rag",
+            name="First validation", adapter_type="accessproof-gateway",
+            source_id=source.id, adapter_contract_version="accessproof.rag/v1",
+        )
+        db.add(row)
+        db.flush()
+        assert api_module._microsoft_validation_first_eligible(db, source, credentials)
+        checks = {c["code"]: c for c in api_module._automatic_activation_checklist(db, row)}
+        cert = checks["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"]
+        assert cert["ok"] is False
+        assert cert["required_for_activation"] is False
+        assert checks["V1_PROVIDER_SCOPE"]["ok"] is True
+        # The missing certificate is only an informational status; the lack of
+        # live Guard, identity/permissions and Gateway still blocks activation.
+        blockers = api_module._activation_failed_checks(list(checks.values()))
+        assert "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED" not in {c["code"] for c in blockers}
+        assert "GATEWAY_LIVE_AND_ENFORCEMENT_READY" in {c["code"] for c in blockers}
+        # Creating a certificate row, even a REVOKED/invalid one, must forbid
+        # falling back to first-time validation and re-opening its ACL.
+        profile, digest = _source_scope(source, credentials)
+        db.add(SourceEffectiveCertification(
+            organization_id=org.id, source_id=source.id,
+            provider_profile=profile, scope_digest=digest,
+            evidence_digest="a" * 64, verifier_version=VERIFIER_VERSION,
+            status="revoked", certified_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=2),
+            signature="ed25519:invalid:" + "A" * 86,
+        ))
+        db.flush()
+        assert not api_module._microsoft_validation_first_eligible(db, source, credentials)
+        revoked = {c["code"]: c for c in api_module._automatic_activation_checklist(db, row)}
+        assert revoked["MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"]["required_for_activation"] is True
+        assert revoked["V1_PROVIDER_SCOPE"]["ok"] is False
+        source.provider = "onedrive"
+        assert not api_module._microsoft_validation_first_eligible(db, source, credentials)
+        db.rollback()
+
+
+def test_validation_first_protection_state_never_claims_independent_certification():
+    from apps.api.accessproof_api.protection_state import classify_protection_state
+
+    checks = [
+        {"code": "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", "ok": False,
+         "required_for_activation": False},
+        {"code": "GATEWAY_LIVE_AND_ENFORCEMENT_READY", "ok": True},
+    ]
+    common = {
+        "adapter_protect_capable": True, "has_guard": True,
+        "has_source": True, "guard_revoked": False,
+        "source_disconnected": False, "certification_expired": False,
+    }
+    assert classify_protection_state(checks, "protect", route_certified=False, **common) == (
+        "PROTECTED_MANUAL_VALIDATION_PENDING"
+    )
+    checks[-1]["ok"] = False
+    assert classify_protection_state(checks, "protect", route_certified=False, **common) == "DEGRADED"

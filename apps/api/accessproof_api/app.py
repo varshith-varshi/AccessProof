@@ -1350,8 +1350,8 @@ def guard_heartbeat(
             and run.configuration_fingerprint == _route_configuration_fingerprint(row)
         )
         if (row is not None and row.mode == "protect_pending" and active_mode == "protect"
-                and requested and guard_can_confirm_protect and all(
-                    check["ok"] for check in _automatic_activation_checklist(db, row)
+                and requested and guard_can_confirm_protect and not _activation_failed_checks(
+                    _automatic_activation_checklist(db, row)
                 )):
             row.mode = "protect"
             run.state = "activated"
@@ -1485,7 +1485,8 @@ def guard_policies(
                 # Corrupted/undecryptable source secrets cannot certify access.
                 return False
             if (not waive_microsoft_certificate
-                    and not effective_source_certified(db, bound_source, certificate_credentials)):
+                    and not effective_source_certified(db, bound_source, certificate_credentials)
+                    and not _microsoft_validation_first_eligible(db, bound_source, certificate_credentials)):
                 return False
         for kind, threshold in (("acl", max_acl_age), ("directory", max_directory_age)):
             cursor = source_cursors.get((source_id, kind))
@@ -1545,9 +1546,15 @@ def guard_policies(
         # the Guard and Gateway are never reported ready, older Guards that do
         # not understand the flag keep failing closed, and activation still
         # requires the certificate and every gate.
+        # A revoked/expired historical certificate may NEVER reopen the
+        # initial certification window, even when ACL snapshots look fresh.
+        ever_certified = bool(source_ids and db.scalar(select(SourceEffectiveCertification.id).where(
+            SourceEffectiveCertification.organization_id == row.organization_id,
+            SourceEffectiveCertification.source_id == source_ids[0],
+        ).limit(1)) is not None)
         certification_window = bool(
             row.mode == "protect_pending" and len(source_ids) == 1
-            and not health[source_ids[0]]
+            and not ever_certified and not health[source_ids[0]]
             and source_acl_healthy(source_ids[0], waive_microsoft_certificate=True)
         )
         bound_applications.append({
@@ -3347,6 +3354,40 @@ def current_protection_decisions(
     } for row in rows]
 
 
+def _microsoft_validation_first_eligible(
+    db: OrmSession, source: SourceConnection, credentials: dict[str, Any],
+) -> bool:
+    """Allow only never-certified, exact-scope SharePoint test-first Protect.
+
+    This is NOT a certification grant. A revoked or expired certificate remains
+    terminal: it must never be bypassed by the validation-first exception.
+    Other gates still require fresh permission sync, Guard OIDC identity mapping,
+    installed policy, and a live enforcing Gateway with human activation.
+    """
+    if not (settings.microsoft_certified_protect and settings.microsoft_validation_first
+            and source.provider.lower() in {"sharepoint", "microsoft365"}):
+        return False
+    scope = _source_scope(source, credentials)
+    if scope is None or scope[0] != "sharepoint_list_item_effective":
+        return False
+    existing = db.scalar(select(SourceEffectiveCertification.id).where(
+        SourceEffectiveCertification.organization_id == source.organization_id,
+        SourceEffectiveCertification.source_id == source.id,
+    ).limit(1))
+    return existing is None
+
+
+def _activation_failed_checks(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Status-only SharePoint certification must not block manual-first validation."""
+    return [check for check in checks
+            if not check.get("ok") and check.get("required_for_activation", True)]
+
+
+def _source_certification_pending(checks: list[dict[str, Any]]) -> bool:
+    return any(check["code"] == "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"
+               and not check["ok"] for check in checks)
+
+
 class GuardEvidence(TypedDict):
     positive: bool
     denial: bool
@@ -3464,6 +3505,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     checks.append({"code": "PERMISSION_SOURCE_TRUSTED", "ok": source_connected, "reason": None if source_connected else "Connect and validate a permission source."})
     microsoft_preview = bool(source and source.provider.lower() in {"microsoft365", "sharepoint", "onedrive"})
     microsoft_certified = False
+    microsoft_validation_first = False
     if microsoft_preview:
         # Per-source eligibility. No public API issues these certificates:
         # this cannot be satisfied with mock Graph responses, an admin toggle
@@ -3480,17 +3522,29 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
             # Encryption backend/key failures are never positive ACL proof.
             certified = False
         microsoft_certified = certified
+        microsoft_validation_first = bool(
+            source is not None and isinstance(certificate_credentials, dict)
+            and _microsoft_validation_first_eligible(db, source, certificate_credentials)
+        )
         checks.append({
             "code": "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
             "ok": certified,
-            "reason": None if certified else "This exact Microsoft tenant, source, library/drive and permission profile still require independent live-provider certification. Graph sharing records do not prove effective rights.",
+            "required_for_activation": not microsoft_validation_first,
+            "reason": None if certified else (
+                "Independent effective-permission certification is pending. "
+                "Validation-first Protect is allowed only for this never-certified "
+                "SharePoint source; test Alice/Bob on approved canaries after activation."
+                if microsoft_validation_first else
+                "This source still requires independent certification or a supported "
+                "validation-first SharePoint profile; Graph sharing records do not prove rights."
+            ),
         })
         profile = (
             _source_scope(source, certificate_credentials)
             if source and isinstance(certificate_credentials, dict)
             else None
         )
-        source_in_v1_scope = source_in_v1_scope or certified_sharepoint_scope_allowed(
+        source_in_v1_scope = source_in_v1_scope or microsoft_validation_first or certified_sharepoint_scope_allowed(
             source.provider if source else "",
             provider_profile=profile[0] if profile else None,
             certificate_verified=certified,
@@ -3499,7 +3553,7 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     checks.append({
         "code": "V1_PROVIDER_SCOPE",
         "ok": source_in_v1_scope,
-        "reason": None if source_in_v1_scope else "This source is not yet eligible for Protect. SharePoint requires independent signed effective-permissions certification and explicit production release enablement.",
+        "reason": None if source_in_v1_scope else "This source is not eligible for Protect. SharePoint requires a valid, exact-scope profile and an explicit production release enablement.",
     })
     acl_cursor = db.scalar(select(ProviderSyncCursorModel).where(
         ProviderSyncCursorModel.organization_id == organization_id,
@@ -3552,8 +3606,24 @@ def _application_checks(db: OrmSession, row: AIApplication, organization_id: str
     # EMPLOYEE_OIDC_POSITIVE_IDENTITY / EMPLOYEE_OIDC_SECOND_IDENTITY /
     # IDENTITY_MAPPING_IMMUTABLE_OBJECT_ID checks passed (D-18: previously no
     # Microsoft source could ever satisfy this check, certified or not).
+    # In validation-first mode, the Guard must be healthy and we require TWO
+    # distinct directory-verified source identities in this tenant. The Guard
+    # itself must still enforce issuer/JWKS signature, scope and oid at runtime.
+    oidc_mapping_ready = True
+    if microsoft_validation_first and source and isinstance(certificate_credentials, dict):
+        tenant = str(certificate_credentials.get("tenant_id") or "")
+        identity_count = db.scalar(select(func.count(func.distinct(GuardIdentityMapping.oidc_subject))).where(
+            GuardIdentityMapping.organization_id == organization_id,
+            GuardIdentityMapping.source_id == source.id,
+            GuardIdentityMapping.oidc_tenant_id == tenant,
+            GuardIdentityMapping.status == "VERIFIED",
+            GuardIdentityMapping.method == "directory_verified",
+            GuardIdentityMapping.revoked_at.is_(None),
+        )) or 0
+        oidc_mapping_ready = int(identity_count) >= 2
     oidc_ok = (settings.env != "production" or (
-        (not microsoft_preview or microsoft_certified)
+        (not microsoft_preview or microsoft_certified or microsoft_validation_first)
+        and oidc_mapping_ready
         and bool(guard and guard.health == "healthy" and heartbeat_ok)
     ))
     checks.append({"code": "PRODUCTION_OIDC_READY", "ok": oidc_ok,
@@ -3732,7 +3802,7 @@ def current_ai_application_readiness(
     if row is None:
         raise HTTPException(404, "AI application not found")
     checks = _automatic_activation_checklist(db, row)
-    return {"application_id": application_id, "ready": all(bool(check["ok"]) for check in checks), "checks": checks, "mode": row.mode}
+    return {"application_id": application_id, "ready": not _activation_failed_checks(checks), "checks": checks, "mode": row.mode}
 
 
 def _automatic_activation_checklist(db: OrmSession, row: AIApplication) -> list[dict[str, Any]]:
@@ -3768,7 +3838,7 @@ def _activation_status(db: OrmSession, row: AIApplication) -> dict[str, Any]:
         ProtectionActivationRun.organization_id == row.organization_id,
         ProtectionActivationRun.application_row_id == row.id,
     ))
-    failed = next((check for check in checks if not check["ok"]), None)
+    failed = next(iter(_activation_failed_checks(checks)), None)
     # `mode=protect` is a legacy database state and does not prove the new
     # route-challenge protocol; never present it as certified/active here.
     return {
@@ -3778,12 +3848,22 @@ def _activation_status(db: OrmSession, row: AIApplication) -> dict[str, Any]:
                  "validating" if row.mode == "protect_pending" else
                  "action_required" if run is not None else "protection_not_enabled",
         "checks": checks,
-        "reason_code": str((failed or {}).get("code") or "PROTECTION_NOT_CERTIFIED"),
-        "message": str((failed or {}).get("reason") or "Integration verification is incomplete."),
+        "reason_code": str((failed or {}).get("code") or (
+            "MANUAL_SOURCE_VALIDATION_PENDING" if _source_certification_pending(checks)
+            else "PROTECTION_NOT_CERTIFIED"
+        )),
+        "message": str((failed or {}).get("reason") or (
+            "Protect enforcement is active; independent source validation is still pending."
+            if _source_certification_pending(checks) and row.mode == "protect"
+            else "Integration verification is incomplete."
+        )),
         "last_checked_at": run.last_checked_at.isoformat() if run else None,
         "run_id": run.id if run else None,
         "guard_acknowledged": row.mode == "protect" and failed is None,
-        "manual_validation_pending": row.mode == "protect" and failed is None and not _valid_route_certificate(db, row),
+        "manual_validation_pending": row.mode == "protect" and failed is None and (
+            not _valid_route_certificate(db, row) or _source_certification_pending(checks)
+        ),
+        "source_certificate_verified": not _source_certification_pending(checks),
         "route_certificate": describe_route_certificate(db, row),
     }
 
@@ -3929,6 +4009,7 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
         acl_age = _source_sync_age(db, source, "acl", now)
         directory_age = _source_sync_age(db, source, "directory", now)
         certification_expired = _route_certification_expired(db, row, now)
+        source_cert_pending = _source_certification_pending(checks)
         effective_state = classify_protection_state(
             checks,
             row.mode,
@@ -3938,11 +4019,13 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
             guard_revoked=bool(guard is not None and guard.revoked_at is not None),
             source_disconnected=source is not None and not source_connected,
             certification_expired=certification_expired,
-            route_certified=_valid_route_certificate(db, row),
+            # A signed route challenge is not a signed SharePoint source
+            # certificate. Never display an uncertified source as VERIFIED.
+            route_certified=_valid_route_certificate(db, row) and not source_cert_pending,
         )
         failed_checks = [
             {"code": check["code"], "reason": check.get("reason")}
-            for check in checks if not check.get("ok")
+            for check in _activation_failed_checks(checks)
         ]
         telemetry = decision_counts.get(row.application_id)
         revision = latest_revision(db, organization_id, row.application_id)
@@ -3951,6 +4034,7 @@ def _protection_snapshot(db: OrmSession, organization_id: str) -> dict[str, Any]
             "name": row.name,
             "mode": row.mode,
             "effective_state": effective_state,
+            "source_certification_pending": source_cert_pending,
             "state_message": STATE_MESSAGES[effective_state],
             "reason_code": failed_checks[0]["code"] if failed_checks else effective_state,
             "authorization_revision": ({
@@ -4177,12 +4261,25 @@ def current_ai_application_automated_preflight(
         run.state = "action_required"
         run.reason_code = "ACTIVATION_CHECKS_INCOMPLETE"
         run.last_checked_at = now
-    if all(check["ok"] for check in checks) and row.mode in {"shadow", "protect_pending"}:
+    blockers = _activation_failed_checks(checks)
+    # The signed-in administrator's Enable action can stage a fail-closed
+    # protect_pending binding before a Gateway is ready: Gateway readiness
+    # itself depends on receiving that binding from the Guard. Without this
+    # two-phase handshake a fresh install deadlocks in Shadow forever.
+    # This never activates Protect: machine health and ALL checks (including
+    # the fresh Gateway heartbeat) are rechecked before Guard acknowledgment.
+    staging_blockers = frozenset({"PRODUCTION_OIDC_READY", "GATEWAY_LIVE_AND_ENFORCEMENT_READY"})
+    if row.mode in {"shadow", "protect_pending"} and all(
+        check["code"] in staging_blockers for check in blockers
+    ):
         row.mode = "protect_pending"
         run.state = "awaiting_guard_ack"
-        run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
+        run.reason_code = (
+            "WAITING_FOR_GUARD_AND_GATEWAY_READINESS" if blockers
+            else "GUARD_PROTECT_ACK_REQUIRED"
+        )
     _audit(db, actor, row.organization_id, "PROTECTION_PREFLIGHT_REQUESTED", "ai_application", row.id, {
-        "result": "action_required", "failed_check_codes": [c["code"] for c in checks if not c["ok"]],
+        "result": "action_required", "failed_check_codes": [c["code"] for c in _activation_failed_checks(checks)],
     })
     try:
         db.commit()
@@ -4210,7 +4307,7 @@ def _automatic_gateway_pairing_verification(
             for check in checks
         ):
             raise ValueError("Invalid verification result")
-        failures = [check["code"] for check in checks if not check["ok"]]
+        failures = [check["code"] for check in _activation_failed_checks(checks)]
         # A green installer preflight never activates Protect: authenticated
         # activation and live Guard acknowledgement happen on separate paths.
         return {
@@ -4982,22 +5079,22 @@ def submit_enrolled_guard_rag_challenge(
     if run:
         run.last_checked_at = now
         run.checks_json = json.dumps(checks, sort_keys=True)
-        if all(check["ok"] for check in checks):
+        if not _activation_failed_checks(checks):
             run.state = "awaiting_guard_ack"
             run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
             row.mode = "protect_pending"
         else:
             run.state = "action_required"
-            run.reason_code = next(check["code"] for check in checks if not check["ok"])
+            run.reason_code = _activation_failed_checks(checks)[0]["code"]
     _audit(db, None, guard.organization_id, "RAG_ROUTE_CHALLENGE_VERIFIED", "ai_application", row.id, {
         "challenge_id": record.id, "guard_id": guard.id, "guard_event_count": len(events),
-        "result": "reference_verified", "pending_source_or_guard_checks": not all(check["ok"] for check in checks),
+        "result": "reference_verified", "pending_source_or_guard_checks": bool(_activation_failed_checks(checks)),
     })
     db.commit()
     return {
         "state": "tested_awaiting_customer_cutover", "challenge_id": record.id,
         "guard_audits_matched": len(events),
-        "protection_ready": all(check["ok"] for check in checks),
+        "protection_ready": not _activation_failed_checks(checks),
         "production_certification": False,
         "pending_guard_acknowledgment": False,
     }
@@ -5153,13 +5250,13 @@ def acknowledge_enrolled_guard_customer_cutover(
     if current_run:
         current_run.checks_json = json.dumps(checks, sort_keys=True)
         current_run.last_checked_at = now
-        if all(check["ok"] for check in checks):
+        if not _activation_failed_checks(checks):
             current_run.state = "awaiting_guard_ack"
             current_run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
             row.mode = "protect_pending"
         else:
             current_run.state = "action_required"
-            current_run.reason_code = next(check["code"] for check in checks if not check["ok"])
+            current_run.reason_code = _activation_failed_checks(checks)[0]["code"]
     _audit(db, None, row.organization_id, "RAG_CUSTOMER_ROUTE_CUTOVER_VERIFIED", "ai_application", row.id, {
         "challenge_id": record.id, "guard_id": guard.id, "matched_events": len(events),
         "result": "customer_reference_route_verified",
@@ -5170,7 +5267,7 @@ def acknowledge_enrolled_guard_customer_cutover(
         "challenge_id": record.id,
         "guard_audits_matched": len(events),
         "guard_acknowledgment_required": True,
-        "protection_ready": all(check["ok"] for check in checks),
+        "protection_ready": not _activation_failed_checks(checks),
         "production_certification": False,
     }
 
@@ -5238,7 +5335,7 @@ def update_current_ai_application_mode(
         # registered RAG route buffers output. Require the new challenge
         # protocol even when old manual evidence fields are populated.
         readiness = _automatic_activation_checklist(db, row)
-        failed = [check["code"] for check in readiness if not check["ok"]]
+        failed = [check["code"] for check in _activation_failed_checks(readiness)]
         if failed:
             raise HTTPException(409, {"code": "PROTECT_NOT_READY", "failed_checks": failed})
     previous = row.mode

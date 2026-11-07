@@ -50,7 +50,7 @@ STATE_MESSAGES: dict[str, str] = {
     "SHADOW": "The application is observing authorization decisions in Shadow mode. No response has been certified as protected.",
     "PROTECT_PENDING": "The customer-side Guard has not yet acknowledged the requested Protect mode.",
     "PROTECTED_VERIFIED": "Live source/Guard/Gateway checks and optional route certification passed. Protection is active and can degrade if enforcement evidence becomes stale.",
-    "PROTECTED_MANUAL_VALIDATION_PENDING": "Protect is active with source authorization and Guard/Gateway enforcement ready. Customer-specific allow/deny/tamper/revocation challenges have not been independently certified; manual validation is recommended.",
+    "PROTECTED_MANUAL_VALIDATION_PENDING": "Protect enforcement is active, but source or route certification is pending. Manually test only approved SharePoint canary documents using distinct Entra employees. Do not treat this application as independently certified.",
     "DEGRADED": "Protection is requested but one or more required security checks fail. Unsafe responses must remain blocked.",
     "STALE": "Previously configured protection cannot be verified because Guard or source evidence is stale. Treat requests as unverified.",
     "BLOCKED": "The bound Guard or permission source is revoked or disconnected. Requests must fail closed.",
@@ -73,7 +73,8 @@ def classify_protection_state(
     route_certified: bool = True,
 ) -> str:
     """Return one explicit state; never promote an unverified app to PROTECTED_VERIFIED."""
-    failed = {str(check.get("code")) for check in checks if not check.get("ok")}
+    failed = {str(check.get("code")) for check in checks
+              if not check.get("ok") and check.get("required_for_activation", True)}
 
     if not adapter_protect_capable:
         return "UNSUPPORTED"
