@@ -1,0 +1,315 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "AccessProof isolated certificate host and Ed25519 KMS key, read-only before separately approved trust migration. Requires private subnet with NAT or AWS endpoints. Creates billable resources.",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id"
+    },
+    "PrivateSubnetId": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "Private subnet with NO public IP and controlled HTTPS egress via NAT or endpoints"
+    },
+    "LatestAmiId": {
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.small",
+      "AllowedValues": [
+        "t3.small",
+        "t3.medium"
+      ]
+    }
+  },
+  "Resources": {
+    "CertifierSigningKey": {
+      "Type": "AWS::KMS::Key",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Description": "Independent AccessProof Ed25519 certifier; signing disabled until explicit trust approval",
+        "KeyUsage": "SIGN_VERIFY",
+        "KeySpec": "ECC_NIST_EDWARDS25519",
+        "Enabled": true,
+        "PendingWindowInDays": 30,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowExplicitAccountKeyAdministratorsOnly",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+                }
+              },
+              "Action": "kms:*",
+              "Resource": "*"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Product",
+            "Value": "AccessProof"
+          },
+          {
+            "Key": "Purpose",
+            "Value": "IndependentCertifier"
+          }
+        ]
+      }
+    },
+    "CertifierKeyAlias": {
+      "Type": "AWS::KMS::Alias",
+      "Properties": {
+        "AliasName": {
+          "Fn::Sub": "alias/accessproof-independent-certifier-${AWS::StackName}"
+        },
+        "TargetKeyId": {
+          "Ref": "CertifierSigningKey"
+        }
+      }
+    },
+    "CertifierSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Independent certifier, no ingress, HTTPS outbound only",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0",
+            "Description": "HTTPS to required AWS and authorized identity services, restrict at NAT/proxy"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Product",
+            "Value": "AccessProof"
+          },
+          {
+            "Key": "Purpose",
+            "Value": "IndependentCertifier"
+          }
+        ]
+      }
+    },
+    "CertifierBaseRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+          }
+        ],
+        "MaxSessionDuration": 3600,
+        "Tags": [
+          {
+            "Key": "Product",
+            "Value": "AccessProof"
+          }
+        ]
+      }
+    },
+    "CertifierExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "CertifierBaseRole",
+                    "Arn"
+                  ]
+                }
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "MaxSessionDuration": 3600,
+        "Policies": [
+          {
+            "PolicyName": "PublicKeyReadOnlyBeforeReviewedCutover",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "kms:GetPublicKey",
+                    "kms:DescribeKey"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "CertifierSigningKey",
+                      "Arn"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Product",
+            "Value": "AccessProof"
+          }
+        ]
+      }
+    },
+    "AllowBaseRoleToAssumeExecution": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "AssumeOnlyIndependentCertifierRole",
+        "Roles": [
+          {
+            "Ref": "CertifierBaseRole"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "sts:AssumeRole",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "CertifierExecutionRole",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "CertifierInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Roles": [
+          {
+            "Ref": "CertifierBaseRole"
+          }
+        ]
+      }
+    },
+    "CertifierInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {
+          "Ref": "LatestAmiId"
+        },
+        "InstanceType": {
+          "Ref": "InstanceType"
+        },
+        "IamInstanceProfile": {
+          "Ref": "CertifierInstanceProfile"
+        },
+        "Monitoring": true,
+        "MetadataOptions": {
+          "HttpEndpoint": "enabled",
+          "HttpTokens": "required",
+          "HttpPutResponseHopLimit": 1
+        },
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "SubnetId": {
+              "Ref": "PrivateSubnetId"
+            },
+            "GroupSet": [
+              {
+                "Ref": "CertifierSecurityGroup"
+              }
+            ],
+            "AssociatePublicIpAddress": false,
+            "DeleteOnTermination": true
+          }
+        ],
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/xvda",
+            "Ebs": {
+              "VolumeType": "gp3",
+              "VolumeSize": 30,
+              "Encrypted": true,
+              "DeleteOnTermination": true
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": "#!/bin/bash\nset -euo pipefail\ninstall -d -o root -g root -m 0755 /opt/accessproof-independent-certifier\ninstall -d -o root -g root -m 0700 /etc/accessproof-independent-certifier\nprintf '%s\\n' 'CERTIFIER_INACTIVE_BY_DEFAULT: no signer service or employee session installed' > /opt/accessproof-independent-certifier/STATUS\nchmod 0644 /opt/accessproof-independent-certifier/STATUS\n"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "AccessProof-IndependentCertifier"
+          },
+          {
+            "Key": "Product",
+            "Value": "AccessProof"
+          },
+          {
+            "Key": "Authorization",
+            "Value": "ObserverOnlyUntilTrustAndEmployeeConsent"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "CertifierInstanceId": {
+      "Value": {
+        "Ref": "CertifierInstance"
+      }
+    },
+    "CertifierExecutionRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "CertifierExecutionRole",
+          "Arn"
+        ]
+      }
+    },
+    "CertifierSigningKeyArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "CertifierSigningKey",
+          "Arn"
+        ]
+      }
+    },
+    "CertifierKeyId": {
+      "Value": {
+        "Ref": "CertifierSigningKey"
+      }
+    },
+    "CertifierState": {
+      "Value": "OBSERVER_ONLY_NOT_CERTIFIED_NO_SIGN_PERMISSIONS_NO_EMPLOYEE_SESSIONS"
+    }
+  }
+}
