@@ -28,3 +28,15 @@
 - Unit and browser tests are required before publishing a new installer.
 - Production web-only deployment must preserve API, worker, database, Redis, Nginx and Guard. Do not change source certifications, ownership approvals or route challenge results.
 - The code/installer release does NOT auto-repair older, manually managed production gateways without a new customer-authorized pairing and the correct Gateway deployment identity.
+
+## Production release verification — 2026-11-07
+
+- **DEPLOYED:** reviewed source commit `932013c16a0188461317c69bc75d7598bd6ec887`, isolated web-only release `web-r53-gateway-recovery-932013c16a01`.
+- Approved AWS SSM release command `75bc0c06-c896-4556-a916-6a19f44e5f1a` returned `Success`; server reported `WEB-ONLY RELEASE VERIFIED`, new web image healthy and API/worker/DB/Redis/Nginx container IDs unchanged.
+- Independent post-release SSM preflight `ef609578-c50b-4161-acee-46a0e5330c0f` returned `Success`; live Gateway ZIP SHA-256 `ef85f28e48d4078d75cf128eb60adc87cd0962ef9fde86f1fd6a95f16ee7d159` equals reviewed package digest. Note web uses an installer bind mount, so this verification is essential.
+- Public `https://app.accessproof.in/login` and `https://api.accessproof.in/health/ready` responded HTTP 200. Anonymous customer installer download redirected to login (not public ZIP access).
+- Preflight after deployment reported 8 GB available, at the release minimum. Earlier web-r52 attempt failed safely with 7 GB. The operator-approved cleanup removed only seven unused release `src` staging trees after checking live Docker mounts and acquiring the release lock, raising free disk from 6.9 to 8.3 GB; no live service data or rollback files were changed.
+- 137 frontend Playwright tests passed (5 skipped). Full Python unit/security suite passed. Onboarding smoke passed after updating its route-challenge regression to require a fresh authenticated Gateway heartbeat. Reviewed Gateway runtime archive bytes preserved.
+- Local “doctor” applied to the two legacy `sharepoint-rag-staging` Gateways: `ap-remote-gateway` lacks authenticated presence; `neuralmatrix-customer-rag-e2e-accessproof-gateway-1` lacks presence and its configured `guard` DNS hostname is unavailable. Both correctly yield incomplete, noncertified diagnostics.
+- The locally available `sharepoint-rag-staging` pairing token expired **2026-11-04 02:26:47 UTC**, so old customer Gateway status was **NOT** repaired or falsely marked CONNECTED by this web deployment. A fresh Owner/Admin-issued pairing and explicit selection of the intended verified Gateway are still required. No old Gateway was recreated or assigned new credentials.
+- Read-only local renewal watchdog returned `OK` for three tracked independent remote routes, but the renewal host remains `OWNER_LAPTOP_NOT_ALWAYS_ON`; independent off-laptop certificate signer migration and customer credential custody remain separate unfinished infrastructure work.
