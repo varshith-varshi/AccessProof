@@ -237,6 +237,20 @@ def test_protect_activation_waits_for_guard_machine_ack(monkeypatch):
         assert heartbeat.status_code == 200, heartbeat.text
         with SessionLocal() as db:
             assert db.scalar(select(AIApplication).where(AIApplication.application_id == "secure-rag")).mode == "protect_pending"
+        # A ready Guard is NOT an activation request. Pairing, route challenges,
+        # or mode=protect_pending cannot silently switch on Protect.
+        heartbeat = client.post("/api/v1/guards/heartbeat",
+                                headers={"Authorization": f"Bearer {machine}"},
+                                json={"guard_id": guard_id, "version": "1", "cache_status": "healthy",
+                                      "active_policy_version": 2,
+                                      "active_applications": {"secure-rag": "protect"}})
+        assert heartbeat.status_code == 200, heartbeat.text
+        with SessionLocal() as db:
+            assert db.scalar(select(AIApplication).where(AIApplication.application_id == "secure-rag")).mode == "protect_pending"
+        request = client.post("/api/v1/current/ai-applications/secure-rag/protection/enable",
+                              headers=headers)
+        assert request.status_code == 202, request.text
+        assert request.json()["state"] == "validating"
         heartbeat = client.post("/api/v1/guards/heartbeat",
                                 headers={"Authorization": f"Bearer {machine}"},
                                 json={"guard_id": guard_id, "version": "1", "cache_status": "healthy",

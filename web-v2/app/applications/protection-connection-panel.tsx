@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type AIApplication, type Guard, type ProtectionStatus } from "../../lib/api";
-import { useAccount } from "../app-shell";
 
 type GatewayConnectivity = {
   connection: "CONNECTED" | "DISCONNECTED" | "UNKNOWN";
@@ -37,10 +36,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   onClose: () => void;
   onChange: () => Promise<void>;
 }) {
-  const { account } = useAccount();
   const [review, setReview] = useState<Review | null>(null);
-  const [approvalText, setApprovalText] = useState("");
-  const [approvalNotice, setApprovalNotice] = useState("");
   const [result, setResult] = useState<ProtectionStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -96,35 +92,10 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   ));
   // A pairing report proves installer contact, not a live Gateway. Likewise a
   // heartbeat proves Guard connectivity, not security readiness.
-  const activationCheckable = !!guardReady && !!gatewayPaired && !busy;
-  const approvalPhrase = `APPROVE PROTECT ${application.application_id}`;
-  const approvalGate = review?.route.checks?.find(item => item.code === "HUMAN_ACTIVATION_APPROVAL_REQUIRED");
-  // The backend revalidates every gate and enforces interactive OWNER authorization.
-  // UI eligibility is only guidance; an installer receipt or Guard heartbeat is not certification.
-  const approvalEligible = account?.role === "OWNER" && guardReady && gatewayReady &&
-    approvalGate?.ok === false && !!review?.route.checks?.length &&
-    review.route.checks.every(item => item.ok || item.code === "HUMAN_ACTIVATION_APPROVAL_REQUIRED");
-
-  const approve = async () => {
-    if (!approvalEligible || approvalText !== approvalPhrase || busy) return;
-    setBusy(true);
-    setError("");
-    setApprovalNotice("");
-    try {
-      const result = await api<{ state: string }>(base + "/protection/approve", {
-        method: "POST",
-        body: JSON.stringify({ confirm_text: approvalText, reviewer: account!.user.email }),
-      });
-      setApprovalText("");
-      setApprovalNotice(result.state === "approved_awaiting_guard_ack"
-        ? "Owner approval recorded. Enable Protection to request Guard acknowledgment; approval alone does not activate Protect."
-        : "Owner approval recorded. Check the remaining activation gates.");
-      await check();
-      await onChange();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Owner approval was not accepted. Review the current readiness checks.");
-    } finally { setBusy(false); }
-  };
+  // Every backend prerequisite, including signed Microsoft authorization,
+  // must pass before an authenticated administrator can request Protect.
+  const activationCheckable = !!guardReady && !!gatewayReady &&
+    !!review?.route.checks?.length && review.route.checks.every(item => item.ok) && !busy;
 
   const enable = async () => {
     if (!activationCheckable || busy) return;
@@ -193,22 +164,6 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         {busy ? "Checking…" : "Enable Protection"}
       </button>
     </div>
-    {review && approvalGate?.ok === false && <section className="owner-approval-panel" aria-label="Owner Protect approval">
-      <h3>Owner approval required</h3>
-      {account?.role !== "OWNER" ? <p>Only a signed-in organization Owner can authorize production Protect after the verified route is certified. Ask your workspace Owner to sign in.</p> : <>
-        <p>Approval is an explicit, audited human decision. Source authorization, Guard readiness and the installed Gateway must pass all operational checks first. The four optional manual scenarios are not required for approval. Approval alone does not activate Protect.</p>
-        <p className="muted small">Current reviewer: {account.user.email}</p>
-        <label>Type <code>{approvalPhrase}</code> to confirm
-          <input aria-label="Owner approval confirmation" autoComplete="off" spellCheck={false}
-            value={approvalText} onChange={event => setApprovalText(event.target.value)}
-            disabled={!approvalEligible || busy} placeholder={approvalPhrase} />
-        </label>
-        <button className="button compact" type="button" disabled={!approvalEligible || approvalText !== approvalPhrase || busy}
-          onClick={() => void approve()}>{busy ? "Reviewing…" : "Approve Protect as Owner"}</button>
-        {!approvalEligible && <p className="muted small">Approval is unavailable until Guard and Gateway report ready and all required source and runtime checks pass.</p>}
-      </>}
-    </section>}
-    {approvalNotice && <p className="notice-ok" role="status">{approvalNotice}</p>}
     {review && !activationCheckable && <div role="status" className="muted">
       <p>Protection is not active. The Guard must be connected and security-ready, and the installer must report a valid
         binding. We cannot confirm live Gateway availability from a one-time pairing receipt.</p>
@@ -226,7 +181,9 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         ?? firstSourceIssue.code.replaceAll("_", " ").toLowerCase()}</p>}
     </div>}
     {review && activationCheckable && <p role="status" className="muted">
-      You can request activation after the source authorization and live Gateway readiness checks pass. The four manual security scenarios can be run after Protect is active.
+      All required security checks have passed. A signed-in Owner or Admin can
+      enable protection directly; the Guard must acknowledge it before it is active.
+      Manual chatbot testing is optional afterward.
     </p>}
     {result && <div role="status" className="onboard-fact">
       <b>{result.state === "protected" && result.guard_acknowledged

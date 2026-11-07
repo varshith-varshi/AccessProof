@@ -175,7 +175,7 @@ export default function Applications() {
         <code style={{ overflowWrap: "anywhere" }}>{gatewayChallenge.nonce}</code>
         <p className="muted small">Reference challenge ID: {gatewayChallenge.challenge_id}</p>
       </div>}
-      <p><b>3. Activate, then test manually.</b> The activation page requires fresh permission synchronization, a healthy source-bound Guard, an enforcing Gateway and explicit owner approval. Your team can then test employee-facing access and report any problems. This optional challenge does not turn Protect on.</p>
+      <p><b>3. Activate, then test manually.</b> The activation page requires fresh permission synchronization, a valid source certificate, a healthy source-bound Guard and an enforcing Gateway. Your team can then test employee-facing access and report any problems. This optional challenge does not turn Protect on.</p>
       <button className="button compact" type="button" disabled={gatewayBusy} onClick={() => void refreshGatewayChallenge()}>Refresh challenge status</button>
       {gatewayChallengeState && <p role="status">Latest challenge: <b>{gatewayChallengeState.state.replaceAll("_", " ")}</b>. Complete customer route certified: {gatewayChallengeState.certified_for_reference_route ? "Yes — subject to remaining Guard/source checks" : "Not yet"}.</p>}
       {gatewayStatusError && <p role="alert" className="form-error">{gatewayStatusError}</p>}

@@ -50,15 +50,14 @@ def summarize_checks(checks: list[dict[str, Any]]) -> dict[str, Any]:
         seen.add(code)
         if not ok:
             failed.append(code)
-    # This summary is only diagnostic. Post-activation customer challenge
-    # scenarios are optional, but source/Guard/Gateway readiness is not.
+    # This report is diagnostic only. Owner sign-off and post-activation manual
+    # challenges are optional; source/Guard/Gateway readiness remains mandatory.
     mandatory = {
         "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
         "V1_PROVIDER_SCOPE",
         "PRODUCTION_OIDC_READY",
         "PERMISSION_SOURCE_USABLE",
         "GATEWAY_LIVE_AND_ENFORCEMENT_READY",
-        "HUMAN_ACTIVATION_APPROVAL_REQUIRED",
     }
     if not mandatory.issubset(seen):
         failed.extend(sorted(mandatory - seen))

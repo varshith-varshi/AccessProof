@@ -233,19 +233,16 @@ for item in [
 note("<b>Not self-service yet:</b> The safe route-certification path still requires agreed access to the actual RAG host and real signed evidence. Do not bypass this requirement or claim automatic certification of arbitrary RAGs.", AMBER)
 nextpage()
 
-# 9. Owner approval
-h("7  Owner approval and activation")
-p("Once every other security gate passes and the current customer-facing route is certified, the signed-in organization <b>Owner</b> opens <b>AI Applications → Check &amp; Enable Protection</b>.")
+# 9. Direct activation
+h("7  Enable protection")
+p("After AccessProof verifies the source, Guard and live Gateway, an authenticated organization <b>Owner or Admin</b> opens <b>AI Applications → Check &amp; Enable Protection</b>.")
 for item in [
-    "Read the active route and source certificate state. Confirm the intended customer deployment.",
-    "Type exactly <b>APPROVE PROTECT &lt;application_id&gt;</b> in the Owner approval field.",
-    "Click <b>Approve Protect as Owner</b>. This is audited and rejected for Admins, API keys and stale routes.",
-    "Click <b>Enable Protection</b>. Wait for Guard acknowledgment and independent <b>PROTECTED_VERIFIED</b> state.",
-    "A recertified/changed route requires new human approval. Never force-enable failed gates.",
+    "Review the exact application, source certificate, Guard and live Gateway installation.",
+    "Click <b>Enable Protection</b> once all security checks pass; there is no additional Owner approval or confirmation phrase.",
+    "The Guard must acknowledge the protected mode before AccessProof reports protection active.",
+    "Do not override missing SharePoint permission certification or stale Guard/Gateway readiness.",
 ]: bullet(item)
-p("<b>Current Owner approval screen (synthetic data)</b>","LabelAP")
-pic("owner-approval-fixed.png",max_width=498,max_height=219)
-note("<b>Approval is not activation:</b> Successful approval creates an audited authorization decision, but the customer is not protected until the Guard acknowledges enforcement and all live security checks pass.", GREEN)
+note("<b>No separate approval:</b> An interactive Owner/Admin activation request is audited. Protect does not become active until every backend check and the Guard acknowledgement pass.", GREEN)
 nextpage()
 
 # 10. Live tests

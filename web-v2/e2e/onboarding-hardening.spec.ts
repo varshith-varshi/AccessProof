@@ -17,7 +17,7 @@ async function setup(page: Page, role = "OWNER") {
   await page.route("**/api/v1/current/protection/overview", route => route.fulfill({ json: { applications: [{ application_id: application.application_id, effective_state: "NOT_VERIFIED" }] } }));
   await page.route("**/api/v1/current/ai-applications/*/gateway-pairing", route => route.fulfill({ json: { state: "installation_reported_unverified", gateway_connectivity: { connection: "CONNECTED", enforcement_ready_reported: true, heartbeat_age_seconds: 1, reason: null } } }));
   await page.route("**/api/v1/current/ai-applications/*/verification-run", route => route.fulfill({ json: { state: "verified", guard: { connectivity: "CONNECTED", security_readiness: "READY", heartbeat_age_seconds: 1 } } }));
-  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({ json: { route_certificate: { certified: true, status: "valid" }, checks: [{ code: "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED", ok: true, reason: null }, { code: "HUMAN_ACTIVATION_APPROVAL_REQUIRED", ok: false, reason: "Owner approval required" }] } }));
+  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({ json: { route_certificate: { certified: true, status: "valid" }, checks: [{ code: "GATEWAY_LIVE_AND_ENFORCEMENT_READY", ok: true, reason: null }, { code: "PERMISSION_SOURCE_USABLE", ok: true, reason: null }] } }));
 }
 
 test("SharePoint form keeps fields in distinct grid cells on desktop and mobile", async ({ page }) => {
@@ -55,44 +55,41 @@ test("SharePoint table keeps actions reachable without a horizontal scroll", asy
   expect(pos!.x + pos!.width).toBeLessThan(1180);
 });
 
-test("Owner approval calls audited backend only after exact confirmation", async ({ page }) => {
+test("Owner enables Protect directly without approval confirmation", async ({ page }) => {
   await setup(page);
-  let approved: unknown = null;
   let enabled = 0;
-  await page.route("**/api/v1/current/ai-applications/*/protection/approve", async route => {
-    approved = route.request().postDataJSON();
-    await route.fulfill({ status: 201, json: { state: "approved_awaiting_guard_ack" } });
+  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => {
+    enabled++;
+    return route.fulfill({ status: 202, json: { state: "validating", reason_code: "GUARD_PROTECT_ACK_REQUIRED", message: "Awaiting Guard" } });
   });
-  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => { enabled++; return route.fulfill({ status: 202, json: { state: "validating" } }); });
   await page.goto("/applications");
   await page.getByRole("button", { name: "Check & Enable Protection" }).click();
-  const approveButton = page.getByRole("button", { name: "Approve Protect as Owner" });
-  await expect(approveButton).toBeDisabled();
-  await page.getByLabel("Owner approval confirmation").fill("APPROVE PROTECT finance-rag");
-  await expect(approveButton).toBeEnabled();
-  if (process.env.AP_CAPTURE_GUIDE === "1") {
-    mkdirSync("../docs/assets/customer-onboarding", { recursive: true });
-    await page.locator(".owner-approval-panel").screenshot({ path: "../docs/assets/customer-onboarding/owner-approval-fixed.png" });
-  }
-  await approveButton.click();
-  await expect(page.getByText(/Owner approval recorded/)).toBeVisible();
-  expect(approved).toEqual({ confirm_text: "APPROVE PROTECT finance-rag", reviewer: "owner@company.example" });
-  expect(enabled).toBe(0);
+  await expect(page.getByText("Owner approval required")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Approve Protect as Owner" })).toHaveCount(0);
+  const enableButton = page.getByRole("button", { name: "Enable Protection", exact: true });
+  await expect(enableButton).toBeEnabled();
+  await enableButton.click();
+  await expect(page.getByText(/Awaiting Guard/)).toBeVisible();
+  expect(enabled).toBe(1);
 });
 
-test("Non-owner account cannot see approval action", async ({ page }) => {
+test("Admin can request activation without an Owner approval step", async ({ page }) => {
   await setup(page, "ADMIN");
   await page.goto("/applications");
   await page.getByRole("button", { name: "Check & Enable Protection" }).click();
-  await expect(page.getByText(/Only a signed-in organization Owner/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve Protect as Owner" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Enable Protection", exact: true })).toBeEnabled();
 });
 
-test("Incomplete certification blocks owner approval", async ({ page }) => {
+test("Missing source certification disables activation, not an approval form", async ({ page }) => {
   await setup(page);
-  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({ json: { route_certificate: { certified: false, status: "missing" }, checks: [{ code: "CUSTOMER_RAG_CUTOVER_NOT_VERIFIED", ok: false, reason: "Actual cutover required" }, { code: "HUMAN_ACTIVATION_APPROVAL_REQUIRED", ok: false, reason: "Owner approval required" }] } }));
+  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({
+    json: { route_certificate: { certified: false, status: "missing" },
+      checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false, reason: "Live SharePoint certification required" }] },
+  }));
   await page.goto("/applications");
   await page.getByRole("button", { name: "Check & Enable Protection" }).click();
-  await expect(page.getByRole("button", { name: "Approve Protect as Owner" })).toBeDisabled();
-  await expect(page.getByLabel("Owner approval confirmation")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Enable Protection", exact: true })).toBeDisabled();
+  await expect(page.getByText(/Live SharePoint certification required/)).toBeVisible();
+  await expect(page.getByLabel("Owner approval confirmation")).toHaveCount(0);
 });
