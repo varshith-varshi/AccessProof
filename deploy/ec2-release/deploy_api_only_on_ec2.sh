@@ -11,7 +11,7 @@ COMPOSE="$APP/docker-compose.ec2.yml"
 REL="/home/ubuntu/accessproof-releases/$RID"
 API_IMAGE="accessproof/api:$RID"
 WORKER_IMAGE="accessproof/worker:$RID"
-INSTALLER_SHA="e0e78f53cf0c161044b6054ed50ac539b4feb27507503ffb339a430ddacbfba4"
+INSTALLER_SHA="d0226438e6f255ef4dc5079ba894b57b47db7e5924dfaa9e94ffb9bcb0ef0b3d"
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 compose(){ docker compose --project-directory "$APP" -f "$COMPOSE" "$@"; }
 health(){

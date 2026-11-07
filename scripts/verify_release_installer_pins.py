@@ -15,6 +15,7 @@ PINS = {
     "deploy/deployer/ship_production.sh": r"^GATEWAY_ZIP_SHA=([0-9a-f]{64})$",
     "deploy/ec2-release/deploy_web_only_on_ec2.sh": r"^GATEWAY_SHA='([0-9a-f]{64})'$",
     "deploy/ec2-release/deploy_on_ec2.sh": r'^EXPECTED_GATEWAY_INSTALLER_SHA256="([0-9a-f]{64})"$',
+    "deploy/ec2-release/deploy_api_only_on_ec2.sh": r'^INSTALLER_SHA="([0-9a-f]{64})"$',
 }
 
 

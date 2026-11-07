@@ -14,6 +14,7 @@ def test_all_releasers_require_the_identical_reviewed_gateway_digest():
         "deploy/deployer/ship_production.sh",
         "deploy/ec2-release/deploy_web_only_on_ec2.sh",
         "deploy/ec2-release/deploy_on_ec2.sh",
+        "deploy/ec2-release/deploy_api_only_on_ec2.sh",
     ):
         script = ROOT / relative
         contents = script.read_text()
@@ -21,6 +22,8 @@ def test_all_releasers_require_the_identical_reviewed_gateway_digest():
             match = re.search(r"^GATEWAY_ZIP_SHA=([0-9a-f]{64})$", contents, re.M)
         elif relative.endswith("deploy_web_only_on_ec2.sh"):
             match = re.search(r"^GATEWAY_SHA='([0-9a-f]{64})'$", contents, re.M)
+        elif relative.endswith("deploy_api_only_on_ec2.sh"):
+            match = re.search(r'^INSTALLER_SHA="([0-9a-f]{64})"$', contents, re.M)
         else:
             match = re.search(r'^EXPECTED_GATEWAY_INSTALLER_SHA256="([0-9a-f]{64})"$', contents, re.M)
         assert match, f"Missing pinned digest in {relative}"
@@ -52,8 +55,10 @@ def test_release_pin_validator_rejects_mismatched_server_pin(tmp_path):
             path.write_text("GATEWAY_ZIP_SHA=" + good + "\n")
         elif index == 1:
             path.write_text("GATEWAY_SHA='" + bad + "'\n")
-        else:
+        elif index == 2:
             path.write_text('EXPECTED_GATEWAY_INSTALLER_SHA256="' + good + '"\n')
+        else:
+            path.write_text('INSTALLER_SHA="' + good + '"\n')
     with pytest.raises(ValueError, match="pin mismatch"):
         verify(archive, root=tmp_path)
 
