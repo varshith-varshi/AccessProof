@@ -193,3 +193,75 @@ test("Missing source authorization still blocks validation-first Protect", async
   await expect(page.getByRole("button", { name: "Enable Protection", exact: true })).toBeDisabled();
   await expect(page.getByText(/ACL synchronization incomplete/)).toBeVisible();
 });
+
+test("Protect badge and activation panel update automatically after Guard acknowledgment", async ({ page }) => {
+  await setup(page);
+  let acknowledged = false;
+  let enableRequests = 0;
+  const certificatePending = {
+    code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED", ok: false,
+    reason: "Independent source validation still pending", required_for_activation: false,
+  };
+  await page.route("**/api/v1/current/ai-applications", route => route.fulfill({
+    json: [{ ...application, mode: acknowledged ? "protect" : "protect_pending",
+      readiness: [certificatePending] }],
+  }));
+  await page.route("**/api/v1/current/protection/overview", route => route.fulfill({
+    json: { applications: [{
+      application_id: application.application_id,
+      effective_state: acknowledged ? "PROTECTED_MANUAL_VALIDATION_PENDING" : "PROTECT_PENDING",
+    }] },
+  }));
+  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({
+    json: {
+      state: acknowledged ? "protected" : "validating",
+      guard_acknowledged: acknowledged,
+      reason_code: acknowledged ? "MANUAL_SOURCE_VALIDATION_PENDING" : "GUARD_PROTECT_ACK_REQUIRED",
+      message: acknowledged ? "Protect enforcement is active; independent source validation is still pending."
+        : "Awaiting Guard acknowledgment",
+      route_certificate: { certified: false, status: "missing" },
+      checks: [{ code: "GATEWAY_LIVE_AND_ENFORCEMENT_READY", ok: true, reason: null },
+        certificatePending],
+    },
+  }));
+  await page.route("**/api/v1/current/ai-applications/*/protection/enable", route => {
+    enableRequests += 1;
+    return route.fulfill({ status: 202, json: {
+      state: "validating", guard_acknowledged: false,
+      reason_code: "GUARD_PROTECT_ACK_REQUIRED", message: "Awaiting Guard acknowledgment",
+    } });
+  });
+  await page.goto("/applications");
+  await expect(page.getByText("Mode: protect_pending")).toBeVisible();
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  await page.getByRole("button", { name: "Enable Protection", exact: true }).click();
+  await expect(page.getByText("Protection not active yet")).toBeVisible();
+  acknowledged = true;
+  // Neither the user nor Playwright reloads the page or calls Enable again.
+  await expect(page.getByText("Protection active — now test your RAG")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Mode: protect", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Protect active · manual validation pending")).toBeVisible();
+  await expect(page.getByText("Enforcement ready")).toBeVisible();
+  await expect(page.getByText("Requires activation review")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Protect Active" })).toBeDisabled();
+  expect(enableRequests).toBe(1);
+});
+
+test("Opening activation panel on an already active RAG shows Protect active", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/current/ai-applications/*/protection/status", route => route.fulfill({
+    json: {
+      state: "protected", guard_acknowledged: true,
+      reason_code: "MANUAL_SOURCE_VALIDATION_PENDING",
+      message: "Protect enforcement is active; independent source validation is still pending.",
+      route_certificate: { certified: false, status: "missing" },
+      checks: [{ code: "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED",
+        ok: false, required_for_activation: false, reason: "Optional evidence pending" }],
+    },
+  }));
+  await page.goto("/applications");
+  await page.getByRole("button", { name: "Check & Enable Protection" }).click();
+  await expect(page.getByText("Protection active — now test your RAG")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Protect Active" })).toBeDisabled();
+  await expect(page.getByRole("heading", { name: "Manual validation after Protect activation" })).toBeVisible();
+});

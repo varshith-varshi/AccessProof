@@ -9,9 +9,15 @@ export function StatusBadge({ value }: { value: string }) {
 }
 
 export function ProtectionStateBadge({ value }: { value: string }) {
-  const tone = value === "PROTECTED_VERIFIED" ? "success" : /BLOCKED|DEGRADED/.test(value) ? "danger" : /VALIDATING|PROTECT_PENDING|PROTECTED_MANUAL_VALIDATION_PENDING|STALE|CERTIFICATION_EXPIRED|CONNECTED|UNKNOWN/.test(value) ? "warning" : "neutral";
+  // Enforcement can be active without independent source certification.
+  // Do not color an active Guard acknowledgment as pending activation.
+  const active = value === "PROTECTED_VERIFIED" || value === "PROTECTED_MANUAL_VALIDATION_PENDING";
+  const tone = active ? "success" : /BLOCKED|DEGRADED/.test(value) ? "danger" : /VALIDATING|PROTECT_PENDING|STALE|CERTIFICATION_EXPIRED|CONNECTED|UNKNOWN/.test(value) ? "warning" : "neutral";
+  const label = value === "PROTECTED_MANUAL_VALIDATION_PENDING"
+    ? "Protect active · manual validation pending"
+    : titleCase(value);
   const Icon = tone === "success" ? CheckCircle2 : tone === "danger" ? CircleSlash2 : tone === "warning" ? AlertTriangle : Info;
-  return <span className={`status-badge ${tone}`}><Icon size={12}/>{titleCase(value)}</span>;
+  return <span className={`status-badge ${tone}`}><Icon size={12}/>{label}</span>;
 }
 
 export function Skeleton({ rows = 3 }: { rows?: number }) { return <div className="skeleton-stack" aria-label="Loading" aria-live="polite">{Array.from({ length: rows }, (_, index) => <span className="skeleton" key={index}/>)}</div>; }

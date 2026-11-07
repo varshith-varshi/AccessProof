@@ -20,9 +20,8 @@ type Verification = {
   state: string;
   guard?: { connectivity: string; security_readiness: string; heartbeat_age_seconds: number | null };
 };
-type Route = {
+type Route = Partial<ProtectionStatus> & {
   route_certificate?: { certified: boolean; status: string };
-  checks?: Array<{ code: string; ok: boolean; reason: string | null; required_for_activation?: boolean }>;
 };
 type Review = {
   guard: Guard | null;
@@ -58,6 +57,11 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         verification,
         route: protection,
       });
+      // The initial GET may already say Protect is active; a previous Enable
+      // click can have completed asynchronously before this panel opened.
+      if (typeof protection.state === "string") {
+        setResult(protection as ProtectionStatus);
+      }
     } catch (cause) {
       setReview(null);
       setError(cause instanceof Error ? cause.message : "Unable to check Guard and Gateway status.");
@@ -68,6 +72,22 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   useEffect(() => {
     queueMicrotask(() => void check());
   }, [check]);
+  useEffect(() => {
+    // Machine-authenticated Guard acknowledgment follows the admin request.
+    // Watch the backend's read-only status, never treat the stale POST response
+    // as authoritative, and don't make a second Enable request.
+    let active = true;
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const latest = await api<ProtectionStatus>(base + "/protection/status");
+        if (active && typeof latest.state === "string") {
+          setResult(latest);
+        }
+      } catch { /* transient failure: keep the last verified state */ }
+    }, 4_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [base]);
 
   const guardConnected = review?.verification.guard?.connectivity === "CONNECTED";
   const guardReady = guardConnected && review?.verification.guard?.security_readiness === "READY";
@@ -89,6 +109,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
     check.code === "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED" && !check.ok &&
     check.required_for_activation === false,
   ) ?? false;
+  const protectActive = result?.state === "protected" && result.guard_acknowledged === true;
   const firstSourceIssue = missingEvidence.find(check => (
     check.code === "PERMISSION_SOURCE_USABLE"
     || check.code === "MICROSOFT_EFFECTIVE_PERMISSIONS_NOT_CERTIFIED"
@@ -107,7 +128,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
   const activationCheckable = !!guardConnected && !!gatewayConnected &&
     !!review?.route.checks?.length && review.route.checks.every(item =>
       item.ok || item.required_for_activation === false || readinessHandshake.includes(item.code)
-    ) && !busy;
+    ) && !busy && !protectActive;
 
   const enable = async () => {
     if (!activationCheckable || busy) return;
@@ -178,10 +199,10 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         {busy ? "Checking…" : "Check Guard & Gateway"}
       </button>
       <button className="button compact" disabled={!activationCheckable} type="button" onClick={() => void enable()}>
-        {busy ? "Checking…" : "Enable Protection"}
+        {busy ? "Checking…" : protectActive ? "Protect Active" : "Enable Protection"}
       </button>
     </div>
-    {review && !activationCheckable && <div role="status" className="muted">
+    {review && !activationCheckable && !protectActive && <div role="status" className="muted">
       <p>Protection is not active. The Guard must be connected and security-ready, and the installer must report a valid
         binding. We cannot confirm live Gateway availability from a one-time pairing receipt.</p>
       {!guardReady && <p><strong>Guard is not ready.</strong> Check the customer-host Guard health and source ACL synchronization.
@@ -197,7 +218,7 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
       {firstSourceIssue && <p><strong>Source authorization blocker:</strong> {firstSourceIssue.reason
         ?? firstSourceIssue.code.replaceAll("_", " ").toLowerCase()}</p>}
     </div>}
-    {review && activationCheckable && <p role="status" className="muted">
+    {review && activationCheckable && !protectActive && <p role="status" className="muted">
       Required source, policy, and identity-mapping checks have passed. An Owner or Admin may
       request Protect; the Guard/Gateway must become enforcement-ready before protection is active.
       If independent source certification is pending, test with approved canary documents first.
@@ -208,8 +229,8 @@ export function ProtectionConnectionPanel({ application, onClose, onChange }: {
         : "Protection not active yet"}</b>
       <p>{result.state === "protected" && result.guard_acknowledged
         ? "Guard protection is acknowledged. Open your own RAG and test it outside AccessProof."
-        : result.message || "Protection needs additional security readiness before it can be activated."}</p>
-      {result.state !== "protected" && <small>Current blocker: {result.reason_code.replaceAll("_", " ").toLowerCase()}.
+        : result.message || "Waiting for the Guard to acknowledge Protect. This view updates automatically."}</p>
+      {result.state !== "protected" && <small>Current status: {(result.reason_code ?? "AWAITING_GUARD_ACK").replaceAll("_", " ").toLowerCase()}.
         Review the detailed security status for diagnosis; this is not a request to perform tests inside AccessProof.</small>}
     </div>}
     {result?.state === "protected" && result.guard_acknowledged &&

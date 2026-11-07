@@ -65,6 +65,27 @@ export default function Applications() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  // Guard acknowledgment happens asynchronously *after* the Enable request.
+  // Refresh the two authoritative application status endpoints without a
+  // loading skeleton or a full-page reload, including while the panel is open.
+  const refreshProtection = useCallback(async () => {
+    const [registered, overview] = await Promise.all([
+      api<AIApplication[]>("/api/v1/current/ai-applications"),
+      api<ProtectionOverview>("/api/v1/current/protection/overview"),
+    ]);
+    setApplications(registered);
+    setProtectionStates(Object.fromEntries(
+      overview.applications.map(item => [item.application_id, item.effective_state]),
+    ));
+  }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshProtection().catch(() => { /* retain last known status on network failure */ });
+      }
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [refreshProtection]);
   async function create(event: FormEvent) {
     event.preventDefault(); setPending(true); setFormError("");
     try {
@@ -203,13 +224,13 @@ export default function Applications() {
         <code style={{ overflowWrap: "anywhere" }}>{gatewayChallenge.nonce}</code>
         <p className="muted small">Reference challenge ID: {gatewayChallenge.challenge_id}</p>
       </div>}
-      <p><b>3. Activate, then test manually.</b> The activation page requires fresh permission synchronization, a valid source certificate, a healthy source-bound Guard and an enforcing Gateway. Your team can then test employee-facing access and report any problems. This optional challenge does not turn Protect on.</p>
+      <p><b>3. Activate, then test manually.</b> The activation page requires fresh permission synchronization, a healthy source-bound Guard, verified identity mappings and an enforcing Gateway. For a new SharePoint source, independent source certification is optional before manual validation. This optional route challenge does not turn Protect on.</p>
       <button className="button compact" type="button" disabled={gatewayBusy} onClick={() => void refreshGatewayChallenge()}>Refresh challenge status</button>
       {gatewayChallengeState && <p role="status">Latest challenge: <b>{gatewayChallengeState.state.replaceAll("_", " ")}</b>. Complete customer route certified: {gatewayChallengeState.certified_for_reference_route ? "Yes — subject to remaining Guard/source checks" : "Not yet"}.</p>}
       {gatewayStatusError && <p role="alert" className="form-error">{gatewayStatusError}</p>}
     </section>}
     {activationApplication && <ProtectionConnectionPanel key={activationApplication.id} application={activationApplication}
       onClose={() => setActivationApplication(null)} onChange={load} />}
-    <section className="card table-card">{loading ? <Skeleton rows={5}/> : error ? <ErrorState message={error} retry={load}/> : !applications.length && !observed.length ? <EmptyState title="No AI applications yet" description="Register an AI surface to track its Guard binding and protection readiness. Observed applications will also appear after their first authorization decision." action={<button className="button compact" onClick={() => setCreating(true)}>Register application</button>}/> : <><table><thead><tr><th>Application</th><th>Integration</th><th>Protection</th><th>Protection readiness</th><th>Guard / source</th><th>Action</th></tr></thead><tbody>{applications.map(row => { const failed = row.readiness.filter(check => !check.ok); return <tr key={row.id}><td><b>{row.name}</b><small>{row.application_id}</small></td><td><b>{row.adapter_type === "accessproof-gateway" ? "Gateway" : "Legacy integration · unsupported"}</b><small>{row.adapter_type === "accessproof-gateway" ? row.adapter_contract_version : "Read-only historical record; cannot be certified"}</small></td><td><ProtectionStateBadge value={protectionStates[row.application_id] ?? "UNKNOWN"}/><small>Mode: {row.mode}</small></td><td><StatusBadge value={failed.length ? "Requires activation review" : "Ready for review"}/><small>Connection and Protect state checked before activation</small></td><td className="table-muted"><small>Guard: {row.guard_id || "Not bound"}</small><small>Sources: {(row.source_ids?.length ? row.source_ids : row.source_id ? [row.source_id] : []).join(", ") || "Not bound"}</small></td><td>{row.adapter_type === "accessproof-gateway" ? <><button className="button compact" type="button" onClick={() => beginGatewaySetup(row)}>Set up Gateway</button> <button className="button compact" type="button" onClick={() => setActivationApplication(row)}>Check & Enable Protection</button> <button className="text-button danger-text" type="button" onClick={() => void removeApplication(row)}>Remove</button></> : <small className="muted">Historical record only · new Gateway required</small>}</td></tr>; })}</tbody></table>{observed.length > 0 && <div className="card-head"><div><p className="label">OBSERVED SURFACES</p><h2>Unregistered authorization traffic</h2></div></div>}{observed.length > 0 && <table><thead><tr><th>Application ID</th><th>Activity</th><th>Latest decision</th></tr></thead><tbody>{observed.map(row => <tr key={row.id}><td><b>{row.id}</b><small>Observed by Guard</small></td><td><StatusBadge value={row.blocked ? `${row.blocked} blocked` : "Observed"}/></td><td className="table-muted">{row.latest ? new Date(row.latest).toLocaleString() : "Not available"}</td></tr>)}</tbody></table>}</>}</section>
+    <section className="card table-card">{loading ? <Skeleton rows={5}/> : error ? <ErrorState message={error} retry={load}/> : !applications.length && !observed.length ? <EmptyState title="No AI applications yet" description="Register an AI surface to track its Guard binding and protection readiness. Observed applications will also appear after their first authorization decision." action={<button className="button compact" onClick={() => setCreating(true)}>Register application</button>}/> : <><table><thead><tr><th>Application</th><th>Integration</th><th>Protection</th><th>Protection readiness</th><th>Guard / source</th><th>Action</th></tr></thead><tbody>{applications.map(row => { const failed = row.readiness.filter(check => !check.ok && check.required_for_activation !== false); const effective = protectionStates[row.application_id] ?? "UNKNOWN"; const protecting = effective === "PROTECTED_VERIFIED" || effective === "PROTECTED_MANUAL_VALIDATION_PENDING"; return <tr key={row.id}><td><b>{row.name}</b><small>{row.application_id}</small></td><td><b>{row.adapter_type === "accessproof-gateway" ? "Gateway" : "Legacy integration · unsupported"}</b><small>{row.adapter_type === "accessproof-gateway" ? row.adapter_contract_version : "Read-only historical record; cannot be certified"}</small></td><td><ProtectionStateBadge value={protectionStates[row.application_id] ?? "UNKNOWN"}/><small>Mode: {row.mode}</small></td><td><StatusBadge value={failed.length ? "Requires attention" : protecting ? "Enforcement ready" : "Ready for activation"}/><small>{protecting ? "Protect active; independent validation is separate" : "Mandatory source and Guard checks must pass before activation"}</small></td><td className="table-muted"><small>Guard: {row.guard_id || "Not bound"}</small><small>Sources: {(row.source_ids?.length ? row.source_ids : row.source_id ? [row.source_id] : []).join(", ") || "Not bound"}</small></td><td>{row.adapter_type === "accessproof-gateway" ? <><button className="button compact" type="button" onClick={() => beginGatewaySetup(row)}>Set up Gateway</button> <button className="button compact" type="button" onClick={() => setActivationApplication(row)}>Check & Enable Protection</button> <button className="text-button danger-text" type="button" onClick={() => void removeApplication(row)}>Remove</button></> : <small className="muted">Historical record only · new Gateway required</small>}</td></tr>; })}</tbody></table>{observed.length > 0 && <div className="card-head"><div><p className="label">OBSERVED SURFACES</p><h2>Unregistered authorization traffic</h2></div></div>}{observed.length > 0 && <table><thead><tr><th>Application ID</th><th>Activity</th><th>Latest decision</th></tr></thead><tbody>{observed.map(row => <tr key={row.id}><td><b>{row.id}</b><small>Observed by Guard</small></td><td><StatusBadge value={row.blocked ? `${row.blocked} blocked` : "Observed"}/></td><td className="table-muted">{row.latest ? new Date(row.latest).toLocaleString() : "Not available"}</td></tr>)}</tbody></table>}</>}</section>
   </ProtectedPage>;
 }

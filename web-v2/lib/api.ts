@@ -31,7 +31,7 @@ export type CurrentDashboard = {
     decisions_24h: ProtectionDecisionWindow; latest_decision_at: string | null;
   };
 };
-export type ApplicationReadinessCheck = { code: string; ok: boolean; reason: string | null };
+export type ApplicationReadinessCheck = { code: string; ok: boolean; reason: string | null; required_for_activation?: boolean };
 export type ProtectionDecisionBucket = { allow: number; block: number; would_allow: number; would_block: number };
 export type ProtectionDecisionTelemetry = {
   telemetry: "OBSERVED" | "NO_DATA"; window_hours: number;
