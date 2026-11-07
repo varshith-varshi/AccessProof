@@ -1,0 +1,20 @@
+:root{color-scheme:light;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#edf2fa;color:#12223d}
+*{box-sizing:border-box}body{margin:0}main{max-width:950px;margin:42px auto;padding:0 20px 45px}
+header{padding:26px 5px}.eyebrow{font-size:12px;font-weight:800;letter-spacing:2px;color:#3159b8}
+h1{font-size:36px;letter-spacing:-1px;margin:10px 0}h2{font-size:20px;margin:0 0 18px}h3{margin:0 0 8px}
+header p{color:#53627d;max-width:740px;line-height:1.6}
+.card{background:#fff;border:1px solid #dce4f0;border-radius:16px;padding:27px;margin:18px 0;box-shadow:0 5px 22px #122b5a08}
+.employees,.fields{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.employees article{border:1px solid #dce4f0;border-radius:10px;padding:16px;min-width:0;background:#f9fbff}
+.employees p{font-size:14px;color:#40516d;overflow-wrap:anywhere}
+a{color:#2358bf;font-weight:600}small{display:block;color:#6b7890;margin-top:12px}
+button{border:0;border-radius:9px;background:#214bb0;color:#fff;padding:13px 18px;font-weight:700;cursor:pointer;margin-top:15px}
+button:disabled{background:#9eabbf;cursor:not-allowed}label{display:block;font-weight:650;margin-top:13px}
+select,textarea{display:block;width:100%;font:inherit;margin-top:8px;border:1px solid #c7d3e6;border-radius:9px;padding:12px;background:#fff;color:#12223d}
+textarea{resize:vertical;min-height:95px}.subtle{color:#53627d}.note{background:#fff9e7;border-left:4px solid #e9ad27;padding:13px;color:#665121;font-size:14px;line-height:1.6}
+.status{font-weight:700;color:#193e8f}.evidence{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.evidence div{background:#f3f6fc;padding:12px;border-radius:8px;overflow-wrap:anywhere}
+dt{font-size:12px;color:#667690}dd{font-weight:700;margin:5px 0 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101d35;color:#e1eafa;border-radius:12px;padding:18px;line-height:1.6;max-height:420px;overflow:auto}
+footer{color:#667690;font-size:12px;text-align:center;margin:30px}
+@media(max-width:650px){main{padding:0 12px;margin:22px auto}.card{padding:18px}.employees,.fields,.evidence{grid-template-columns:1fr}h1{font-size:29px}}

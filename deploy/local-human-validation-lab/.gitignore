@@ -1,0 +1,21 @@
+# Never commit customer-host credentials, source signing keys or installer state.
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.cer
+*.key
+secrets/
+.accessproof-gateway/
+.ap-id/
+state/
+witness/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.bak
+*before-*
+__pycache__/
+.pytest_cache/

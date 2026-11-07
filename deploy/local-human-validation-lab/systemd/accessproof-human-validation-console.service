@@ -1,0 +1,13 @@
+[Unit]
+Description=AccessProof local human validation console (real Entra identities)
+After=network.target
+[Service]
+Type=simple
+WorkingDirectory=%h/Downloads/accessproof-human-validation-rag
+ExecStart=%h/Projects/AccessProof-universal/.venv/bin/python -u %h/Downloads/accessproof-human-validation-rag/operator_console.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+[Install]
+WantedBy=default.target

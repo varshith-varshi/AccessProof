@@ -1,0 +1,11 @@
+[Unit]
+Description=AccessProof Human Validation fail-closed local startup recovery
+After=network-online.target
+ConditionPathExists=%h/Downloads/accessproof-human-validation-rag/compose.yml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/Downloads/accessproof-human-validation-rag/scripts/recover_lab.py --recover
+TimeoutStartSec=220
+UMask=0077
+NoNewPrivileges=true

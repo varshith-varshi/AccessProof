@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>AccessProof | Human Validation</title>
+<link rel="stylesheet" href="/operator-console.css">
+<script src="/operator-console.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">NEURALMATRIX · ACCESSPROOF</div>
+    <h1>SharePoint human validation</h1>
+    <p>Test the actual protected RAG as Alice or Bob using verified Microsoft Entra sessions.
+      No employee passwords or OAuth tokens are stored in this browser.</p>
+  </header>
+  <section class="card">
+    <h2>Live AccessProof readiness</h2>
+    <p class="status" id="runtime-status">Checking live Guard/Gateway enforcement…</p>
+    <p id="runtime-details" class="subtle">Connectivity and authorization state must be current.</p>
+    <small>Passing runtime checks means ready for human tests, not independently certified.
+      The source's Microsoft permission evidence still requires real Alice/Bob testing.</small>
+  </section>
+  <section class="card">
+    <h2>1. Employee sign-in</h2>
+    <div class="employees">
+      <article><h3>Alice</h3><p id="alice-status">Checking Microsoft session…</p>
+      <a id="alice-login" href="#" target="_blank" rel="noopener noreferrer" hidden>Sign in as Alice with Microsoft ↗</a></article>
+      <article><h3>Bob</h3><p id="bob-status">Checking Microsoft session…</p>
+      <a id="bob-login" href="#" target="_blank" rel="noopener noreferrer" hidden>Sign in as Bob with Microsoft ↗</a></article>
+    </div>
+    <button type="button" id="refresh">Refresh sign-in status</button>
+    <small>Each identity must complete its own Microsoft sign-in. A name selected below never replaces authentication.</small>
+  </section>
+  <section class="card">
+    <h2>2. Protected question</h2>
+    <form id="chat-form">
+      <div class="fields">
+        <label>Send as
+          <select id="actor" required><option value="alice">Alice</option><option value="bob">Bob</option></select>
+        </label>
+        <label>Approved test document
+          <select id="document" required><option value="">Loading test documents…</option></select>
+        </label>
+      </div>
+      <label>Your question
+        <textarea id="question" rows="3" minlength="2" maxlength="1000" required>Summarize the selected test document. Quote its key facts using the indexed SharePoint source.</textarea>
+      </label>
+      <p id="expectation" class="subtle">Expected decision will appear here.</p>
+      <button type="submit" id="ask" disabled>Send through AccessProof Gateway</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>3. Result and security evidence</h2>
+    <p id="result-state" class="status">No test run yet.</p>
+    <dl id="evidence" class="evidence">
+      <div><dt>Gateway decision</dt><dd id="decision">—</dd></div>
+      <div><dt>Expected result</dt><dd id="expected">—</dd></div>
+      <div><dt>Actual result</dt><dd id="actual">—</dd></div>
+      <div><dt>Guard audit verification</dt><dd id="audit">Not yet independently checked</dd></div>
+    </dl>
+    <pre id="answer" aria-live="polite">The answer appears only when AccessProof authorizes the request.</pre>
+    <p class="note">An HTTP response by itself is not proof of a secure product. Confirm matching Guard audit events,
+      effective SharePoint permissions, revocation, and cache protection before marking validation passed.</p>
+  </section>
+  <footer>Local-only operator console · <code>127.0.0.1:28290</code> · credentials never enter the page</footer>
+</main>
+</body>
+</html>

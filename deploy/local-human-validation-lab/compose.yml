@@ -1,0 +1,115 @@
+# New independent Docker project. Do not attach to the original RAG's networks or volumes.
+name: accessproof-human-validation-rag
+x-accessproof-external-guard:
+  container: accessproof-guard-human-validation
+  network: accessproof-guard-016_default
+services:
+  rag:
+    build: .
+    image: accessproof-human-validation-rag:20261106
+    env_file: .env.rag
+    environment:
+      LAB_INDEX_PATH: /data/index.db
+      LAB_REDIS_URL: redis://redis:6379/0
+      LAB_LLM_BASE_URL: https://disabled-model.invalid/v1
+      LAB_LLM_API_KEY: ""
+      LAB_ENABLE_BASELINE: "0"
+      LAB_GATEWAY_URL: "http://accessproof-gateway:8090"
+    labels:
+      com.accessproof.gateway.contract: accessproof.gateway/v1
+      com.accessproof.gateway.enforces: attested-retrieval-and-buffered-output
+      com.accessproof.gateway.route_env: LAB_GATEWAY_URL
+      com.accessproof.cache.mode: none
+    volumes:
+      - human-index:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:28189:8187"
+    # Fresh, source-bound cryptographic evidence is a runtime prerequisite,
+    # not just a cached index-availability indicator. Docker may be healthy
+    # only after the trusted ingester refreshes the signed chunks.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8187/health/ready',timeout=4)"]
+      interval: 20s
+      timeout: 6s
+      start_period: 30s
+      retries: 3
+    # Docker does not publish a host-bound port for a service attached only to
+    # an internal network on this host. Keep data services internal and attach
+    # the RAG alone to a dedicated edge network; the published port remains
+    # loopback-only for local Gateway discovery and health checks.
+    networks: [rag-internal, rag-edge]
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [rag-internal]
+    restart: unless-stopped
+  model:
+    image: accessproof-human-validation-rag:20261106
+    command: ["uvicorn", "app.model_ollama_bridge:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      LAB_LOCAL_OLLAMA_BRIDGE: http://192.168.144.1:11436/v1/chat/completions
+      LAB_PINNED_MODEL: "llama3.2:3b"
+      LAB_CONTEXT_WITNESS_LOG: /witness/model-context.jsonl
+    volumes:
+      - ./witness:/witness
+    networks: [model-internal, accessproof-gateway-host]
+    restart: unless-stopped
+  ingest:
+    profiles: [ingest]
+    image: accessproof-human-validation-rag:20261106
+    # Signed chunks expire in 30 minutes: refresh every LAB_SYNC_SECONDS
+    # from Graph, never reuse an expired source attestation.
+    command: ["python", "-m", "app.ingest", "--continuous"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LAB_INDEX_PATH: /data/index.db
+      LAB_SOURCE_SIGNING_KEY_FILE: /run/secrets/source_signing.pem
+    volumes:
+      - human-index:/data
+      - ./secrets/source_signing.pem:/run/secrets/source_signing.pem:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.index import Index; import time; stamp=int(Index('/data/index.db').stats().get('last_sync','0')); assert 0 <= time.time()-stamp <= 900"]
+      interval: 45s
+      timeout: 7s
+      start_period: 40s
+      retries: 3
+    # The trusted continuous ingester needs outbound HTTPS for Entra and Microsoft
+    # Graph. It also writes the private index volume, but it never serves
+    # employee traffic. Keep this egress path off the long-running RAG/model.
+    networks: [rag-internal, ingest-egress]
+volumes:
+  human-index:
+networks:
+  rag-internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.240.51.0/24
+  model-internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.240.52.0/24
+  rag-edge:
+    ipam:
+      config:
+        - subnet: 10.240.53.0/24
+  ingest-egress:
+    ipam:
+      config:
+        - subnet: 10.240.54.0/24
+  accessproof-gateway-host:
+    internal: false
+  guard-external:
+    external: true
+    name: accessproof-guard-016_default

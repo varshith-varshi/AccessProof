@@ -1,0 +1,12 @@
+[Unit]
+Description=Check and recover AccessProof local Human Validation after boot
+
+[Timer]
+OnStartupSec=45s
+OnUnitInactiveSec=120s
+AccuracySec=20s
+Persistent=true
+Unit=accessproof-human-validation-recovery.service
+
+[Install]
+WantedBy=timers.target
