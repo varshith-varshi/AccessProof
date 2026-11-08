@@ -18,10 +18,11 @@ PREVIOUS_GATEWAY_ZIP_SHA=ef85f28e48d4078d75cf128eb60adc87cd0962ef9fde86f1fd6a95f
 SDK_FILE=accessproof_rag-0.1.0-py3-none-any.whl
 SDK_SHA=ce72587503532202add008990e59fbf2a9c1c23e3740e1a4be3fac4b37235072
 GATEWAY_ZIP="${GATEWAY_ZIP:-$HOME/Downloads/accessproof-gateway-connector-20261107-manual-tls-r54.zip}"
-MODE="${1:?Usage: ship_production.sh --dry-run|--build-image|--preflight|--execute [commit] [label] | --gates <org-id> <app-id>}"
+MODE="${1:?Usage: ship_production.sh --dry-run|--build-image|--preflight|--execute [commit] [label] | --gates <org-id> <app-id> [source-certification-evidence.json]}"
 shift
 if [[ "$MODE" == --gates ]]; then
-  GATE_ORG="${1:?organization id}"; GATE_APP="${2:?application id}"
+  GATE_ORG="${1:?organization id}"; GATE_APP="${2:?application id}"; GATE_EVIDENCE="${3:-}"
+  (( $# <= 3 )) || { echo 'Unexpected extra gates arguments' >&2; exit 2; }
   [[ "$GATE_ORG" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo 'Bad organization id' >&2; exit 2; }
   [[ "$GATE_APP" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || { echo 'Bad application id' >&2; exit 2; }
   set -- HEAD
@@ -165,11 +166,38 @@ case "$MODE" in
  --gates)
   # Read-only gates A-J; exit 0 only when the server prints the passing verdict.
   check_identity
-  python3 -c 'import json,sys; json.dump({"organizationId":[sys.argv[1]],"applicationId":[sys.argv[2]]},open(sys.argv[3],"w"))' \
-    "$GATE_ORG" "$GATE_APP" "$WORK/params.json"
+  # Explicit operator-supplied source evidence is checked against its signed
+  # certificate record locally; production independently compares its digest
+  # to the CURRENT source certification in PostgreSQL. Missing evidence stays
+  # NONE and therefore BLOCKED; no silent certificate success is possible.
+  GATE_B64=none
+  if [[ -n "$GATE_EVIDENCE" ]]; then
+    GATE_B64=$(PYTHONPATH="$REPO" "$REPO/.venv/bin/python" \
+      "$REPO/scripts/gates_evidence_transport.py" --organization-id "$GATE_ORG" \
+      --evidence "$GATE_EVIDENCE") || exit 2
+  fi
+  python3 -c 'import json,sys; json.dump({"organizationId":[sys.argv[1]],"applicationId":[sys.argv[2]],"evidenceGzipB64":[sys.argv[3]]},open(sys.argv[4],"w"))' \
+    "$GATE_ORG" "$GATE_APP" "$GATE_B64" "$WORK/params.json"
   rc=0; invoke "$GATES_DOC" "$WORK/params.json" || rc=$?
   [[ $rc -ne 2 ]] || { echo 'GATES_NOT_RUN (document not permitted or not registered; see register_gates_document.sh)' >&2; exit 2; }
-  grep -q 'TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL' "$WORK/invocation.json" || { echo 'GATES_NOT_PASSED' >&2; exit 1; }
+  [[ $rc -eq 0 ]] || { echo 'GATES_NOT_PASSED (SSM returned nonzero)' >&2; exit 1; }
+  python3 - "$WORK/invocation.json" "$GATE_ORG" "$GATE_APP" <<'PYGATE'
+import json, sys
+data = json.load(open(sys.argv[1]))
+if data.get("Status") != "Success":
+    raise SystemExit("GATES_NOT_PASSED (SSM status not Success)")
+report = json.loads(data["Output"])
+expected = "TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL"
+if (report.get("verdict") != expected or
+        report.get("organization_id") != sys.argv[2] or
+        report.get("application_id") != sys.argv[3] or
+        set(report.get("gates", {})) != {
+            "A_INFRASTRUCTURE", "B_IDENTITY", "C_SHAREPOINT_SOURCE", "D_GUARD",
+            "E_GATEWAY", "F_LAYER1", "G_LAYER2", "H_REVOCATION_AND_CACHE",
+            "I_DATABASE_SECURITY", "J_ACTIVATION",
+        } or any(x.get("status") != "PASS" for x in report["gates"].values())):
+    raise SystemExit("GATES_NOT_PASSED (report not fully verified)")
+PYGATE
   echo 'GATES_PASSED (technical; reviewer approval still required)'; exit 0 ;;
  --execute)
   [[ -z "$(git status --porcelain)" ]] || { echo 'Dirty checkout. Commit and retest first.' >&2; exit 2; }

@@ -47,6 +47,62 @@ def preflight() -> dict:
     }
 
 
+def gates_bundle_command(compose: str) -> str:
+    """Construct the host-fact bundle with OPTIONAL digest-pinned evidence.
+
+    The evidence is passed as an SSM ENV_VAR parameter (never shell-expanded),
+    gzip-decoded in memory with a strict upper bound. The production API still
+    authenticates it using the CURRENT certificate evidence digest from its DB.
+    """
+    body = """import base64
+import binascii
+import json
+import os
+import re
+import sys
+import zlib
+
+raw = os.environ.get("SSM_evidenceGzipB64", "none")
+evidence = None
+if raw != "none":
+    if len(raw) > 3500 or not re.fullmatch(r"[A-Za-z0-9+/=]{100,3500}", raw):
+        raise SystemExit("INVALID_SSM_EVIDENCE_PARAMETER")
+    try:
+        data = base64.b64decode(raw, validate=True)
+        inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        decoded = inflater.decompress(data, 16385)
+        if (len(decoded) > 16384 or not inflater.eof or
+                inflater.unconsumed_tail or inflater.unused_data):
+            raise ValueError("EVIDENCE_DECOMPRESSION_LIMIT_OR_TRAILING_DATA")
+        evidence = json.loads(decoded)
+    except (ValueError, UnicodeDecodeError, binascii.Error, zlib.error) as exc:
+        raise SystemExit("INVALID_COMPRESSED_EVIDENCE") from exc
+    if (not isinstance(evidence, dict) or
+            evidence.get("schema") != "accessproof.source_certification_evidence/v1" or
+            evidence.get("organization_id") != os.environ["SSM_organizationId"]):
+        raise SystemExit("EVIDENCE_SCOPE_OR_SCHEMA_MISMATCH")
+
+state = sys.argv[1:]
+if len(state) != 8:
+    raise SystemExit("INVALID_HOST_FACT_COUNT")
+facts = {
+    "api_healthy": state[0] == "healthy",
+    "worker_running": state[1] in ("running", "healthy"),
+    "db_healthy": state[2] == "healthy",
+    "redis_healthy": state[3] == "healthy",
+    "web_healthy": state[4] == "healthy",
+    "migration_at_head": bool(state[5]) and state[5] == state[6],
+    "rollback_available": int(state[7]) > 0,
+}
+print(json.dumps({"host_facts": facts, "evidence": evidence}, separators=(",", ":")))
+"""
+    # Here-doc is deliberately quoted: neither shell expansion nor SSM
+    # templating can reinterpret bytes of the supplied evidence parameter.
+    args = ('"$(state api)" "$(state worker)" "$(state db)" '
+            '"$(state redis)" "$(state web)" "$HEAD_REV" "$DB_REV" "$ROLLBACKS"')
+    return "BUNDLE=$(python3 - " + args + " <<'PYGATES'\n" + body + "PYGATES\n)"
+
+
 def gates() -> dict:
     """Read-only production gates A-J (same logic as deploy/ec2-release/run_security_gates.sh).
 
@@ -63,6 +119,11 @@ def gates() -> dict:
                                'allowedPattern': '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'},
             'applicationId': {'type': 'String', 'interpolationType': 'ENV_VAR',
                               'allowedPattern': '^[a-z0-9][a-z0-9-]{0,63}$'},
+            # Optional; NONE preserves old read-only status checks. The actual
+            # evidence is small metadata/attestation hashes, never OAuth tokens.
+            'evidenceGzipB64': {'type': 'String', 'interpolationType': 'ENV_VAR',
+                                'default': 'none',
+                                'allowedPattern': '^(none|[A-Za-z0-9+/=]+)$'},
         },
         'mainSteps': [{
             'action': 'aws:runShellScript',
@@ -82,7 +143,7 @@ def gates() -> dict:
                 f'HEAD_REV=$({compose} exec -T api alembic heads 2>/dev/null | awk \'/\\(head\\)/{{print $1}}\')',
                 f'DB_REV=$({compose} exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d "[:space:]")',
                 'ROLLBACKS=$(ls -d /home/ubuntu/accessproof-releases/*/rollback 2>/dev/null | wc -l)',
-                'BUNDLE=$(python3 -c \'import json,sys; a=sys.argv[1:]; print(json.dumps({"host_facts": {"api_healthy": a[0]=="healthy", "worker_running": a[1] in ("running","healthy"), "db_healthy": a[2]=="healthy", "redis_healthy": a[3]=="healthy", "web_healthy": a[4]=="healthy", "migration_at_head": bool(a[5]) and a[5]==a[6], "rollback_available": int(a[7])>0}, "evidence": None}))\' "$(state api)" "$(state worker)" "$(state db)" "$(state redis)" "$(state web)" "$HEAD_REV" "$DB_REV" "$ROLLBACKS")',
+                gates_bundle_command(compose),
                 f'printf %s "$BUNDLE" | {compose} exec -T api python scripts/production_security_gates.py --organization-id "$SSM_organizationId" --application-id "$SSM_applicationId" --stdin-bundle',
             ]},
         }],

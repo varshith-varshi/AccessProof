@@ -11,6 +11,12 @@
       "type": "String",
       "interpolationType": "ENV_VAR",
       "allowedPattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "evidenceGzipB64": {
+      "type": "String",
+      "interpolationType": "ENV_VAR",
+      "default": "none",
+      "allowedPattern": "^(none|[A-Za-z0-9+/=]+)$"
     }
   },
   "mainSteps": [
@@ -33,7 +39,7 @@
           "HEAD_REV=$(docker compose -f docker-compose.ec2.yml exec -T api alembic heads 2>/dev/null | awk '/\\(head\\)/{print $1}')",
           "DB_REV=$(docker compose -f docker-compose.ec2.yml exec -T db psql -U accessproof -d accessproof -tAc \"select version_num from alembic_version\" | tr -d \"[:space:]\")",
           "ROLLBACKS=$(ls -d /home/ubuntu/accessproof-releases/*/rollback 2>/dev/null | wc -l)",
-          "BUNDLE=$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps({\"host_facts\": {\"api_healthy\": a[0]==\"healthy\", \"worker_running\": a[1] in (\"running\",\"healthy\"), \"db_healthy\": a[2]==\"healthy\", \"redis_healthy\": a[3]==\"healthy\", \"web_healthy\": a[4]==\"healthy\", \"migration_at_head\": bool(a[5]) and a[5]==a[6], \"rollback_available\": int(a[7])>0}, \"evidence\": None}))' \"$(state api)\" \"$(state worker)\" \"$(state db)\" \"$(state redis)\" \"$(state web)\" \"$HEAD_REV\" \"$DB_REV\" \"$ROLLBACKS\")",
+          "BUNDLE=$(python3 - \"$(state api)\" \"$(state worker)\" \"$(state db)\" \"$(state redis)\" \"$(state web)\" \"$HEAD_REV\" \"$DB_REV\" \"$ROLLBACKS\" <<'PYGATES'\nimport base64\nimport binascii\nimport json\nimport os\nimport re\nimport sys\nimport zlib\n\nraw = os.environ.get(\"SSM_evidenceGzipB64\", \"none\")\nevidence = None\nif raw != \"none\":\n    if len(raw) > 3500 or not re.fullmatch(r\"[A-Za-z0-9+/=]{100,3500}\", raw):\n        raise SystemExit(\"INVALID_SSM_EVIDENCE_PARAMETER\")\n    try:\n        data = base64.b64decode(raw, validate=True)\n        inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)\n        decoded = inflater.decompress(data, 16385)\n        if (len(decoded) > 16384 or not inflater.eof or\n                inflater.unconsumed_tail or inflater.unused_data):\n            raise ValueError(\"EVIDENCE_DECOMPRESSION_LIMIT_OR_TRAILING_DATA\")\n        evidence = json.loads(decoded)\n    except (ValueError, UnicodeDecodeError, binascii.Error, zlib.error) as exc:\n        raise SystemExit(\"INVALID_COMPRESSED_EVIDENCE\") from exc\n    if (not isinstance(evidence, dict) or\n            evidence.get(\"schema\") != \"accessproof.source_certification_evidence/v1\" or\n            evidence.get(\"organization_id\") != os.environ[\"SSM_organizationId\"]):\n        raise SystemExit(\"EVIDENCE_SCOPE_OR_SCHEMA_MISMATCH\")\n\nstate = sys.argv[1:]\nif len(state) != 8:\n    raise SystemExit(\"INVALID_HOST_FACT_COUNT\")\nfacts = {\n    \"api_healthy\": state[0] == \"healthy\",\n    \"worker_running\": state[1] in (\"running\", \"healthy\"),\n    \"db_healthy\": state[2] == \"healthy\",\n    \"redis_healthy\": state[3] == \"healthy\",\n    \"web_healthy\": state[4] == \"healthy\",\n    \"migration_at_head\": bool(state[5]) and state[5] == state[6],\n    \"rollback_available\": int(state[7]) > 0,\n}\nprint(json.dumps({\"host_facts\": facts, \"evidence\": evidence}, separators=(\",\", \":\")))\nPYGATES\n)",
           "printf %s \"$BUNDLE\" | docker compose -f docker-compose.ec2.yml exec -T api python scripts/production_security_gates.py --organization-id \"$SSM_organizationId\" --application-id \"$SSM_applicationId\" --stdin-bundle"
         ]
       }

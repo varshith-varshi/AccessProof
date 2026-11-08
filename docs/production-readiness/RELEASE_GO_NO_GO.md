@@ -12,7 +12,7 @@ No production web or API release is needed or pending. Production runs `web-r54-
 
 ## Blocking items (ordered)
 1. ~~F-001~~ resolved 10:01Z. Recurring: one sign-in about every 3–7 days until F-002.
-2. **F-003/F-017 (P0):** Read-only gates A–J are now registered and were executed for both existing apps on 2026-11-08. Neither passed: source/certification evidence was not supplied, each app has a failed application-level route certificate, and the reference Gateway heartbeat has expired. See `evidence/gates_live_20261108.json`. Do not treat separately valid remote routes as a substitute.
+2. **F-017/F-018 (P0):** Read-only gates A–J are registered and now accept exact certified source evidence. Formal live rechecks pass 9/10 pilot gates and 8/10 reference gates. Pilot Gate E fails on the expired application-level route certificate. Reference Gates E and J fail on expired Gateway heartbeat plus expired application-level route certificate. See `evidence/gates_live_with_evidence_20261108.json`. The three separately signed remote routes are valid but cannot substitute.
 3. **F-002 (P0 for GA):** renewal still depends on the owner laptop, and the KMS trust transition is not done.
 4. **F-007 (P1 for GA):** no restore drill on production data, and no recorded backup schedule or RPO. The local real-PostgreSQL restore passes.
 5. **O1 (P0 for GA):** fresh real-customer Microsoft consent and new-app owner approval are unproven.
@@ -38,7 +38,7 @@ The same command worked on 2026-11-08. If an early run fails, its existing certi
 ## Other owner authorizations required
 | Item | Command / action |
 |---|---|
-| Gates A–J (F-003, F-017) | Registration COMPLETE. Remediate the genuine Gate E Gateway/route failures; provide exact certificate-digest-matching source evidence through a reviewed, authorized workflow (never fabricate it). Then rerun both apps with the existing restricted deployer. |
+| Gates A–J (F-017/F-018) | Registration and exact certificate-digest-matching evidence transport COMPLETE. Remediate app-level Gate E route certificates for both apps and reference's authenticated Gateway heartbeat/route pairing. Gate J then needs recheck. Rerun evidence-backed gates under existing restricted deployer; do not bypass expired certificate checks. |
 | Production restore drill (F-007) | Approve a deployer-taken `pg_dump`, restored on an isolated host using `scripts/drills/postgres_isolation_restore_drill.py` checks. Set RTO/RPO targets |
 | KMS trust transition (F-002) | Register the KMS key alongside the laptop key, test rejection and rollback, then grant `kms:Sign` |
 | Root keys / MFA (F-004) | Root key absence and root MFA verified live through AWS. Enroll MFA for `accessproof-infra-admin` with the human operator's device. |

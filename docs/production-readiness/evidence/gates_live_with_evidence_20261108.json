@@ -1,0 +1,84 @@
+{
+  "applications": {
+    "pilot": {
+      "app": "pilot-hr-rag",
+      "blocked_checks": {
+        "E_GATEWAY": {
+          "route_certified": {
+            "evidence": "EXPIRED",
+            "status": "FAIL"
+          }
+        }
+      },
+      "evaluated_at": "2026-11-08T12:38:46.259692+00:00",
+      "gates": {
+        "A_INFRASTRUCTURE": "PASS",
+        "B_IDENTITY": "PASS",
+        "C_SHAREPOINT_SOURCE": "PASS",
+        "D_GUARD": "PASS",
+        "E_GATEWAY": "FAIL",
+        "F_LAYER1": "PASS",
+        "G_LAYER2": "PASS",
+        "H_REVOCATION_AND_CACHE": "PASS",
+        "I_DATABASE_SECURITY": "PASS",
+        "J_ACTIVATION": "PASS"
+      },
+      "org": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+      "response_code": 1,
+      "ssm_command_id": "b2eb8688-5d50-4515-bd3a-4c545b262179",
+      "status": "Failed",
+      "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+    },
+    "reference": {
+      "app": "sharepoint-rag-staging",
+      "blocked_checks": {
+        "E_GATEWAY": {
+          "gateway_connected": {
+            "evidence": "DISCONNECTED",
+            "status": "FAIL"
+          },
+          "gateway_enforcement_ready": {
+            "evidence": "HEARTBEAT_EXPIRED",
+            "status": "FAIL"
+          },
+          "route_certified": {
+            "evidence": "EXPIRED",
+            "status": "FAIL"
+          }
+        },
+        "J_ACTIVATION": {
+          "activation_checklist": {
+            "evidence": "GATEWAY_LIVE_AND_ENFORCEMENT_READY",
+            "status": "FAIL"
+          },
+          "protect_acknowledged_by_guard": {
+            "evidence": "protect",
+            "status": "FAIL"
+          }
+        }
+      },
+      "evaluated_at": "2026-11-08T12:37:49.869097+00:00",
+      "gates": {
+        "A_INFRASTRUCTURE": "PASS",
+        "B_IDENTITY": "PASS",
+        "C_SHAREPOINT_SOURCE": "PASS",
+        "D_GUARD": "PASS",
+        "E_GATEWAY": "FAIL",
+        "F_LAYER1": "PASS",
+        "G_LAYER2": "PASS",
+        "H_REVOCATION_AND_CACHE": "PASS",
+        "I_DATABASE_SECURITY": "PASS",
+        "J_ACTIVATION": "FAIL"
+      },
+      "org": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+      "response_code": 1,
+      "ssm_command_id": "5ab1147c-2261-4833-b035-eee00cc0f555",
+      "status": "Failed",
+      "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+    }
+  },
+  "schema": "accessproof.gates_certified_evidence_live/v1",
+  "source": "scoped read-only SSM get-command-invocation",
+  "ssm_default_version": "2",
+  "ssm_document": "AccessProof-Deployer-ProductionGates"
+}

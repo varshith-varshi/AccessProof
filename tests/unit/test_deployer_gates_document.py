@@ -27,9 +27,12 @@ def test_generated_gates_document_matches_builder():
 
 def test_gates_parameters_are_validated_env_vars_only():
     params = _builder().gates()["parameters"]
-    assert set(params) == {"organizationId", "applicationId"}
+    assert set(params) == {"organizationId", "applicationId", "evidenceGzipB64"}
     for spec in params.values():
         assert spec["interpolationType"] == "ENV_VAR" and spec["allowedPattern"].startswith("^")
+    assert params["evidenceGzipB64"]["default"] == "none"
+    assert not re.fullmatch(params["evidenceGzipB64"]["allowedPattern"], "$(id)")
+    assert re.fullmatch(params["evidenceGzipB64"]["allowedPattern"], "none")
     assert not re.fullmatch(params["applicationId"]["allowedPattern"], "app; rm -rf /")
     assert not re.fullmatch(params["organizationId"]["allowedPattern"], "$(id)")
     commands = "\n".join(_builder().gates()["mainSteps"][0]["inputs"]["runCommand"])
