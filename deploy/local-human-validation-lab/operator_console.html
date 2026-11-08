@@ -12,7 +12,7 @@
 <main>
   <header>
     <div class="eyebrow">NEURALMATRIX · ACCESSPROOF</div>
-    <h1>SharePoint human validation</h1>
+    <h1>Ask your protected SharePoint RAG</h1>
     <p>Test the actual protected RAG as Alice or Bob using verified Microsoft Entra sessions.
       No employee passwords or OAuth tokens are stored in this browser.</p>
   </header>
@@ -37,7 +37,8 @@
   <section class="card">
     <h2>2. Ask a protected question</h2>
     <p>Ask naturally. The RAG automatically retrieves relevant, signed SharePoint excerpts.
-       AccessProof checks each candidate before the model receives it and verifies the answer before release.</p>
+       AccessProof checks every signed cached or freshly retrieved chunk for the current employee before the model receives it.
+       An additional final check prevents releasing an answer after permissions change during generation.</p>
     <form id="chat-form">
       <label>Send as
         <select id="actor" required><option value="alice">Alice</option><option value="bob">Bob</option></select>
@@ -58,16 +59,20 @@
     </form>
   </section>
   <section class="card">
-    <h2>3. Result and security evidence</h2>
-    <p id="result-state" class="status">No test run yet.</p>
-    <dl id="evidence" class="evidence">
-      <div><dt>Gateway decision</dt><dd id="decision">—</dd></div>
-      <div><dt>Expected result (diagnostic only)</dt><dd id="expected">—</dd></div>
-      <div><dt>Actual result</dt><dd id="actual">—</dd></div>
-      <div><dt>Guard audit verification</dt><dd id="audit">Not yet independently checked</dd></div>
-    </dl>
-    <pre id="answer" aria-live="polite">The answer appears only when AccessProof authorizes the request.</pre>
-    <p class="note">Automatic retrieval selects candidate source chunks, but only Gateway-authorized content may reach the model.
+    <h2>3. Answer</h2>
+    <p id="result-state" class="status">Ask a question to see a protected answer.</p>
+    <pre id="answer" aria-live="polite">Your answer will be generated only from document chunks this employee may access.</pre>
+    <p id="cache-status" class="subtle">Signed retrieval cache: checked on each use; no cached permission decisions are reused.</p>
+    <details id="security-diagnostics">
+      <summary>Security diagnostics (Gateway / Guard)</summary>
+      <dl id="evidence" class="evidence">
+        <div><dt>Gateway decision</dt><dd id="decision">—</dd></div>
+        <div><dt>Expected result (diagnostic only)</dt><dd id="expected">—</dd></div>
+        <div><dt>Actual result</dt><dd id="actual">—</dd></div>
+        <div><dt>Guard audit verification</dt><dd id="audit">Not yet independently checked</dd></div>
+      </dl>
+    </details>
+    <p class="note">The cache stores signed retrieval candidates, not a historical ALLOW decision. Every cache HIT is rechecked for the employee asking this question. Automatic retrieval selects candidate source chunks, but only Gateway-authorized content may reach the model.
       Unauthorized candidate names and snippets are never shown in this console. An HTTP response by itself is not proof of a secure product. Confirm matching Guard audit events,
       effective SharePoint permissions, revocation, and cache protection before marking validation passed.</p>
   </section>

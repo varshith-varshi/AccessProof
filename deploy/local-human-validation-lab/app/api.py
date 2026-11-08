@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from app.index import Index, Match
 from app.attestation_health import inspect_index
+from app.retrieval_cache import CacheUnavailable, get_or_retrieve
 
 
 class Question(BaseModel):
@@ -165,7 +166,27 @@ class Rag:
         evidence = inspect_index(self.index.path)
         if not evidence["signed_index_ready"]:
             raise DependencyFailure("TRUSTED_SHAREPOINT_ATTESTATION_NOT_READY")
-        matches = self.index.by_name(document_name) if document_name else self.search(question)
+        # The cache contains only signed, untrusted retrieval CANDIDATES.
+        # It must never contain an allow decision or a released model answer.
+        # Importantly, the entire candidate list is sent to the Gateway on
+        # EVERY request, including a Redis hit and a different employee.
+        # Gateway verifies original ingestion signatures, Guard permissions,
+        # version freshness and the final release for THIS employee.
+        cache_hit = False
+        if os.getenv("LAB_PROTECTED_RETRIEVAL_CACHE", "0") == "1":
+            generation = self.index.stats().get("generation", "")
+            try:
+                matches, cache_hit = get_or_retrieve(
+                    cache=self.cache, index=self.index,
+                    tenant=os.getenv("LAB_TENANT_ID", ""),
+                    source=self.source, application=self.app_id,
+                    generation=generation, question=question,
+                    document_name=document_name, ttl_seconds=45,
+                )
+            except (CacheUnavailable, ValueError) as exc:
+                raise DependencyFailure(str(exc)) from exc
+        else:
+            matches = self.index.by_name(document_name) if document_name else self.search(question)
         if not matches:
             # Empty retrieval is not evidence of successful authorization.
             raise DependencyFailure("NO_SIGNED_RETRIEVAL_EVIDENCE")
@@ -204,11 +225,14 @@ class Rag:
                 raise DependencyFailure("ACCESSPROOF_RESPONSE_NOT_CERTIFIED")
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
             raise DependencyFailure("ACCESSPROOF_GATEWAY_FAILED") from exc
-        # No answer cache shortcut here. Every answer goes through Gateway
-        # Layer 1 + Layer 2. A signed-cache integration can be added separately.
-        # The Gateway may exclude some retrieved sources at Layer 1.
-        # Do not reveal candidate titles/URLs without the exact authorized set.
-        return {"answer": answer, "mode": "protected", "cache_hit": False,
+        # The retrieval cache is NOT an answer cache. Even on cache HIT all
+        # candidate rows are checked against current employee authorization
+        # before the model sees anything. Gateway may drop some chunks at
+        # Layer 1 and generate from the allowed remainder. The final release
+        # verification remains enabled to catch in-flight ACL revocation.
+        # Do not disclose candidate titles/URLs without an authorized trace.
+        return {"answer": answer, "mode": "protected", "cache_hit": cache_hit,
+                "cache_authorization": "CURRENT_EMPLOYEE_RECHECKED_BY_GATEWAY",
                 "citations": [], "security": "GATEWAY_ALLOWED",
                 "accessproof": outcome}
 

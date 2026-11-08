@@ -73,12 +73,13 @@ $("chat-form").addEventListener("submit", async (event) => {
   const document_name = $("diagnostics").open ? $("document").value : "";
   if (!runtimeReady || !sessions[actor]) { setText("result-state", "Guard/Gateway must be ready and the employee must sign in before sending a request."); return; }
   $("ask").disabled = true;
-  setText("result-state", "Retrieving question-relevant SharePoint chunks → AccessProof Layer 1/2 → model…");
+  setText("result-state", "Finding relevant SharePoint chunks, rechecking cached content permissions, then generating a protected answer…");
   setText("decision", "In progress");
   setText("actual", "Pending");
   setText("expected", document_name ? permissions[actor]?.[document_name] ?? "Unknown" : "Not predetermined — live Gateway decision");
   setText("audit", "Not independently checked");
-  setText("answer", "Waiting for Guard/Gateway verdict and model response…");
+  setText("answer", "Generating answer from authorized context…");
+  setText("cache-status", "Signed chunk cache: checking current employee permissions on every hit.");
   try {
     const res = await fetch("/api/chat", {
       method: "POST", credentials: "same-origin", cache: "no-store",
@@ -89,23 +90,31 @@ $("chat-form").addEventListener("submit", async (event) => {
     });
     const result = await res.json();
     if (!res.ok || result.outcome === "INCONCLUSIVE") {
-      setText("result-state", "INCONCLUSIVE — not a successful security test");
+      setText("result-state", "The protected answer is temporarily unavailable");
       setText("decision", `Unavailable (${result.http_status || res.status})`);
       setText("actual", result.reason || result.detail || "Protected route unavailable");
-      setText("answer", "No protected answer was released.");
+      setText("answer", "I couldn't complete a secure response. Please retry after checking Gateway readiness.");
+      setText("cache-status", "Cache authorization status unavailable; no content released.");
     } else {
       setText("decision", result.outcome);
       setText("actual", result.outcome === "ALLOWED" ? "ALLOW" : "DENY");
       const diagnostic = result.retrieval_mode === "diagnostic" && result.expected !== "NOT_PREDETERMINED";
       const matches = result.outcome === "ALLOWED" ? result.expected === "ALLOW" : result.expected === "DENY";
-      setText("result-state", diagnostic
-        ? `${result.outcome} · ${matches ? "Expected diagnostic behavior observed" : "UNEXPECTED RESULT — investigate!"}`
-        : `${result.outcome} · automatic retrieval; Gateway decision (Guard audit pending)`);
-      setText("answer", result.outcome === "ALLOWED" ? result.answer : "Access denied. No document data was returned.");
+      setText("result-state", result.outcome === "ALLOWED"
+        ? "Answer generated from currently authorized SharePoint context"
+        : "No accessible information was available for this question");
+      // Do not reveal that a restricted file exists or show its title.
+      setText("answer", result.outcome === "ALLOWED"
+        ? result.answer
+        : "I couldn't find information available to you that answers this question.");
+      setText("cache-status", result.outcome === "ALLOWED"
+        ? `Signed chunk cache: ${result.cache_hit ? "HIT" : "MISS"} · ${result.cache_authorization === "CURRENT_EMPLOYEE_RECHECKED_BY_GATEWAY" ? "permissions rechecked by Gateway" : "authorization verification unavailable"}`
+        : "No unauthorized cached information was released.");
+      if (diagnostic) setText("expected", matches ? "Diagnostic expectation matched" : "UNEXPECTED DIAGNOSTIC RESULT — investigate");
       if (result.decision_id) setText("audit", `Gateway decision ID: ${result.decision_id}; Guard audit still requires confirmation`);
     }
   } catch (error) {
-    setText("result-state", "INCONCLUSIVE — request failed");
+    setText("result-state", "The protected answer is temporarily unavailable");
     setText("decision", "No reliable decision");
     setText("answer", error.message);
   } finally {

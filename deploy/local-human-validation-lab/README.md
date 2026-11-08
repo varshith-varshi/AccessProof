@@ -143,3 +143,39 @@ Retrieval tests can run in the dependency-locked RAG Docker image with the
 question-first index.py mounted read-only. The live deployment retains the
 previous image tag accessproof-human-validation-rag:rollback-question-first-20261108.
 Pre-change operator/index sources were backed up alongside the live files.
+
+## Permission-aware signed retrieval cache and conversational answers (2026-11-08)
+
+Lab behavior deployed; NOT a new production/cache certification.
+
+- The RAG retrieves question-relevant signed chunks. Redis may cache only
+  those candidate chunks for up to 45 seconds. The cache key includes
+  tenant, source, application, question, diagnostic title, and atomic
+  SharePoint index generation. Source attestation readiness is rechecked
+  on every question.
+- A retrieval cache HIT carries no old ALLOW decision or generated answer.
+  Every candidate goes through AccessProof Gateway with the CURRENT employee
+  identity. Gateway validates source signatures, Guard document/chunk ACLs
+  and version, excludes denied chunks, and generates ONLY from the allowed
+  remainder. Mixed permitted/restricted requests may answer successfully.
+- Final buffered Guard release checks REMAIN REQUIRED because revocation
+  can happen while inference runs; core code currently calls this Layer 2.
+  Cache reauthorization is a separate pre-model concept and cannot replace
+  the final release guard just by renaming it.
+- The console now prioritizes the chatbot ANSWER; ALLOW/DENY and decision ID
+  are inside an expandable security diagnostics section. For no accessible
+  information, the visible answer does not reveal restricted filenames.
+- Cache failure, corruption, oversized entries, stale signatures, revision
+  change and all Gateway failures continue to fail CLOSED. Employee tokens
+  and cached permission decisions are never stored in this Redis cache.
+- Compose explicitly declares Redis candidate caching but no signed-answer
+  return path. Its cache-return path is NOT independently certified and the
+  lab must not claim production Protect or certification for this new route.
+  Third-party/customer cache integrations need separate review.
+- Previous lab image preserved under tag:
+  accessproof-human-validation-rag:rollback-before-signed-cache-20261108
+  and source copies have .before-signed-cache-20261108 suffix.
+
+Tests: deploy/local-human-validation-lab/tests/test_protected_retrieval_cache.py,
+tests/security/test_gateway_partial_cached_context.py, and existing Gateway
+authorization/cached-version/answer-cache security tests.

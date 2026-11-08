@@ -14,12 +14,18 @@ services:
       LAB_LLM_BASE_URL: https://disabled-model.invalid/v1
       LAB_LLM_API_KEY: ""
       LAB_ENABLE_BASELINE: "0"
+      # Store only signed retrieval candidates; Gateway authorizes each
+      # candidate for the current employee on EVERY cache hit before LLM.
+      LAB_PROTECTED_RETRIEVAL_CACHE: "1"
       LAB_GATEWAY_URL: "http://accessproof-gateway:8090"
     labels:
       com.accessproof.gateway.contract: accessproof.gateway/v1
       com.accessproof.gateway.enforces: attested-retrieval-and-buffered-output
       com.accessproof.gateway.route_env: LAB_GATEWAY_URL
-      com.accessproof.cache.mode: none
+      # Redis caches retrieval CANDIDATES only (not generated answers).
+      # No response cache return-path certification is being claimed.
+      com.accessproof.cache.mode: redis
+      com.accessproof.cache.retrieval: signed-candidates-rechecked-by-gateway/v1
     volumes:
       - human-index:/data
     depends_on:

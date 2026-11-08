@@ -335,6 +335,12 @@ def chat(request: Request, prompt: Prompt):
         "outcome": "ALLOWED", "expected": expected,
         "guard_audit_confirmation": "NOT_CHECKED",
         "decision_id": str(gate["decision_id"])[:130],
+        "cache_hit": data.get("cache_hit") is True,
+        "cache_authorization": (
+            "CURRENT_EMPLOYEE_RECHECKED_BY_GATEWAY"
+            if data.get("cache_authorization") == "CURRENT_EMPLOYEE_RECHECKED_BY_GATEWAY"
+            else "NOT_VERIFIED"
+        ),
         "answer": data["answer"],
     }
 
