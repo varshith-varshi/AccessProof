@@ -1,0 +1,47 @@
+{
+  "api_release": "api-r57-monitor-health-retry-9f2da01b1584",
+  "applications": {
+    "pilot": {
+      "application_id": "pilot-hr-rag",
+      "evaluated_at": "2026-11-08T14:37:10.029430+00:00",
+      "gate_statuses": {
+        "A_INFRASTRUCTURE": "PASS",
+        "B_IDENTITY": "PASS",
+        "C_SHAREPOINT_SOURCE": "PASS",
+        "D_GUARD": "PASS",
+        "E_GATEWAY": "PASS",
+        "F_LAYER1": "PASS",
+        "G_LAYER2": "PASS",
+        "H_REVOCATION_AND_CACHE": "PASS",
+        "I_DATABASE_SECURITY": "PASS",
+        "J_ACTIVATION": "PASS"
+      },
+      "gates_ssm_command_id": "6c2d873e-0153-41fb-9a53-7675876aa802",
+      "organization_id": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+      "pass_count": 10,
+      "verdict": "TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL"
+    },
+    "reference": {
+      "application_id": "sharepoint-rag-staging",
+      "evaluated_at": "2026-11-08T14:37:28.642136+00:00",
+      "gate_statuses": {
+        "A_INFRASTRUCTURE": "PASS",
+        "B_IDENTITY": "PASS",
+        "C_SHAREPOINT_SOURCE": "PASS",
+        "D_GUARD": "PASS",
+        "E_GATEWAY": "FAIL",
+        "F_LAYER1": "PASS",
+        "G_LAYER2": "PASS",
+        "H_REVOCATION_AND_CACHE": "PASS",
+        "I_DATABASE_SECURITY": "PASS",
+        "J_ACTIVATION": "FAIL"
+      },
+      "gates_ssm_command_id": "6fc3e673-7ad7-4577-96e1-7358781d8159",
+      "organization_id": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+      "pass_count": 8,
+      "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+    }
+  },
+  "deploy_ssm_command_id": "416de5e6-cadb-4e75-9e84-005b14eacc8f",
+  "schema": "accessproof.production_gates_post_r57/v1"
+}

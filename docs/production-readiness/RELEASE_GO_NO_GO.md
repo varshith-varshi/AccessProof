@@ -1,6 +1,6 @@
 # Release go / no-go
 
-Decided 2026-11-08T13:42Z (supersedes earlier November 8 status).
+Decided 2026-11-08T14:38Z (supersedes earlier November 8 status).
 
 ## Verdict
 
@@ -8,7 +8,7 @@ Decided 2026-11-08T13:42Z (supersedes earlier November 8 status).
 
 **Existing pilot: 10/10 TECHNICAL PASS pending reviewer approval; still exact-route only, not GA approval.** On 2026-11-08, pilot controlled recertification completed a fresh nonce-bound Guard challenge, signed Gateway probes and real employee cutover; the temporary SharePoint permission was restored. Live read-only production gates A–J all passed via SSM command `6e4182cf-4758-4c37-a67b-0322902b69b5` (`evidence/pilot_10of10_live_20261108.json`). The reference Gateway heartbeat remains expired and its application route certificate is not renewed. Do not onboard new customers or claim general Protect readiness. Existing traffic must continue to fail closed on unverified routes. Independent remote-route renewal remains laptop-dependent and due again in November.
 
-Production API/worker release `api-r55-controlled-recert-a26eeb8d5555` was verified by SSM on 2026-11-08 13:12Z. The web retains `web-r54-tls-doctor-501a74cdb9a2`; DB, Redis, Nginx unchanged.
+Production API/worker release `api-r57-monitor-health-retry-9f2da01b1584` verified by SSM on 2026-11-08 14:12Z. The web retains `web-r54-tls-doctor-501a74cdb9a2`; DB, Redis, Nginx unchanged. Live postrelease pilot 10/10 gates and reference 8/10 gates. Watcher v3 installed on isolated certifier EC2, reports reference DEGRADED.
 
 ## Blocking items (ordered)
 1. ~~F-001~~ resolved 10:01Z. Recurring: one sign-in about every 3–7 days until F-002.
@@ -51,3 +51,13 @@ The P0 fix for `ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION` shipped as A
 
 ## Monitoring r56 rollback incident — 2026-11-08
 A read-only status extension for F-020 was attempted as API release `api-r56-monitor-app-route-0347e33632f1` but FAILED the public API health check during the recreate. The deployment script rolled back the API/worker; independent read-only CLI schema and production preflight confirmed the former release, and pilot Gates A–J still passed 10/10. Monitoring v3 remains NOT deployed. The local release script now has bounded public readiness retries and single-pass rollback traps (F-021); live release retry requires full unchanged authorization/disk/rollback gates.
+
+
+## Post-R57 and independent EC2 status — 2026-11-08 14:38 UTC
+The repaired API release script passed R57 restricted rollout (SSM `416de5e6-cadb-4e75-9e84-005b14eacc8f`). Production source/remote route monitoring API now returns separate 24h application certificate and authenticated Gateway presence fields. Postrelease Gates A–J:
+- **pilot-hr-rag**: 10/10 technical PASS, SSM `6c2d873e-0153-41fb-9a53-7675876aa802`; still pending independent reviewer approval. App-level route expiry is 2026-11-09 13:20 UTC; remote certificate renewal is separately scheduled.
+- **sharepoint-rag-staging**: 8/10 technical PASS, SSM `6fc3e673-7ad7-4577-96e1-7358781d8159`; reference E/J remain FAIL due to missing real authenticated Gateway presence and expired app certificate.
+
+The isolated EC2 watcher v3 is installed with its hourly timer ENABLED/ACTIVE. Its initial report is `DEGRADED` rather than v2's misleading `UP`, correctly showing the reference failure; the systemd service intentionally exits 2 on DEGRADED while the timer has a scheduled next invocation. No independent certificate signing or customer-secret transfer was enabled. Evidence: `evidence/gates_post_r57_20261108.json`, `evidence/independent_watcher_v3_20261108.json`. No external paging destination is configured.
+
+**GA verdict remains NO-GO.** Owner-approved fresh reference pairing, application challenge, independent renewable employee credentials, production-data restore, fresh-customer consent/Owner Protect approval, admin MFA, and human reviewer approval remain dependencies.

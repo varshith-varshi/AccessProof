@@ -1,0 +1,65 @@
+{
+  "policy": "read-only, no independent signing or renewal",
+  "production_api_release": "api-r57-monitor-health-retry-9f2da01b1584",
+  "schema": "accessproof.independent_watcher_v3_live_evidence/v1",
+  "ssm_command_id": "5bc1de40-a3cb-46c3-ba0d-9fc44c7d2496",
+  "ssm_command_status": "Success",
+  "timer_active": true,
+  "watcher": {
+    "checked_at": "2026-11-08T14:34:58.635607+00:00",
+    "monitor_status": "DEGRADED",
+    "monitored_scope_count": 2,
+    "renewal_independent": false,
+    "schema": "accessproof.independent_certificate_status/v3",
+    "scopes": {
+      "pilot": {
+        "certification_healthy": true,
+        "routes": {
+          "application_route": {
+            "expires_in_hours": 22.76,
+            "renewal_window": false,
+            "state": "CERTIFIED"
+          },
+          "earliest_valid_expiry_days": 6.809,
+          "gateway": {
+            "reason": null,
+            "state": "READY"
+          },
+          "historically_invalidated_count": 0,
+          "renewal_window": false,
+          "state": "CERTIFIED",
+          "valid_route_count": 1
+        },
+        "source": {
+          "days_remaining": 26.309,
+          "renewal_window": false,
+          "state": "VALID"
+        }
+      },
+      "reference": {
+        "certification_healthy": false,
+        "routes": {
+          "application_route": {
+            "expires_in_hours": null,
+            "state": "NOT_CERTIFIED"
+          },
+          "earliest_valid_expiry_days": 6.785,
+          "gateway": {
+            "reason": "HEARTBEAT_EXPIRED",
+            "state": "NOT_READY"
+          },
+          "historically_invalidated_count": 1,
+          "renewal_window": false,
+          "state": "CERTIFIED",
+          "valid_route_count": 2
+        },
+        "source": {
+          "days_remaining": 26.044,
+          "renewal_window": false,
+          "state": "VALID"
+        }
+      }
+    },
+    "signing_enabled": false
+  }
+}
