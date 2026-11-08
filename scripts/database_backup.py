@@ -7,6 +7,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,21 +65,38 @@ def backup_sqlite(database_url: str, destination: Path) -> BackupManifest:
 
 
 def backup_postgres(database_url: str, destination: Path) -> BackupManifest:
+    """Create a private, validated custom archive without overwriting backups.
+
+    Archive existence is NOT restore verification, retention, or encryption.
+    Production backup storage and isolated restore remain separate controls.
+    """
     pg_dump = shutil.which("pg_dump")
-    if not pg_dump:
-        raise RuntimeError("pg_dump is required for PostgreSQL backups")
+    pg_restore = shutil.which("pg_restore")
+    if not pg_dump or not pg_restore:
+        raise RuntimeError("pg_dump and pg_restore are required for PostgreSQL backups")
     url = make_url(database_url)
     if not url.drivername.startswith("postgresql"):
         raise ValueError("not a PostgreSQL database URL")
-    destination = destination.expanduser().resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not url.database:
+        raise ValueError("PostgreSQL URL is missing database name")
+    requested = destination.expanduser()
+    destination = requested if requested.is_absolute() else Path.cwd() / requested
+    if (destination.is_symlink() or destination.exists()
+            or any(parent.is_symlink() for parent in destination.parents)):
+        raise FileExistsError("Backup destination already exists or contains a symlink")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    handle, temporary_name = tempfile.mkstemp(
+        dir=destination.parent, prefix=".accessproof-backup-", suffix=".partial",
+    )
+    os.close(handle)
+    temporary = Path(temporary_name)
     command = [
         pg_dump,
         "--format=custom",
         "--no-owner",
         "--no-privileges",
         "--file",
-        str(destination),
+        str(temporary),
     ]
     if url.host:
         command += ["--host", url.host]
@@ -86,13 +104,23 @@ def backup_postgres(database_url: str, destination: Path) -> BackupManifest:
         command += ["--port", str(url.port)]
     if url.username:
         command += ["--username", url.username]
-    if not url.database:
-        raise ValueError("PostgreSQL URL is missing database name")
     command.append(url.database)
     env = dict(os.environ)
     if url.password:
         env["PGPASSWORD"] = url.password
-    subprocess.run(command, check=True, env=env, stdout=subprocess.DEVNULL)
+    try:
+        subprocess.run(command, check=True, env=env, stdout=subprocess.DEVNULL)
+        if temporary.stat().st_size == 0:
+            raise RuntimeError("pg_dump produced an empty archive")
+        subprocess.run(
+            [pg_restore, "--list", str(temporary)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=120,
+        )
+        # Atomic exclusive publish: the real destination must not be replaced.
+        os.link(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
     return BackupManifest(
         created_at=datetime.now(timezone.utc).isoformat(),
         database_kind="postgresql",
