@@ -1,10 +1,10 @@
 # Master production-readiness checklist
 
-Last updated 2026-11-08T10:05Z. Details are in the sibling reports. "Last PASS" dates come from earlier dated evidence when this session could not re-run the check.
+Last updated 2026-11-08T10:56Z. Details are in the sibling reports. "Last PASS" dates come from earlier dated evidence when this session could not re-run the check.
 
 | ID | Group | Requirement | Pri | Status | Evidence | Verified | Remaining dependency | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| A | Infrastructure | API, web, DB and Redis healthy; release pinned; migration at head | P0 | VERIFIED_LIVE: `web-r54-tls-doctor-501a74cdb9a2`; 5 services up (api/db/redis/web healthy); DB `x8c9d0e1f2a3` = repo head; ZIP `9db1c5a9…`; disk 9 GB | deployer `--preflight` SSM `75149f4e…`; public `/health/ready` 200 | 08:58Z | — | PASS (host facts); formal gate A via F-003 |
+| A | Infrastructure | API, web, DB and Redis healthy; release pinned; migration at head | P0 | VERIFIED_LIVE: `web-r54-tls-doctor-501a74cdb9a2`; 5 services up (api/db/redis/web healthy); DB `x8c9d0e1f2a3` = repo head; ZIP `9db1c5a9…`; disk 9 GB | deployer `--preflight` SSM `37328ffe…`; public `/health/ready` 200 | 10:56Z | — | PASS (host facts); formal gate A via F-003 |
 | B | Identity | Entra OIDC verification, employee identity binding | P0 | Last PASS 2026-11-05; live Entra tokens verified (`VERIFIED alice/bob` oid/tid/iss) | gates 11-05; session logs | 11-05 | F-003 | NOT_VERIFIED (gate) |
 | C | SharePoint source | Source certified for exact scope | P0 | CERTIFIED, about 27 d left (expires 2026-12-04) | `source_expiry_monitor` LIVE_READ_ONLY | 08:3xZ | renewal ~11-24 needs sessions | PASS |
 | D | Guard | Guard reachable, fail-closed | P0 | Pilot Guard was failing closed (POLICY_SYNC_STALE, F-011), restarted, healthy; both Guards ready; watchdog now alerts on Guard readiness | /health, watchdog | 10:02Z | off-laptop alerting (R4) | PASS |

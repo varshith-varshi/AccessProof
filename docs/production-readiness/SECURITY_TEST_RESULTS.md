@@ -1,6 +1,6 @@
 # Security test results
 
-Last updated 2026-11-08T09:15Z.
+Last updated 2026-11-08T10:56Z.
 
 ## Automated suites (this session)
 
@@ -12,6 +12,8 @@ Last updated 2026-11-08T09:15Z.
 | Ruff on changed files | `.venv/bin/ruff check …` | clean |
 | **Second session:** early recertification, sign-in trigger, gates document, drill guard | `test_route_attestation_observation_retry.py`, `test_recertify_after_signin.py`, `test_deployer_gates_document.py`, `test_postgres_isolation_drill_guard.py`, `test_deployer_document_url_limit.py` | all pass (14 new tests) |
 | **Second session:** full unit + security | `env -u PYTHONPATH -u AMENT_PREFIX_PATH .venv/bin/python -m pytest -q tests/unit tests/security` | **1644 passed, 9 skipped, 0 failed**, exit 0 |
+| **Fresh release-boundary recheck** | complete `tests/unit` and `tests/security` re-run in bounded batches; focused deployer, Guard, Gateway and adversarial tests | **no failures**; expected skips only |
+| **Web release boundary** | `npm run lint`, `npm run typecheck`, `npm run build`, full Playwright desktop + mobile | **137 passed, 5 skipped**, exit 0 |
 | **Real PostgreSQL 17 tenant isolation + restore drill** | `scripts/drills/postgres_isolation_restore_drill.py` (disposable loopback DB) | PASS: 50 tenant tables, 0 violations before and after restore; cross-tenant INSERT rejected; GUC bypass inert. Negative control (superuser) correctly flagged 4 violation classes |
 
 ## Threat-area coverage map

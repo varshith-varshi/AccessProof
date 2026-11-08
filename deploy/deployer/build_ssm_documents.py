@@ -149,7 +149,8 @@ def role_policy() -> dict:
 
 
 def render() -> None:
-    out = ROOT / 'ssm'; out.mkdir(parents=True, exist_ok=True)
+    out = ROOT / 'ssm'
+    out.mkdir(parents=True, exist_ok=True)
     for name, contents in ((DOCUMENT_PREFLIGHT, preflight()), (DOCUMENT_RELEASE, release()), (DOCUMENT_GATES, gates())):
         (out / f'{name}.json').write_text(json.dumps(contents, indent=2) + '\n')
     (ROOT / 'iam-policy-production-deployer.json').write_text(json.dumps(role_policy(), indent=2) + '\n')
