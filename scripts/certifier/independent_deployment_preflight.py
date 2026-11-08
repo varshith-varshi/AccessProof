@@ -89,6 +89,35 @@ def preflight() -> dict:
         if s.get("StackName") == TARGET and not s.get("StackStatus", "").startswith("DELETE")
     ] if existing_ok and isinstance(stacks, dict) else []
     checks["no_conflicting_active_stack"] = existing_ok and not same
+    # A deployed, reviewed stack is not a missing deployment. Verify its
+    # identity and outputs, and NEVER print a second creation command.
+    # This preflight cannot authorize signing, renewal, or credential custody.
+    if same:
+        if len(same) != 1:
+            return {"ready": False, "deployed": False, "checks": checks,
+                    "blocker": "DUPLICATE_CERTIFIER_STACK_SUMMARIES"}
+        inspected, response = cli("cloudformation", "describe-stacks", "--stack-name", TARGET)
+        records = response.get("Stacks", []) if inspected and isinstance(response, dict) else []
+        verified = len(records) == 1 and records[0].get("StackName") == TARGET
+        stack = records[0] if verified else {}
+        status = stack.get("StackStatus", "")
+        expected = {"CertifierInstanceId", "CertifierExecutionRoleArn", "CertifierSigningKeyArn"}
+        outputs = {o.get("OutputKey") for o in stack.get("Outputs", [])
+                   if isinstance(o, dict) and o.get("OutputValue")}
+        deployed = status in {"CREATE_COMPLETE", "UPDATE_COMPLETE", "IMPORT_COMPLETE"} \
+            and expected.issubset(outputs)
+        checks["existing_stack_verified"] = deployed
+        return {
+            "ready": False,
+            "deployed": deployed,
+            "existing_stack_status": status if isinstance(status, str) else "",
+            "checks": checks,
+            "blocker": ("EXISTING_CERTIFIER_STACK_REQUIRES_APPROVED_SIGNING_CUTOVER"
+                        if deployed else "EXISTING_CERTIFIER_STACK_REQUIRES_REVIEW"),
+            "template": str(TEMPLATE),
+            "signing_enabled": False,
+            "renewal_independent": False,
+        }
     # Server-side StackSets/CloudFormation deploy authorizations can differ
     # from validation; success does NOT prove the role can deploy.
     checks["deployment_permissions_separately_required"] = False
