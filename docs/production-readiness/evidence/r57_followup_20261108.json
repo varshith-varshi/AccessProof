@@ -16,6 +16,21 @@
   },
   "general_availability": "NO_GO; human reviewer approval and other release prerequisites still required",
   "independent_watcher": {
+    "bootstrap_fix_reverification": {
+      "checked_at": "2026-11-08T15:29:15.897061+00:00",
+      "commit": "7aaead8",
+      "expected_degraded_service_exit": 2,
+      "pilot_application_route_certified": true,
+      "pilot_certificate_hours_remaining": 23.72,
+      "reference_gateway": "HEARTBEAT_EXPIRED",
+      "renewal_independent": false,
+      "signing_enabled": false,
+      "ssm_command_id": "56e4cc2d-ab65-4158-82dc-2a749fc0694a",
+      "ssm_status": "Success",
+      "timer_active": true,
+      "timer_enabled": true,
+      "watcher_observation": "DEGRADED"
+    },
     "hourly_timer": "enabled and active",
     "last_observed_at": "2026-11-08T15:20:20.308432+00:00",
     "pilot_application_certificate_hours_remaining": 23.87,
