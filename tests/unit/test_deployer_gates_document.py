@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,7 +33,11 @@ def test_gates_parameters_are_validated_env_vars_only():
     assert not re.fullmatch(params["applicationId"]["allowedPattern"], "app; rm -rf /")
     assert not re.fullmatch(params["organizationId"]["allowedPattern"], "$(id)")
     commands = "\n".join(_builder().gates()["mainSteps"][0]["inputs"]["runCommand"])
-    assert "{{" not in commands.replace("{{if", "").replace("{{.State", "").replace("{{else}}", "").replace("{{end}}", "")
+    # AWS SSM parses every {{...}} token as a document parameter, including
+    # Docker Go-template expressions such as {{else}}.
+    assert "{{" not in commands
+    assert subprocess.run(["bash", "-n"], input=commands, text=True,
+                          capture_output=True, check=False).returncode == 0
 
 
 def test_gates_document_is_read_only():

@@ -1,0 +1,207 @@
+{
+  "applications": {
+    "pilot": {
+      "application_id": "pilot-hr-rag",
+      "evaluated_at": "2026-11-08T12:19:27.493467+00:00",
+      "failing_gates": [
+        "C_SHAREPOINT_SOURCE",
+        "E_GATEWAY",
+        "G_LAYER2",
+        "H_REVOCATION_AND_CACHE"
+      ],
+      "gates": {
+        "A_INFRASTRUCTURE": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "B_IDENTITY": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "C_SHAREPOINT_SOURCE": {
+          "checks": {
+            "certificate_evidence_matches": {
+              "evidence": "evidence not supplied",
+              "status": "BLOCKED"
+            }
+          },
+          "status": "BLOCKED"
+        },
+        "D_GUARD": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "E_GATEWAY": {
+          "checks": {
+            "route_certified": {
+              "evidence": "EXPIRED",
+              "status": "FAIL"
+            }
+          },
+          "status": "FAIL"
+        },
+        "F_LAYER1": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "G_LAYER2": {
+          "checks": {
+            "in_flight_and_tamper_evidence": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            }
+          },
+          "status": "BLOCKED"
+        },
+        "H_REVOCATION_AND_CACHE": {
+          "checks": {
+            "cache_bypass_rejected": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            },
+            "restoration_verified": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            },
+            "revocation_observed": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            },
+            "stable_denial": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            }
+          },
+          "status": "BLOCKED"
+        },
+        "I_DATABASE_SECURITY": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "J_ACTIVATION": {
+          "checks": {},
+          "status": "PASS"
+        }
+      },
+      "organization_id": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+      "ssm_command_id": "ff4129c6-f912-442e-b7b4-8b5296b32403",
+      "ssm_response_code": 1,
+      "ssm_status": "Failed",
+      "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+    },
+    "reference": {
+      "application_id": "sharepoint-rag-staging",
+      "evaluated_at": "2026-11-08T12:16:31.718635+00:00",
+      "failing_gates": [
+        "C_SHAREPOINT_SOURCE",
+        "E_GATEWAY",
+        "G_LAYER2",
+        "H_REVOCATION_AND_CACHE",
+        "J_ACTIVATION"
+      ],
+      "gates": {
+        "A_INFRASTRUCTURE": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "B_IDENTITY": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "C_SHAREPOINT_SOURCE": {
+          "checks": {
+            "certificate_evidence_matches": {
+              "evidence": "evidence not supplied",
+              "status": "BLOCKED"
+            }
+          },
+          "status": "BLOCKED"
+        },
+        "D_GUARD": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "E_GATEWAY": {
+          "checks": {
+            "gateway_connected": {
+              "evidence": "DISCONNECTED",
+              "status": "FAIL"
+            },
+            "gateway_enforcement_ready": {
+              "evidence": "HEARTBEAT_EXPIRED",
+              "status": "FAIL"
+            },
+            "route_certified": {
+              "evidence": "EXPIRED",
+              "status": "FAIL"
+            }
+          },
+          "status": "FAIL"
+        },
+        "F_LAYER1": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "G_LAYER2": {
+          "checks": {
+            "in_flight_and_tamper_evidence": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            }
+          },
+          "status": "BLOCKED"
+        },
+        "H_REVOCATION_AND_CACHE": {
+          "checks": {
+            "cache_bypass_rejected": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            },
+            "restoration_verified": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            },
+            "revocation_observed": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            },
+            "stable_denial": {
+              "evidence": "requires certified evidence",
+              "status": "BLOCKED"
+            }
+          },
+          "status": "BLOCKED"
+        },
+        "I_DATABASE_SECURITY": {
+          "checks": {},
+          "status": "PASS"
+        },
+        "J_ACTIVATION": {
+          "checks": {
+            "activation_checklist": {
+              "evidence": "GATEWAY_LIVE_AND_ENFORCEMENT_READY",
+              "status": "FAIL"
+            },
+            "protect_acknowledged_by_guard": {
+              "evidence": "protect",
+              "status": "FAIL"
+            }
+          },
+          "status": "FAIL"
+        }
+      },
+      "organization_id": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+      "ssm_command_id": "08147dbe-7b8a-4da4-a68b-f5eed7c14c02",
+      "ssm_response_code": 1,
+      "ssm_status": "Failed",
+      "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+    }
+  },
+  "captured_at": "2026-11-08T12:22:04.058206+00:00",
+  "data_source": "SSM GetCommandInvocation via accessproof-production-deployer",
+  "document_version": "1",
+  "registered_document": "AccessProof-Deployer-ProductionGates",
+  "root_grant": "AccessProofGatesRegistrarTemporary20261108 revoked following registration",
+  "schema": "accessproof.production_gates_readonly_evidence/v1",
+  "scope": "Existing reference and pilot; read-only SSM command"
+}

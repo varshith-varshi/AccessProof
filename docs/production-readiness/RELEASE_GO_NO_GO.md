@@ -6,17 +6,17 @@ Decided 2026-11-08T10:05Z (supersedes 09:15Z).
 
 **General availability: NO-GO.**
 
-**Existing pilot (2 protected apps, 3 certified routes): CONTINUE, still operator-dependent.** All 3 routes were renewed and are VALID to 2026-11-15 (14/14 checks each). The next renewal needs one owner sign-in by about 2026-11-14, using the early window that opens 2026-11-11.
+**Existing pilot: CONDITIONAL / exact-route only, not new production approval.** All 3 independently certified remote routes were renewed and remain valid to 2026-11-15 (14/14 checks), but fresh formal gates A–J do NOT pass for either application (F-017). The reference Gateway heartbeat is expired, and both application-level route certificates are expired. Do not onboard new customers or claim general Protect readiness. Existing traffic must continue to use only genuinely enforced, currently certified routes, failing closed otherwise. The next renewal needs one owner sign-in by approximately 2026-11-14 unless independent renewal is completed.
 
 No production web or API release is needed or pending. Production runs `web-r54-tls-doctor-501a74cdb9a2`. No shipped component changed after `501a74c` (F-008).
 
 ## Blocking items (ordered)
 1. ~~F-001~~ resolved 10:01Z. Recurring: one sign-in about every 3–7 days until F-002.
-2. **F-003 (P1):** gates A–J were last passed on 2026-11-05. The new read-only gates document must be registered once by the owner.
+2. **F-003/F-017 (P0):** Read-only gates A–J are now registered and were executed for both existing apps on 2026-11-08. Neither passed: source/certification evidence was not supplied, each app has a failed application-level route certificate, and the reference Gateway heartbeat has expired. See `evidence/gates_live_20261108.json`. Do not treat separately valid remote routes as a substitute.
 3. **F-002 (P0 for GA):** renewal still depends on the owner laptop, and the KMS trust transition is not done.
 4. **F-007 (P1 for GA):** no restore drill on production data, and no recorded backup schedule or RPO. The local real-PostgreSQL restore passes.
 5. **O1 (P0 for GA):** fresh real-customer Microsoft consent and new-app owner approval are unproven.
-6. **G1:** root access keys still exist; MFA is missing on `accessproof-infra-admin` (F-004).
+6. **G1:** Live AWS IAM GetAccountSummary returned `AccountAccessKeysPresent=0`, `AccountMFAEnabled=1`; root access keys do not exist and root MFA is enabled. `accessproof-infra-admin` still has zero MFA devices (owner action).
 
 ## Recurring owner action: route renewal (about 1 hour, between 2026-11-11 and 2026-11-14)
 ```bash
@@ -38,9 +38,9 @@ The same command worked on 2026-11-08. If an early run fails, its existing certi
 ## Other owner authorizations required
 | Item | Command / action |
 |---|---|
-| Gates A–J (F-003, F-012) | Attach `deploy/deployer/iam-policy-gates-document-registrar.json` to `accessproof-infra-admin`; `aws login --profile accessproof-infra-admin`; `deploy/deployer/register_gates_document.sh`. Then `ship_production.sh --gates <org> <app>` for both apps |
+| Gates A–J (F-003, F-017) | Registration COMPLETE. Remediate the genuine Gate E Gateway/route failures; provide exact certificate-digest-matching source evidence through a reviewed, authorized workflow (never fabricate it). Then rerun both apps with the existing restricted deployer. |
 | Production restore drill (F-007) | Approve a deployer-taken `pg_dump`, restored on an isolated host using `scripts/drills/postgres_isolation_restore_drill.py` checks. Set RTO/RPO targets |
 | KMS trust transition (F-002) | Register the KMS key alongside the laptop key, test rejection and rollback, then grant `kms:Sign` |
-| Root keys / MFA (F-004) | Delete root access keys; enroll MFA on root and `accessproof-infra-admin` |
+| Root keys / MFA (F-004) | Root key absence and root MFA verified live through AWS. Enroll MFA for `accessproof-infra-admin` with the human operator's device. |
 | Elastic IP (F-005) | Approve EIP allocation and the DNS update at GoDaddy |
 | Source renewal ~2026-11-24 | Same sign-in step as F-001; the source renewal timers need live sessions |

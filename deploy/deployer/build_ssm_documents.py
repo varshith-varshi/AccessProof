@@ -73,7 +73,12 @@ def gates() -> dict:
                 'printf %s "$SSM_applicationId" | grep -Eqx "[a-z0-9][a-z0-9-]{0,63}" || exit 2',
                 'cd /home/ubuntu/accessproof',
                 'umask 077',
-                f'state() {{ c=$({compose} ps -q "$1" 2>/dev/null || true); if [ -n "$c" ]; then docker inspect -f "{{{{if .State.Health}}}}{{{{.State.Health.Status}}}}{{{{else}}}}{{{{.State.Status}}}}{{{{end}}}}" "$c"; else echo missing; fi; }}',
+                # SSM treats any {{...}} inside runCommand as a document parameter.
+                # Parse docker inspect JSON instead of embedding Docker Go templates.
+                f'state() {{ c=$({compose} ps -q "$1" 2>/dev/null || true); if [ -n "$c" ]; then '
+                'docker inspect "$c" | python3 -c \'import json,sys; s=json.load(sys.stdin)[0]["State"]; '
+                'print((s.get("Health") or {}).get("Status") or s.get("Status", "unknown"))\'; '
+                'else echo missing; fi; }',
                 f'HEAD_REV=$({compose} exec -T api alembic heads 2>/dev/null | awk \'/\\(head\\)/{{print $1}}\')',
                 f'DB_REV=$({compose} exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d "[:space:]")',
                 'ROLLBACKS=$(ls -d /home/ubuntu/accessproof-releases/*/rollback 2>/dev/null | wc -l)',
