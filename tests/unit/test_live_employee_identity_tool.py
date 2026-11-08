@@ -116,3 +116,21 @@ def test_probe_without_positive_control_is_inconclusive(tmp_path, monkeypatch):
     body = json.loads(out.read_text())
     assert rc == 1 and body["pass"] is False and body["positive_control"] is False
     assert {r["actual"] for r in body["results"]} == {"INCONCLUSIVE_NO_POSITIVE_CONTROL"}
+
+
+def test_session_lifetime_is_non_secret_wall_clock_metadata():
+    import json as _json
+    s = ei.Session("alice", "c")
+    with pytest.raises(ei.IdentityFailure):
+        s.get("session")                       # not signed in yet
+    s.tokens = {"api_token": "SECRET-TOKEN", "id_exp": 0}
+    s.session_expires_at = 1_800_000_000.0
+    reply = s.get("session")
+    assert "SECRET" not in reply
+    assert _json.loads(reply) == {"actor": "alice", "session_expires_at": "2027-01-15T08:00:00+00:00"}
+
+
+def test_serve_deadline_uses_wall_clock_not_monotonic():
+    import inspect
+    src = inspect.getsource(ei.serve)
+    assert "time.monotonic()" not in src and "time.time() + args.max_hours" in src

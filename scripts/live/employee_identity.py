@@ -95,6 +95,8 @@ class Session:
         self.lock = threading.Lock()
         self.tokens: dict = {}
         self.verified: dict = {}
+        # Wall-clock end of this serving session (epoch seconds). Set by serve().
+        self.session_expires_at: float | None = None
 
     def auth_code_sign_in(self, timeout_s: int = 600) -> None:
         """Authorization Code + PKCE through the employee's own browser."""
@@ -257,6 +259,13 @@ class Session:
         with self.lock:
             if what == "claims":
                 return json.dumps(self.verified)
+            if what == "session":
+                # Non-secret lifetime metadata so monitors can tell whether this
+                # session will still exist when a recertification needs it.
+                if self.session_expires_at is None or not self.tokens:
+                    raise IdentityFailure("UNKNOWN_OR_NOT_READY")
+                return json.dumps({"actor": self.actor, "session_expires_at": datetime.fromtimestamp(
+                    self.session_expires_at, timezone.utc).isoformat()})
             if what in ("id_token", "access_token", "api_token") and self.tokens:
                 return self.tokens[what]
         raise IdentityFailure("UNKNOWN_OR_NOT_READY")
@@ -292,10 +301,15 @@ def serve(args) -> int:
     # failure can never waste a completed employee sign-in.
     session.auth_code_sign_in(timeout_s=args.signin_timeout) if args.flow == "auth-code" else session.device_sign_in()
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"SERVING {args.actor} tokens on {sock_path} (in memory only) for up to {args.max_hours}h", flush=True)
-    end = time.monotonic() + args.max_hours * 3600
+    # Wall clock, not the monotonic clock: CLOCK_MONOTONIC stops while the laptop
+    # is suspended, which silently stretched a "12 h" session across days and
+    # made its real end unpredictable to the renewal scheduler.
+    end = time.time() + args.max_hours * 3600
+    session.session_expires_at = end
+    print(f"SERVING {args.actor} tokens on {sock_path} (in memory only) until "
+          f"{datetime.fromtimestamp(end, timezone.utc).isoformat()}", flush=True)
     try:
-        while time.monotonic() < end:
+        while time.time() < end:
             try:
                 session.refresh_if_needed()
             except httpx.TransportError as exc:

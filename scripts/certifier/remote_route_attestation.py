@@ -49,6 +49,17 @@ def log(entry: dict) -> None:
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ssm_ops  # noqa: E402  (purpose-built SSM documents; no AWS-RunShellScript)
 
+sys.path.insert(0, str(ROOT))
+from scripts.certifier.renewal_watchdog import employee_sessions  # noqa: E402
+
+
+def employee_sessions_ready(sessions: dict | None = None) -> tuple[bool, list[str]]:
+    """Full re-certification asks live Alice/Bob questions. Refuse to start it
+    (and to stop Gateway/Guard or revoke SharePoint access) without both sessions."""
+    sessions = employee_sessions(Path.home()) if sessions is None else sessions
+    missing = sorted(a for a, info in sessions.items() if info.get("status") == "UNAVAILABLE")
+    return (not missing and len(sessions) >= 2), missing
+
 
 def production(action: str, route: dict, document: dict) -> dict:
     op = {"import": "route_certificate_import", "attest": "route_attestation"}[action]
@@ -126,6 +137,13 @@ def main() -> int:
             cert = json.loads(cert_path.read_text())
             remaining = (datetime.fromisoformat(cert["expires_at"]) - datetime.now(timezone.utc)).total_seconds() / 86400
             if remaining <= a.recertify_days:
+                ready, missing = employee_sessions_ready()
+                if not ready:
+                    failures += 1
+                    log({"route": route["name"], "action": "recertify", "ok": False,
+                         "detail": "EMPLOYEE_SESSION_UNAVAILABLE:" + ",".join(missing),
+                         "days_remaining": round(remaining, 2)})
+                    continue
                 out = STATE / f"{route['name']}.run-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.json"
                 r = certifier(route, "--issue", "--out", str(out))
                 new = Path(str(out) + ".certificate.json")

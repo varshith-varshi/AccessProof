@@ -54,3 +54,40 @@ def test_revoked_or_unsigned_route_certificate_fails_closed(tmp_path: Path) -> N
     payload.pop("signature")
     target.write_text(json.dumps(payload))
     assert "ROUTE_CERTIFICATE_INVALID_CERTIFICATE_METADATA:demo" in check(tmp_path, NOW, prerequisites=GOOD)["warnings"]
+
+
+# --- employee session lifetime vs. pending route recertification --------------
+
+def _session(hours_from_now: float) -> dict:
+    return {"status": "OK", "session_expires_at": (NOW + timedelta(hours=hours_from_now)).isoformat()}
+
+
+def test_session_ending_before_recertification_is_flagged(tmp_path: Path) -> None:
+    # 82 h left => recert starts in 34 h; a session ending in 1 h cannot do it.
+    fixture(tmp_path, NOW + timedelta(hours=82))
+    result = check(tmp_path, NOW, prerequisites=GOOD, sessions={"alice": _session(1), "bob": _session(60)})
+    assert "EMPLOYEE_SESSION_EXPIRES_BEFORE_RECERTIFICATION:alice" in result["warnings"]
+    assert not any(w.endswith(":bob") and "EMPLOYEE" in w for w in result["warnings"])
+    assert result["employee_sessions_needed_until"] == (NOW + timedelta(hours=46)).isoformat()
+
+
+def test_unavailable_or_legacy_sessions_never_pass_when_recert_pending(tmp_path: Path) -> None:
+    fixture(tmp_path, NOW + timedelta(hours=40))
+    warnings = check(tmp_path, NOW, prerequisites=GOOD,
+                     sessions={"alice": {"status": "UNAVAILABLE"}, "bob": {"status": "LIFETIME_UNKNOWN"}})["warnings"]
+    assert "EMPLOYEE_SESSION_UNAVAILABLE:alice" in warnings
+    assert "EMPLOYEE_SESSION_LIFETIME_UNKNOWN:bob" in warnings
+
+
+def test_sessions_not_required_when_no_recert_is_near(tmp_path: Path) -> None:
+    fixture(tmp_path, NOW + timedelta(days=6))
+    result = check(tmp_path, NOW, prerequisites=GOOD, sessions={"alice": {"status": "UNAVAILABLE"}})
+    assert result["status"] == "OK" and result["employee_sessions_needed_until"] is None
+
+
+def test_socket_probe_refuses_token_queries(tmp_path: Path) -> None:
+    import pytest
+    from scripts.certifier.renewal_watchdog import _socket_query
+    for secret in ("api_token", "access_token", "id_token"):
+        with pytest.raises(ValueError):
+            _socket_query(tmp_path / "x.sock", secret)
