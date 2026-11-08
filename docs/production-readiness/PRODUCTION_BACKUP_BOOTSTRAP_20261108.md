@@ -39,7 +39,7 @@ This emergency EBS copy cannot count as a proven PostgreSQL RPO/RTO or replace c
 ## Independent renewal remains gated
 
 - Independent certifier stack: `accessproof-independent-certifier-2026` in `UPDATE_COMPLETE`, observer only.
-- KMS Ed25519 key: `0f040c1c-afc8-4227-9f9f-18aa014c5f10`, enabled. Production trust and signing remain separate approvals.
+- KMS Ed25519 key: `0f040c1c-afc8-4227-9f9f-18aa014c5f10`, enabled. The AWS KMS public DER key was independently compared to the repository candidate `kms-certifier-2026-11` and the raw 32-byte public key matched exactly. Production trust and signing remain separate approvals.
 - Real Alice/Bob Microsoft delegated authentication, independent private Gateway/Guard route, fresh certification evidence and owner-approved sign/import remain missing. No laptop-owned keys or employee tokens were copied.
 - Reference route status for app `sharepoint-rag-staging`: at least one VALID route last attested 2026-11-08 and expiring 2026-11-15. Historical INVALIDATED route entries also exist. This is NOT laptop-independent renewal.
 
