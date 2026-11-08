@@ -175,6 +175,8 @@ def main() -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--attempts", type=int, default=3)
     p.add_argument("--revoke-lead", type=float, default=28.0)
+    p.add_argument("--controlled-recertification", action="store_true",
+                   help="Existing Protect app only: OWNER session + explicit controlled recertification; never changes Protect mode")
     a = p.parse_args()
     cfg = json.loads(Path(a.config).read_text())
     result: dict = {"schema": "accessproof.remote_route_challenge_run/v1", "started_at": now(), "attempts": [],
@@ -206,8 +208,13 @@ def main() -> int:
                     raise RuntimeError("Alice is not allowed on the finance document")
                 time.sleep(10)
             resp = httpx.post(f"{cfg['api']}/api/v1/current/ai-applications/{cfg['application_id']}/protection/challenge",
-                              headers=admin, timeout=30, json={"deployment_sha256": installation["deployment_sha256"],
-                                                               "route_sha256": installation["route_sha256"]})
+                              headers=admin, timeout=30, json={
+                                  "deployment_sha256": installation["deployment_sha256"],
+                                  "route_sha256": installation["route_sha256"],
+                                  **({"controlled_recertification": True,
+                                      "confirmation": f"RECERTIFY {cfg['application_id']}"}
+                                     if a.controlled_recertification else {}),
+                              })
             resp.raise_for_status()
             challenge = resp.json()
             log["challenge_id"] = challenge["challenge_id"]

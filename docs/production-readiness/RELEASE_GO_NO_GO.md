@@ -44,3 +44,6 @@ The same command worked on 2026-11-08. If an early run fails, its existing certi
 | Root keys / MFA (F-004) | Root key absence and root MFA verified live through AWS. Enroll MFA for `accessproof-infra-admin` with the human operator's device. |
 | Elastic IP (F-005) | Approve EIP allocation and the DNS update at GoDaddy |
 | Source renewal ~2026-11-24 | Same sign-in step as F-001; the source renewal timers need live sessions |
+
+## Active Protect 24-hour route renewal correction — candidate (not yet deployed)
+The P0 fix for `ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION` is implemented and tested locally under F-019. It requires interactive Owner authorization and full fresh nonce-bound Guard and employee-route verification. The real pilot has not yet been recertified with that code; Gate E remains FAIL until an approved API-only release and verified live challenge. The manual reference Gateway still needs fresh exact-route pairing and authenticated presence.

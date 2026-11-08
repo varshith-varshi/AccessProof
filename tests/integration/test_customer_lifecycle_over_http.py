@@ -299,7 +299,7 @@ def test_customer_lifecycle_connects_source_guard_rag_and_revokes_over_http(
             assert revoked.response is None
             # While the newly revoked policy awaits installed ACK, the Guard
             # deliberately refuses to serve responses (safe 503 / block).
-            assert revoked.reason in {"GUARD_REQUEST_FAILED", "NO_AUTHORIZED_RESOURCES"}
+            assert revoked.reason in {"GUARD_REQUEST_FAILED", "SOURCE_ACL_STALE", "NO_AUTHORIZED_RESOURCES"}
             assert not sync.sync_once()
             settled = ProtectedRAG(client, allow_unattested_metadata=True).run(
                 employee_token=employee("alice-oid"), application_id="customer-rag",

@@ -1,16 +1,18 @@
 """Reference Gateway challenge lifecycle: machine auth, replay and audit proof."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from apps.api.accessproof_api.app import app
 from apps.api.accessproof_api import gateway_presence
+from apps.api.accessproof_api.route_certification import CERTIFICATE_TTL, describe_route_certificate
 from apps.api.accessproof_api.db import (
     Base, engine, SessionLocal, AIApplication, GuardRegistration, GuardAuditEvent,
-    ProviderSyncCursor, GuardPolicy, GuardPolicyDistribution, SourceConnection,
+    ProviderSyncCursor, GuardPolicy, GuardPolicyDistribution, SourceConnection, RAGRouteChallenge,
 )
 from apps.api.accessproof_api.rag_challenge_verifier import request_ids
 from packages.crypto.secrets import hash_token
@@ -265,3 +267,135 @@ def test_machine_proof_requires_current_guard_audits_and_real_ack():
         assert certificate["age_seconds"] >= 0
         assert certificate["certification_scope"] == "REFERENCE_GATEWAY_ROUTE_ONLY"
         assert certificate["independent_certification"] is False
+
+        # P0: once a customer has genuinely entered Protect, the 24-hour
+        # application-level certificate must be renewable without silently
+        # downgrading the application to protect_pending (which would interrupt
+        # the customer). Revalidation is Owner-initiated and MUST repeat all
+        # nonce/Guard-audit/cutover challenges. No timestamp extension.
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(AIApplication.application_id == APP))
+            row.mode = "protect"
+            past = db.scalar(select(RAGRouteChallenge).where(
+                RAGRouteChallenge.id == challenge["challenge_id"]))
+            past.verified_at = datetime.now(timezone.utc) - CERTIFICATE_TTL - timedelta(minutes=1)
+            db.commit()
+        plain = {"deployment_sha256": DEPLOY, "route_sha256": ROUTE}
+        no_consent = client.post(prefix + "/challenge", headers=owner, json=plain)
+        assert no_consent.status_code == 409, no_consent.text
+        assert no_consent.json()["detail"] == "ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION"
+        invalid_consent = client.post(prefix + "/challenge", headers=owner, json={
+            **plain, "controlled_recertification": True, "confirmation": "RECERTIFY wrong-app",
+        })
+        assert invalid_consent.status_code == 409
+        # An org ADMIN is allowed to create new-app diagnostic challenges but
+        # cannot recertify an active Protect route; only the interactive Owner.
+        from apps.api.accessproof_api.db import Membership
+        with SessionLocal() as db:
+            member = db.scalar(select(Membership).where(
+                Membership.organization_id == org))
+            member.role = "ADMIN"
+            db.commit()
+        no_owner = client.post(prefix + "/challenge", headers=owner, json={
+            **plain, "controlled_recertification": True, "confirmation": f"RECERTIFY {APP}",
+        })
+        assert no_owner.status_code == 403
+        assert no_owner.json()["detail"] == "OWNER_SESSION_REQUIRED_FOR_PROTECT_RECERTIFICATION"
+        with SessionLocal() as db:
+            member = db.scalar(select(Membership).where(
+                Membership.organization_id == org))
+            member.role = "OWNER"
+            db.commit()
+        controlled = client.post(prefix + "/challenge", headers=owner, json={
+            **plain, "controlled_recertification": True, "confirmation": f"RECERTIFY {APP}",
+        })
+        assert controlled.status_code == 201, controlled.text
+        renewed_challenge = controlled.json()
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(AIApplication.application_id == APP))
+            assert row.mode == "protect"
+            record = db.get(RAGRouteChallenge, renewed_challenge["challenge_id"])
+            assert json.loads(record.result_json)["controlled_recertification"] is True
+
+        recert_ids = request_ids(renewed_challenge["nonce"])
+        recert_obs = [{**old, "request_id": recert_ids[old["name"]]} for old in observations]
+        recert_proof = {
+            **proof,
+            "challenge_id": renewed_challenge["challenge_id"],
+            "nonce": renewed_challenge["nonce"],
+            "observations": recert_obs,
+        }
+        recert_submit = (
+            f"/api/v1/guards/{guard_id}/rag-challenges/"
+            f"{renewed_challenge['challenge_id']}/submit"
+        )
+        assert client.post(recert_submit, headers=machine_headers,
+                           json=recert_proof).status_code == 409  # no audit yet
+        with SessionLocal() as db:
+            for n, (name, layer, decision, reason, decision_id, subject) in enumerate(rows):
+                db.add(GuardAuditEvent(
+                    organization_id=org, guard_id=guard_id,
+                    event_id=f"recert-stage-{n}",
+                    request_id=recert_ids[name], application_id=APP, subject_id=subject,
+                    layer=layer, result=decision, reason=reason,
+                    decision_id=decision_id, policy_version=7,
+                ))
+            db.commit()
+        tested_again = client.post(recert_submit, headers=machine_headers, json=recert_proof)
+        assert tested_again.status_code == 202, tested_again.text
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(AIApplication.application_id == APP))
+            assert row.mode == "protect", "recertification must not demote active Protect"
+            record = db.get(RAGRouteChallenge, renewed_challenge["challenge_id"])
+            assert json.loads(record.result_json)["controlled_recertification"] is True
+            assert record.status == "tested"
+
+        recert_cutover_id = "ap-cutover-" + __import__("hashlib").sha256(
+            renewed_challenge["nonce"].encode()).hexdigest()[:24]
+        recert_cutover_proof = {
+            **cutover_proof,
+            "challenge_id": renewed_challenge["challenge_id"],
+            "nonce": renewed_challenge["nonce"],
+            "application_request_id": recert_cutover_id,
+            "negative_request_id": recert_cutover_id + "-deny",
+            "tamper_request_id": recert_cutover_id + "-tamper",
+        }
+        recert_cutover_url = (
+            f"/api/v1/guards/{guard_id}/rag-challenges/"
+            f"{renewed_challenge['challenge_id']}/cutover"
+        )
+        assert client.post(recert_cutover_url, headers=machine_headers,
+                           json=recert_cutover_proof).status_code == 409
+        with SessionLocal() as db:
+            for key, request_id, layer, decision, reason, subject, decision_id in (
+                ("allow1", recert_cutover_id, "layer1", "allow",
+                 "LAYER1_EFFECTIVE_ACCESS", "alice", "cutover-decision"),
+                ("allow2", recert_cutover_id, "layer2", "allow",
+                 "TRUSTED_PROVENANCE_VALID", "alice", "cutover-decision"),
+                ("deny", recert_cutover_id + "-deny", "layer1", "block",
+                 "LAYER1_EFFECTIVE_ACCESS", "bob", "cutover-denial"),
+                ("tamper", recert_cutover_id + "-tamper", "layer1", "allow",
+                 "LAYER1_EFFECTIVE_ACCESS", "alice", "cutover-forgery"),
+            ):
+                db.add(GuardAuditEvent(
+                    organization_id=org, guard_id=guard_id,
+                    event_id="recert-cutover-" + key,
+                    request_id=request_id, application_id=APP, subject_id=subject,
+                    layer=layer, result=decision, reason=reason,
+                    decision_id=decision_id, policy_version=7,
+                ))
+            db.commit()
+        cutover_again = client.post(
+            recert_cutover_url, headers=machine_headers, json=recert_cutover_proof)
+        assert cutover_again.status_code == 202, cutover_again.text
+        assert cutover_again.json()["guard_acknowledgment_required"] is False
+        with SessionLocal() as db:
+            row = db.scalar(select(AIApplication).where(AIApplication.application_id == APP))
+            record = db.get(RAGRouteChallenge, renewed_challenge["challenge_id"])
+            assert row.mode == "protect"
+            assert record.status == "cutover_verified"
+            assert json.loads(record.result_json)["controlled_recertification"] is True
+            certificate = describe_route_certificate(db, row)
+            assert certificate["certified"] and certificate["status"] == "CERTIFIED"
+        assert client.post(recert_cutover_url, headers=machine_headers,
+                           json=recert_cutover_proof).status_code == 409

@@ -210,9 +210,11 @@ def event_driven_attempt(a, log, admin, installation, alice, bob, shared, financ
     the grant is revoked in SharePoint, and the hold lasts until the Guard returns
     a real DENY (max ~24 s, under the Gateway's model timeout). Returns the
     verified challenge or None."""
+    control = ({"controlled_recertification": True,
+                "confirmation": f"RECERTIFY {APP}"} if a.controlled_recertification else {})
     resp = httpx.post(f"{API}/api/v1/current/ai-applications/{APP}/protection/challenge", headers=admin,
                       json={"deployment_sha256": installation["deployment_sha256"],
-                            "route_sha256": installation["route_sha256"]}, timeout=30)
+                            "route_sha256": installation["route_sha256"], **control}, timeout=30)
     resp.raise_for_status()
     challenge = resp.json()
     NONCE_FILE.write_text(challenge["nonce"])
@@ -275,6 +277,8 @@ def main() -> int:
                    help="event-driven: seconds from revocation to the held request's Layer 1")
     p.add_argument("--event-driven", action="store_true",
                    help="r35+: hold the layer2_revoke answer, THEN revoke in SharePoint (deterministic barrier)")
+    p.add_argument("--controlled-recertification", action="store_true",
+                   help="Active Protect ONLY: signed-in OWNER explicitly re-tests the current installed route without disabling Protect")
     a = p.parse_args()
     result: dict = {"schema": "accessproof.route_certification_run/v1", "started_at": now(), "attempts": []}
 
@@ -334,7 +338,10 @@ def main() -> int:
             while time.time() < s0 + 380:
                 resp = httpx.post(f"{API}/api/v1/current/ai-applications/{APP}/protection/challenge", headers=admin,
                                   json={"deployment_sha256": installation["deployment_sha256"],
-                                        "route_sha256": installation["route_sha256"]}, timeout=30)
+                                        "route_sha256": installation["route_sha256"],
+                                        **({"controlled_recertification": True,
+                                            "confirmation": f"RECERTIFY {APP}"}
+                                           if a.controlled_recertification else {})}, timeout=30)
                 resp.raise_for_status()
                 challenge = resp.json()
                 NONCE_FILE.write_text(challenge["nonce"])   # 0600 (umask) so a cutover can be resumed

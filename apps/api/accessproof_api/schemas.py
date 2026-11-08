@@ -306,6 +306,11 @@ class RouteChallengeStart(BaseModel):
     # the attested machine observations; neither alone grants certification.
     deployment_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     route_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # An existing Protect application cannot be forced into protect_pending
+    # just because its reference-route challenge expires every 24 hours.
+    # Require a fresh interactive OWNER request and explicit confirmation.
+    controlled_recertification: bool = False
+    confirmation: str | None = Field(default=None, max_length=100)
 
 
 class RouteChallengeResult(BaseModel):

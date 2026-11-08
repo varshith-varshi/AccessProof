@@ -4865,8 +4865,17 @@ def issue_current_reference_rag_challenge(
             or guard.revoked_at is not None or guard.enrolled_at is None
             or guard.active_policy_version < 1):
         raise HTTPException(409, "REGISTERED_REFERENCE_GATEWAY_WITH_ENROLLED_GUARD_REQUIRED")
-    if row.mode == "protect":
-        raise HTTPException(409, "ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION")
+    controlled = row.mode == "protect"
+    if controlled:
+        # An API key, delegated org admin, or owner silently reusing the old
+        # request shape must not refresh a live Protect route certificate.
+        if actor.api_key_scopes is not None or actor.membership.role != Role.OWNER.value:
+            raise HTTPException(403, "OWNER_SESSION_REQUIRED_FOR_PROTECT_RECERTIFICATION")
+        if (not payload.controlled_recertification
+                or payload.confirmation != f"RECERTIFY {application_id}"):
+            raise HTTPException(409, "ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION")
+    elif payload.controlled_recertification or payload.confirmation is not None:
+        raise HTTPException(409, "CONTROLLED_RECERTIFICATION_REQUIRES_ACTIVE_PROTECT")
     # An uploaded installation.json is only untrusted metadata. A diagnostic
     # nonce requires the exact Gateway's fresh, authenticated enforcement-ready
     # heartbeat; never issue a challenge against a missing/stale container.
@@ -4907,7 +4916,7 @@ def issue_current_reference_rag_challenge(
         expires_at=now + timedelta(minutes=10),
         created_at=now,
         status="issued",
-        result_json="{}",
+        result_json=json.dumps({"controlled_recertification": controlled}),
     )
     db.add(record)
     db.flush()
@@ -5052,9 +5061,13 @@ def submit_enrolled_guard_rag_challenge(
     )
     if not verified:
         raise HTTPException(409, {"code": reason})
+    recertification = json.loads(record.result_json or "{}").get("controlled_recertification") is True
+    if row.mode == "protect" and not recertification:
+        raise HTTPException(409, "PROTECT_RECERTIFICATION_NOT_OWNER_APPROVED")
     record.status = "tested"
     record.verified_at = now
     record.result_json = json.dumps({
+        "controlled_recertification": recertification,
         "contract": payload.contract,
         "route_sha256": payload.route_sha256,
         "deployment_sha256": payload.deployment_sha256,
@@ -5079,13 +5092,18 @@ def submit_enrolled_guard_rag_challenge(
     if run:
         run.last_checked_at = now
         run.checks_json = json.dumps(checks, sort_keys=True)
-        if not _activation_failed_checks(checks):
-            run.state = "awaiting_guard_ack"
-            run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
-            row.mode = "protect_pending"
-        else:
-            run.state = "action_required"
-            run.reason_code = _activation_failed_checks(checks)[0]["code"]
+        # Controlled recertification does not revoke an already acknowledged
+        # Protect state while a fresh machine challenge is still in progress.
+        # No new protection rights are granted: the route remains governed by
+        # the existing authorization, certificate validity and Guard policy.
+        if not (recertification and row.mode == "protect"):
+            if not _activation_failed_checks(checks):
+                run.state = "awaiting_guard_ack"
+                run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
+                row.mode = "protect_pending"
+            else:
+                run.state = "action_required"
+                run.reason_code = _activation_failed_checks(checks)[0]["code"]
     _audit(db, None, guard.organization_id, "RAG_ROUTE_CHALLENGE_VERIFIED", "ai_application", row.id, {
         "challenge_id": record.id, "guard_id": guard.id, "guard_event_count": len(events),
         "result": "reference_verified", "pending_source_or_guard_checks": bool(_activation_failed_checks(checks)),
@@ -5240,6 +5258,9 @@ def acknowledge_enrolled_guard_customer_cutover(
         "tamper_response_sha256": payload.tamper_response_sha256,
         "tamper_guard_events": len(tamper_events),
     }
+    recertification = previous.get("controlled_recertification") is True
+    if row.mode == "protect" and not recertification:
+        raise HTTPException(409, "PROTECT_RECERTIFICATION_NOT_OWNER_APPROVED")
     record.result_json = json.dumps(previous, sort_keys=True)
     db.flush()
     checks = _automatic_activation_checklist(db, row)
@@ -5250,13 +5271,14 @@ def acknowledge_enrolled_guard_customer_cutover(
     if current_run:
         current_run.checks_json = json.dumps(checks, sort_keys=True)
         current_run.last_checked_at = now
-        if not _activation_failed_checks(checks):
-            current_run.state = "awaiting_guard_ack"
-            current_run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
-            row.mode = "protect_pending"
-        else:
-            current_run.state = "action_required"
-            current_run.reason_code = _activation_failed_checks(checks)[0]["code"]
+        if not (recertification and row.mode == "protect"):
+            if not _activation_failed_checks(checks):
+                current_run.state = "awaiting_guard_ack"
+                current_run.reason_code = "GUARD_PROTECT_ACK_REQUIRED"
+                row.mode = "protect_pending"
+            else:
+                current_run.state = "action_required"
+                current_run.reason_code = _activation_failed_checks(checks)[0]["code"]
     _audit(db, None, row.organization_id, "RAG_CUSTOMER_ROUTE_CUTOVER_VERIFIED", "ai_application", row.id, {
         "challenge_id": record.id, "guard_id": guard.id, "matched_events": len(events),
         "result": "customer_reference_route_verified",
@@ -5266,7 +5288,7 @@ def acknowledge_enrolled_guard_customer_cutover(
         "state": "customer_cutover_verified",
         "challenge_id": record.id,
         "guard_audits_matched": len(events),
-        "guard_acknowledgment_required": True,
+        "guard_acknowledgment_required": not (recertification and row.mode == "protect"),
         "protection_ready": not _activation_failed_checks(checks),
         "production_certification": False,
     }
