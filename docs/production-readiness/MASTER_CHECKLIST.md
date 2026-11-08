@@ -17,7 +17,7 @@ Last updated 2026-11-08T10:56Z. Details are in the sibling reports. "Last PASS" 
 | R1 | Reliability | Laptop-independent renewal | P0 (GA) | BLOCKED. The owner window for route renewal is reduced from about 46 h to about 1 h (F-001b) | F-002 | 09:10Z | owner + customer authorizations | BLOCKED |
 | R2 | Reliability | Backup restore drill with RTO/RPO | P1 | Restore path TESTED_LOCAL (dump 0.31 s, restore 7.3 s, at synthetic scale); production data NOT_VERIFIED; no backup schedule found | drill evidence | 09:05Z | owner-approved production drill; targets | OPEN |
 | R3 | Reliability | Rollback tested | P1 | Web-only release keeps the previous digest; no rollback drill recorded | deployer | 11-07 | drill | OPEN |
-| R4 | Reliability | Off-laptop alerting | P1 | Local desktop only; EC2 watcher observes | — | — | alarm channel | OPEN |
+| R4 | Reliability | Off-laptop alerting | P1 | PARTIAL: independent EC2 status watcher v2 VERIFIED_LIVE for both organizations (2 source certificates, 3 routes); no external operator paging. | evidence/independent_status_v2_20261108.json | 11:16Z | approved alert channel | OPEN |
 | S1 | Security | Unit + security suite green | P0 | TESTED_LOCAL (see SECURITY_TEST_RESULTS) | pytest | 09:1xZ | — | PASS |
 | S2 | Security | Mixed allow/deny partial answers | P1 | DEPLOYED (Gateway code unchanged since `501a74c`) + TESTED_LOCAL; live NOT_VERIFIED | `test_gateway_partial_cached_context.py` | 09:1xZ | live observation | OPEN |
 | S3 | Security | Cross-tenant live test | P1 | NOT_VERIFIED live (one real tenant); DB-level cross-tenant isolation TESTED_LOCAL | drill | 09:05Z | second tenant | OPEN |

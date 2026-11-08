@@ -14,7 +14,7 @@ Last verified 2026-11-08T10:56Z. Identities used: `accessproof-certifier` (read-
 | INF-08 | Certifier laptop timers, tunnel, employee sessions | active; sessions near end (F-001) | systemctl, ps | 08:30Z |
 | INF-09 | DB revision / RLS runtime role | Revision VERIFIED_LIVE `x8c9d0e1f2a3` = repo head. RLS runtime role: live gate I NOT_VERIFIED today (F-003); real-PostgreSQL isolation TESTED_LOCAL (F-009) | preflight; drill | 08:58Z |
 | INF-10 | Backups and restore | Restore path TESTED_LOCAL (PG 17, 7.3 s restore at synthetic scale). Production backup schedule not found in repo, so RPO NOT_VERIFIED (F-007) | drill evidence | 09:05Z |
-| INF-11 | Monitoring and alarms | Partial: local user-systemd watchdogs with desktop notification, plus the EC2 status watcher. No paging to an off-laptop channel | unit files | 08:30Z |
+| INF-11 | Monitoring and alarms | VERIFIED_LIVE 2026-11-08: independent EC2 hourly read-only watcher v2 covers reference + pilot source certification and all three valid routes. No signing/import/renewal rights. No external paging channel yet; monitoring is not renewal. | SSM install 91d9ff06; evidence/independent_status_v2_20261108.json | 11:16Z |
 | INF-12 | Disk headroom on production | VERIFIED_LIVE 9 GB free (threshold 8 GB; about 1 release) (F-006) | preflight | 08:58Z |
 
 ## Ongoing cost items (independent certifier)

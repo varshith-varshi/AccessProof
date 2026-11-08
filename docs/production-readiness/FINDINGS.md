@@ -252,3 +252,16 @@ This file contains no secrets, tokens, passwords or document content.
 - This Gateway code is **not deployed**. Shipping it changes the customer Gateway image/route binding and requires an approved release and renewed route certification; it must not be presented as a live fix.
 - `deploy/deployer/ship_production.sh --gates` now fails fast when SSM SendCommand cannot be submitted, instead of hiding the failure and waiting for a nonexistent command. The separate non-root gates-registration IAM grant is still pending.
 - Evidence: 48 focused tests passed; the entire `tests/unit tests/security` suite completed with exit code 0 and no failures; Ruff, bash syntax, and `git diff --check` passed. Production infrastructure was not modified.
+
+## F-015 — Independent AWS certificate monitor omitted the pilot organization
+
+| Priority | P1 (detection of uncertified protection) | Status | FIXED + VERIFIED_LIVE 2026-11-08 11:16 UTC |
+|---|---|---|---|
+
+- Previously the isolated EC2 watcher queried only the reference organization, its source and two routes. The protected pilot source and route were invisible.
+- The watcher now uses an explicit two-organization allowlist and the existing pinned ProductionReadOnly SSM document for exact source/application scopes, with no arbitrary customer scope access.
+- The new v2 report contains per-organization source and route state. Missing, expired, invalid or unobservable certification yields DEGRADED. Monitoring never issues or extends certificates.
+- The bootstrap script now chunks compressed source into bounded SSM commands and verifies SHA-256 before installing. Source and installer are purpose-bound and the AWS operator remains non-root.
+- Local focused tests passed. The read-only AWS host deployment completed through scoped SSM command 91d9ff06-1586-4e15-bd9e-e88805e3521b (Success, response 0, service success).
+- Live result: reference source VALID and 2 CERTIFIED routes; pilot source VALID and 1 CERTIFIED route. Evidence: evidence/independent_status_v2_20261108.json.
+- Signing, certificate import, automatic independent renewal and off-laptop paging remain disabled/pending. This does not clear finding F-002 or off-laptop alerting R4.

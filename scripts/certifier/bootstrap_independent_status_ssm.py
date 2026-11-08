@@ -22,20 +22,37 @@ INSTALL = ROOT / "deploy/certifier/independent/install_status_watcher.sh"
 def make_commands(instance: str, role: str, key: str) -> list[str]:
     code, code_sha = encoded(SRC)
     installer, installer_sha = encoded(INSTALL)
+    root = "/opt/accessproof-independent-status-src"
     cmds = [
         "set -euo pipefail",
-        "mkdir -p /opt/accessproof-independent-status-src/scripts/certifier /opt/accessproof-independent-status-src/deploy/certifier/independent",
-        "printf '%s' '"+code+"' | base64 -d | gzip -d > /opt/accessproof-independent-status-src/scripts/certifier/independent_status_watcher.py",
-        "printf '%s' '"+installer+"' | base64 -d | gzip -d > /opt/accessproof-independent-status-src/deploy/certifier/independent/install_status_watcher.sh",
-        "echo '"+code_sha+"  /opt/accessproof-independent-status-src/scripts/certifier/independent_status_watcher.py' | sha256sum -c",
-        "echo '"+installer_sha+"  /opt/accessproof-independent-status-src/deploy/certifier/independent/install_status_watcher.sh' | sha256sum -c",
-        "cd /opt/accessproof-independent-status-src",
+        "umask 077",
+        "mkdir -p "+root+"/scripts/certifier "+root+"/deploy/certifier/independent",
+    ]
+
+    # Purpose-bound source upload: AWS SSM limits individual shell commands.
+    # Split base64 into bounded shell literals, then verify the SHA-256 of the
+    # decompressed artifact BEFORE any installer runs. No keys or OAuth tokens.
+    for payload, target, digest in (
+        (code, root+"/scripts/certifier/independent_status_watcher.py", code_sha),
+        (installer, root+"/deploy/certifier/independent/install_status_watcher.sh", installer_sha),
+    ):
+        partfile = target + ".b64"
+        cmds.append(": > '"+partfile+"'")
+        for i in range(0, len(payload), 2800):
+            cmds.append("printf '%s' '"+payload[i:i+2800]+"' >> '"+partfile+"'")
+        cmds.extend([
+            "base64 -d '"+partfile+"' | gzip -d > '"+target+"'",
+            "rm -f '"+partfile+"'",
+            "echo '"+digest+"  "+target+"' | sha256sum -c",
+        ])
+    cmds.extend([
+        "cd "+root,
         "bash deploy/certifier/independent/install_status_watcher.sh "+instance+" "+role+" "+key,
         "systemctl reset-failed accessproof-independent-certificate-status.service || true",
         "systemctl start accessproof-independent-certificate-status.service",
         "systemctl show accessproof-independent-certificate-status.service -p Result -p ExecMainStatus",
         "journalctl -u accessproof-independent-certificate-status.service -n 10 --no-pager --output=cat",
-    ]
+    ])
     if any(len(x)>3900 for x in cmds):
         raise RuntimeError("SSM_COMMAND_TOO_LARGE")
     return cmds
@@ -60,8 +77,9 @@ def main() -> int:
     return 0
 
 
-if __name__=="__main__":
-    try: sys.exit(main())
-    except (RuntimeError,KeyError,ValueError,IndexError) as exc:
-        print("READ_ONLY_STATUS_INSTALLATION_BLOCKED:"+str(exc),file=sys.stderr)
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (RuntimeError, KeyError, ValueError, IndexError) as exc:
+        print("READ_ONLY_STATUS_INSTALLATION_BLOCKED:" + str(exc), file=sys.stderr)
         sys.exit(2)

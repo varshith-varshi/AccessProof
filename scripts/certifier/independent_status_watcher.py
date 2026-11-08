@@ -27,6 +27,16 @@ DOC = "AccessProof-Certifier-ProductionReadOnly"
 ORG = "48ee8c86-d4d8-4cde-b00b-bc779f965f4f"
 SOURCE = "2fa9562b-b765-4098-bebf-222ea53ec667"
 APP = "sharepoint-rag-staging"
+# All registered production certification scopes monitored by this host.
+# Explicit allowlist: no arbitrary caller-selected organizations or sources.
+MONITORED = {
+    "reference": {"organization_id": ORG, "source_id": SOURCE, "application_id": APP},
+    "pilot": {
+        "organization_id": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+        "source_id": "4eb6863f-297a-4681-b913-30c48f9f916a",
+        "application_id": "pilot-hr-rag",
+    },
+}
 TERMINAL = {"Success", "Cancelled", "TimedOut", "Failed", "Cancelling"}
 
 
@@ -49,17 +59,21 @@ def aws(*args: str, timeout: int = 25) -> dict:
 
 def read_only(operation: str, *, organization_id: str, source_id: str = "",
               application_id: str = "") -> str:
-    if operation not in {"certificate_status", "route_status"} or organization_id != ORG:
+    if operation not in {"certificate_status", "route_status"}:
         raise ValueError("UNAPPROVED_STATUS_OPERATION")
-    params = {"operation": [operation], "organizationId": [ORG]}
+    scope = next((target for target in MONITORED.values()
+                  if target["organization_id"] == organization_id), None)
+    if scope is None:
+        raise ValueError("UNAPPROVED_ORGANIZATION")
+    params = {"operation": [operation], "organizationId": [organization_id]}
     if operation == "certificate_status":
-        if source_id != SOURCE:
+        if source_id != scope["source_id"] or application_id:
             raise ValueError("SOURCE_BINDING_INVALID")
-        params["sourceId"] = [SOURCE]
+        params["sourceId"] = [source_id]
     else:
-        if application_id != APP:
+        if application_id != scope["application_id"] or source_id:
             raise ValueError("APP_BINDING_INVALID")
-        params["applicationId"] = [APP]
+        params["applicationId"] = [application_id]
     sent = aws("ssm", "send-command", "--document-name", DOC,
                "--instance-ids", PRODUCTION, "--parameters",
                json.dumps(params, separators=(",", ":"), sort_keys=True),
@@ -119,16 +133,35 @@ def watch(*, instance: str, role_arn: str, key_arn: str) -> dict:
     if readiness["host_prerequisites"] != "PASS":
         raise RuntimeError("HOST_IDENTITY_KMS_PREFLIGHT_FAILED")
     now = datetime.now(timezone.utc)
-    src = parse_source(read_only("certificate_status", organization_id=ORG, source_id=SOURCE),
-                       now.timestamp())
-    routes = parse_routes(read_only("route_status", organization_id=ORG, application_id=APP), now)
-    # No source or route can become "valid" because of a monitor result. The
-    # production documents/API remain the only authority on certification.
-    return {"schema": "accessproof.independent_certificate_status/v1",
+    scopes: dict[str, dict] = {}
+    for label, cfg in MONITORED.items():
+        # A failure in one organization must be visible without hiding the
+        # other organization's state. No secret/token/PII is printed.
+        try:
+            source = parse_source(
+                read_only("certificate_status", organization_id=cfg["organization_id"],
+                          source_id=cfg["source_id"]), now.timestamp())
+        except (RuntimeError, ValueError, OSError) as exc:
+            source = {"state": "UNOBSERVABLE", "error_type": type(exc).__name__}
+        try:
+            routes = parse_routes(
+                read_only("route_status", organization_id=cfg["organization_id"],
+                          application_id=cfg["application_id"]), now)
+        except (RuntimeError, ValueError, OSError) as exc:
+            routes = {"state": "UNOBSERVABLE", "error_type": type(exc).__name__}
+        scopes[label] = {"source": source, "routes": routes,
+                         "certification_healthy": (source["state"] == "VALID"
+                                                   and routes["state"] == "CERTIFIED")}
+
+    # The production documents/API, not this watcher, remain the authority on
+    # certification. Never report healthy if a monitored scope is missing,
+    # expired, uncertified or unobservable.
+    healthy = len(scopes) == len(MONITORED) and all(
+        entry["certification_healthy"] for entry in scopes.values())
+    return {"schema": "accessproof.independent_certificate_status/v2",
             "checked_at": now.isoformat(),
-            "source": src, "routes": routes,
-            "monitor_status": "UP" if src["state"] not in {"UNOBSERVABLE"}
-                                   and routes["state"] != "UNOBSERVABLE" else "DEGRADED",
+            "monitored_scope_count": len(scopes), "scopes": scopes,
+            "monitor_status": "UP" if healthy else "DEGRADED",
             "signing_enabled": False, "renewal_independent": False}
 
 

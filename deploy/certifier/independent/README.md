@@ -1,13 +1,13 @@
 # AccessProof isolated certifier: administrator provisioning and cutover
 
-STATUS: NEW HOST NOT PROVISIONED. PRODUCTION SIGNING NOT ACTIVATED.
+STATUS (2026-11-08): PRIVATE CERTIFIER HOST DEPLOYED; READ-ONLY MONITORING ACTIVE FOR REFERENCE AND PILOT. PRODUCTION SIGNING AND INDEPENDENT RENEWAL NOT ACTIVATED.
 
-This package prepares a NEW EC2 host and AWS KMS Ed25519 key. It does not
+This package describes the deployed dedicated EC2 host and AWS KMS Ed25519 key. It does not
 reuse the production API server or the staging RAG host under certification.
 The cloud stack has no permission to sign or import certificates initially,
 no Microsoft sessions, no private key exports, and no automatic Protect changes.
 
-## Administrator infrastructure deployment (not executed by assistant)
+## Administrator infrastructure provisioning reference (already deployed; do not repeat without a new approved change)
 
 The current accessproof-certifier delegated identity explicitly denies
 CloudFormation, IAM, infrastructure and key creation. Do not bypass that

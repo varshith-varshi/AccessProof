@@ -44,4 +44,4 @@ No trust change was made this session. A KMS trust transition requires owner aut
 | accessproof-cert-renewal{,-pilot}.timer | active | daily; window not yet open |
 | accessproof-renewal-watchdog.timer | active | WARNING (expected: WATCH + new EMPLOYEE_SESSION_LIFETIME_UNKNOWN) |
 | accessproof-source-expiry-monitor.timer | active | OK |
-| Independent EC2 status watcher | active (per 2026-11-08 rollout doc) | observes only; cannot renew |
+| Independent EC2 status watcher | active; deployed v2 2026-11-08 11:16Z | VERIFIED_LIVE: reference 2 valid routes, pilot 1 valid route; both source certificates valid; observes only, cannot renew |

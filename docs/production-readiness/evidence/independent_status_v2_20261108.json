@@ -1,0 +1,51 @@
+{
+  "certificate_monitor": {
+    "checked_at": "2026-11-08T11:16:51.305848+00:00",
+    "monitor_status": "UP",
+    "monitored_scope_count": 2,
+    "renewal_independent": false,
+    "schema": "accessproof.independent_certificate_status/v2",
+    "scopes": {
+      "pilot": {
+        "certification_healthy": true,
+        "routes": {
+          "earliest_valid_expiry_days": 6.947,
+          "historically_invalidated_count": 0,
+          "renewal_window": false,
+          "state": "CERTIFIED",
+          "valid_route_count": 1
+        },
+        "source": {
+          "days_remaining": 26.446,
+          "renewal_window": false,
+          "state": "VALID"
+        }
+      },
+      "reference": {
+        "certification_healthy": true,
+        "routes": {
+          "earliest_valid_expiry_days": 6.923,
+          "historically_invalidated_count": 1,
+          "renewal_window": false,
+          "state": "CERTIFIED",
+          "valid_route_count": 2
+        },
+        "source": {
+          "days_remaining": 26.182,
+          "renewal_window": false,
+          "state": "VALID"
+        }
+      }
+    },
+    "signing_enabled": false
+  },
+  "laptop_independent_renewal": false,
+  "production_certificates_issued": false,
+  "production_trust_changed": false,
+  "schema": "accessproof.production_readiness.independent_monitor_deployment/v1",
+  "source": "AWS SSM GetCommandInvocation (scoped non-root operator)",
+  "ssm_command_id": "91d9ff06-1586-4e15-bd9e-e88805e3521b",
+  "ssm_response_code": 0,
+  "ssm_status": "Success",
+  "target": "dedicated-private-certifier-EC2"
+}

@@ -53,6 +53,15 @@ def test_ssm_invocation_uses_pinned_document_and_instance(monkeypatch):
     assert w.read_only("certificate_status",organization_id=w.ORG,source_id=w.SOURCE)=="123|verified"
     assert w.DOC in seen[0] and w.PRODUCTION in seen[0]
     assert seen[1][1]=="get-command-invocation"
+    pilot = w.MONITORED["pilot"]
+    assert w.read_only("route_status", organization_id=pilot["organization_id"],
+                       application_id=pilot["application_id"]) == "123|verified"
+    assert w.DOC in seen[2] and w.PRODUCTION in seen[2]
+    with pytest.raises(ValueError, match="SOURCE_BINDING_INVALID"):
+        w.read_only("certificate_status", organization_id=pilot["organization_id"],
+                    source_id=w.SOURCE)
+    with pytest.raises(ValueError, match="APP_BINDING_INVALID"):
+        w.read_only("route_status", organization_id=w.ORG, application_id=pilot["application_id"])
     assert not any("AWS-RunShellScript" in str(x) for x in seen)
 
 
@@ -63,7 +72,43 @@ def test_watch_never_claims_renewal_independence(monkeypatch):
                         else '{"certified":true,"routes":[{"state":"VALID","expires_at":"2026-11-11T06:00:00+00:00"}]}')
     data=w.watch(instance="i-0123456789abcdef0",role_arn="role",key_arn="key")
     assert data["monitor_status"]=="UP"
+    assert data["monitored_scope_count"] == 2
+    assert set(data["scopes"]) == {"pilot", "reference"}
+    assert all(x["certification_healthy"] for x in data["scopes"].values())
     assert data["renewal_independent"] is False and data["signing_enabled"] is False
+
+
+def test_unhealthy_or_missing_pilot_is_visible_and_degrades_monitor(monkeypatch):
+    monkeypatch.setattr(w.hp, "report", lambda **kwargs: {"host_prerequisites": "PASS"})
+    observed = []
+
+    def mocked_read_only(operation, **params):
+        observed.append((operation, params))
+        pilot = params["organization_id"] == w.MONITORED["pilot"]["organization_id"]
+        if pilot and operation == "route_status":
+            raise RuntimeError("SSM_ACCESS_DENIED")
+        if operation == "certificate_status":
+            return f"{datetime.now(timezone.utc).timestamp()+10*86400}|verified"
+        return '{"certified":true,"routes":[{"state":"VALID","expires_at":"2026-11-14T06:00:00+00:00"}]}'
+
+    monkeypatch.setattr(w, "read_only", mocked_read_only)
+    result = w.watch(instance="i-0123456789abcdef0", role_arn="role", key_arn="key")
+    assert len(observed) == 4
+    assert result["monitor_status"] == "DEGRADED"
+    assert result["scopes"]["pilot"]["routes"]["state"] == "UNOBSERVABLE"
+    assert result["scopes"]["pilot"]["certification_healthy"] is False
+    assert result["scopes"]["reference"]["source"]["state"] == "VALID"
+
+
+def test_unverified_source_fails_monitor_even_if_routes_valid(monkeypatch):
+    monkeypatch.setattr(w.hp, "report", lambda **kwargs: {"host_prerequisites": "PASS"})
+    monkeypatch.setattr(w, "read_only", lambda op, **params:
+                        f"{datetime.now(timezone.utc).timestamp()+86400}|unverified"
+                        if op == "certificate_status" else
+                        '{"certified":true,"routes":[{"state":"VALID","expires_at":"2026-11-14T06:00:00+00:00"}]}')
+    data = w.watch(instance="i-0123456789abcdef0", role_arn="role", key_arn="key")
+    assert data["monitor_status"] == "DEGRADED"
+    assert not any(x["certification_healthy"] for x in data["scopes"].values())
 
 
 def test_wrong_host_prevents_all_production_calls(monkeypatch):
