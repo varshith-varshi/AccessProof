@@ -305,7 +305,7 @@ This file contains no secrets, tokens, passwords or document content.
 
 ## F-019 — Active Protect applications cannot renew 24-hour route challenges
 
-| Priority | P0 (certificate expiry) | Status | FIXED_IN_CODE / STAGING_TESTED, NOT DEPLOYED (2026-11-08) |
+| Priority | P0 (certificate expiry) | Status | DEPLOYED + VERIFIED_LIVE pilot; Gate E PASS (2026-11-08 13:22Z) |
 |---|---|---|---|
 
 - The legacy application-level reference route certificate expires 24 hours after successful nonce-bound Guard verification and customer cutover. Pilot Gate E failed even though its independent 7-day remote route was valid.
@@ -315,3 +315,22 @@ This file contains no secrets, tokens, passwords or document content.
 - Both `remote_route_challenge_run.py` (pilot remote TLS) and `route_certification_run.py` (reference installer route) now have an explicit `--controlled-recertification` option. The reference manually deployed HTTPS container still lacks authenticated presence; do not run its staged HTTP installation manifest against the wrong container.
 - Integration test `test_rag_route_challenge_api` passes full new owner authorization, wrong confirmation rejection, blocked missing audit, replay denial, actual signed challenge/cutover, and preservation of Protect mode. The complete unit/security/integration suite passed on the candidate after updating three outdated integration expectations for specific `SOURCE_ACL_STALE` fail-closed Guard diagnostics.
 - Before a production API-only release: confirm restricted preflight, local host memory/disk headroom, installer pin, rollback artifact, focused tests, then deploy only via the reviewed non-root release mechanism. After release, run a real Owner-approved pilot recertification with fresh Alice/Bob delegated sessions and check synthetic SharePoint ACL restoration. Application Gate E cannot be claimed PASS merely because code is deployed.
+
+
+### F-019 live closure — production r55, pilot 10/10
+
+- Restricted production release SSM command `2c931642-4f01-4851-a1fa-0b504e059a24` verified API and worker images for `api-r55-controlled-recert-a26eeb8d5555`, preserving database, Redis, Nginx and website. Full unit/security/integration suite passed before release.
+- The first Owner-controlled pilot recertification passed the Guard challenge (202), then failed before cutover due to unset restricted AWS certifier profile; SharePoint revocation was restored. The retry ran with `AWS_PROFILE=accessproof-certifier` and passed its fresh Guard challenge (202), independent remote-route check, real employee allow/deny/tamper cutover (202). `CUTOVER_VERIFIED` at 2026-11-08 13:22:08Z. One transient cutover probe needed retries; no bypass was permitted.
+- Original SharePoint grant restored 2026-11-08 13:20:35Z; no recovery file remains. Final live SSM read-only Gates A–J `6e4182cf-4758-4c37-a67b-0322902b69b5`: all 10 PASS, technical result `TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL`. Evidence: `evidence/pilot_10of10_live_20261108.json`.
+- Reference organization after r55: SSM `4c866f61-c970-4048-9627-c0d075013a46` gave 8/10 PASS; E/Gateway DISCONNECTED and 24h certificate EXPIRED, J activation not ready. `ap-remote-gateway` loopback HTTPS validated via its pinned CA (HTTP 200), but has no authenticated presence env; historical receipt cannot stand in for fresh Owner-authorized pairing. Evidence: `evidence/reference_8of10_after_r55_20261108.json`.
+- OWNER reviewer approval, new-customer consent, laptop-independent renewals, and independent production data restore remain required for general availability.
+
+## F-020 — Independent watcher misses application-level certificate and Gateway heartbeat
+
+| Priority | P0 (monitoring blind spot) | Status | FIXED IN CODE + TESTED_LOCALLY, DEPLOYMENT PENDING |
+|---|---|---|---|
+
+- Independent AWS certificate watcher v2 checked source certificates and seven-day independently signed remote-route certificates, but could report `UP` while Gate E failed on a separate 24-hour application-level certificate and/or authenticated Gateway heartbeat.
+- Extended existing pinned `remote_route_certificate.py status` (no new SSM document/IAM operation) to return only the exact current `describe_route_certificate` status/expiry and `gateway_presence.connectivity` status/readiness/reason. No tokens, machine credential, PII, private or signing key are emitted.
+- Independent status watcher v3 treats `UP` as valid source cert + valid independently signed remote route + VALID **application-level** route certificate + fresh enforcement-ready authenticated Gateway, for every monitored organization. Missing new fields fail closed as unobservable. The watcher remains observation-only: no signing, certificate import, Protect activation or automatic remediation.
+- Focused tests cover an expired 24h certificate despite valid remote route, disconnected Gateway despite both certificates, unsafe/ambiguous timestamp rejection, old-version response fail-closed, and prevention of private credential output. The current state is CODE/TESTED_LOCAL, not independently deployed; it must be released as new API status code AND updated on certifier host with reviewed restricted setup. The full A–J gates remain the authority for general availability.

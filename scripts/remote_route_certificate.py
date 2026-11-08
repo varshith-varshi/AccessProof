@@ -19,6 +19,8 @@ from sqlalchemy import select  # noqa: E402
 
 from apps.api.accessproof_api.db import AIApplication, AuditEvent, SessionLocal, set_tenant_context  # noqa: E402
 from apps.api.accessproof_api import remote_route_enforcement as rre  # noqa: E402
+from apps.api.accessproof_api import gateway_presence  # noqa: E402
+from apps.api.accessproof_api.route_certification import describe_route_certificate  # noqa: E402
 
 
 def main() -> int:
@@ -34,7 +36,8 @@ def main() -> int:
                                                     AIApplication.application_id == a.application_id,
                                                     AIApplication.archived_at.is_(None)))
         if row is None:
-            print(json.dumps({"ok": False, "error": "APPLICATION_NOT_FOUND"})); return 2
+            print(json.dumps({"ok": False, "error": "APPLICATION_NOT_FOUND"}))
+            return 2
         try:
             if a.action == "import":
                 rec = rre.import_certificate(db, row, json.load(sys.stdin))
@@ -47,10 +50,30 @@ def main() -> int:
                 rec = rre.revoke(db, row, a.fingerprint or "")
                 event, detail = "REMOTE_ROUTE_CERTIFICATE_REVOKED", {"fingerprint": rec.fingerprint}
             else:
-                print(json.dumps(rre.status(db, row), indent=1)); return 0
+                remote = rre.status(db, row)
+                app_route = describe_route_certificate(db, row)
+                presence = gateway_presence.connectivity(db, row)
+                # Only certificate state and authenticated presence metadata:
+                # NO installation credential, employee data or signing key.
+                # This extends the pre-existing pinned read-only status SSM
+                # operation without creating a new IAM permission/document.
+                remote["application_route_certificate"] = {
+                    "status": app_route["status"],
+                    "certified": app_route["certified"],
+                    "expires_at": app_route["expires_at"],
+                    "scope": app_route["certification_scope"],
+                }
+                remote["gateway_presence"] = {
+                    "connection": presence["connection"],
+                    "enforcement_ready_reported": presence["enforcement_ready_reported"],
+                    "reason": presence.get("reason"),
+                }
+                print(json.dumps(remote, indent=1))
+                return 0
         except rre.RemoteRouteError as exc:
             db.rollback()
-            print(json.dumps({"ok": False, "error": str(exc)})); return 1
+            print(json.dumps({"ok": False, "error": str(exc)}))
+            return 1
         db.add(AuditEvent(organization_id=row.organization_id, action=event, target_type="ai_application",
                           target_id=row.id, metadata_json=json.dumps(detail)))
         db.commit()

@@ -1,18 +1,18 @@
 # Release go / no-go
 
-Decided 2026-11-08T10:05Z (supersedes 09:15Z).
+Decided 2026-11-08T13:42Z (supersedes earlier November 8 status).
 
 ## Verdict
 
 **General availability: NO-GO.**
 
-**Existing pilot: CONDITIONAL / exact-route only, not new production approval.** All 3 independently certified remote routes were renewed and remain valid to 2026-11-15 (14/14 checks), but fresh formal gates A–J do NOT pass for either application (F-017). The reference Gateway heartbeat is expired, and both application-level route certificates are expired. Do not onboard new customers or claim general Protect readiness. Existing traffic must continue to use only genuinely enforced, currently certified routes, failing closed otherwise. The next renewal needs one owner sign-in by approximately 2026-11-14 unless independent renewal is completed.
+**Existing pilot: 10/10 TECHNICAL PASS pending reviewer approval; still exact-route only, not GA approval.** On 2026-11-08, pilot controlled recertification completed a fresh nonce-bound Guard challenge, signed Gateway probes and real employee cutover; the temporary SharePoint permission was restored. Live read-only production gates A–J all passed via SSM command `6e4182cf-4758-4c37-a67b-0322902b69b5` (`evidence/pilot_10of10_live_20261108.json`). The reference Gateway heartbeat remains expired and its application route certificate is not renewed. Do not onboard new customers or claim general Protect readiness. Existing traffic must continue to fail closed on unverified routes. Independent remote-route renewal remains laptop-dependent and due again in November.
 
-No production web or API release is needed or pending. Production runs `web-r54-tls-doctor-501a74cdb9a2`. No shipped component changed after `501a74c` (F-008).
+Production API/worker release `api-r55-controlled-recert-a26eeb8d5555` was verified by SSM on 2026-11-08 13:12Z. The web retains `web-r54-tls-doctor-501a74cdb9a2`; DB, Redis, Nginx unchanged.
 
 ## Blocking items (ordered)
 1. ~~F-001~~ resolved 10:01Z. Recurring: one sign-in about every 3–7 days until F-002.
-2. **F-017/F-018 (P0):** Read-only gates A–J are registered and now accept exact certified source evidence. Formal live rechecks pass 9/10 pilot gates and 8/10 reference gates. Pilot Gate E fails on the expired application-level route certificate. Reference Gates E and J fail on expired Gateway heartbeat plus expired application-level route certificate. See `evidence/gates_live_with_evidence_20261108.json`. The three separately signed remote routes are valid but cannot substitute.
+2. **F-017/F-018 (P0):** Read-only gates A–J are registered and now accept exact certified source evidence. Pilot achieved 10/10 technical PASS after controlled route recertification; reviewer approval is still required. Reference Gates E and J remain blocked by expired Gateway heartbeat and application-level route certificate. See `evidence/pilot_10of10_live_20261108.json` and `evidence/gates_live_with_evidence_20261108.json`. The three separately signed remote routes are valid but cannot substitute.
 3. **F-002 (P0 for GA):** renewal still depends on the owner laptop, and the KMS trust transition is not done.
 4. **F-007 (P1 for GA):** no restore drill on production data, and no recorded backup schedule or RPO. The local real-PostgreSQL restore passes.
 5. **O1 (P0 for GA):** fresh real-customer Microsoft consent and new-app owner approval are unproven.
@@ -38,12 +38,12 @@ The same command worked on 2026-11-08. If an early run fails, its existing certi
 ## Other owner authorizations required
 | Item | Command / action |
 |---|---|
-| Gates A–J (F-017/F-018) | Registration and exact certificate-digest-matching evidence transport COMPLETE. Remediate app-level Gate E route certificates for both apps and reference's authenticated Gateway heartbeat/route pairing. Gate J then needs recheck. Rerun evidence-backed gates under existing restricted deployer; do not bypass expired certificate checks. |
+| Gates A–J (F-017/F-018) | Registration and exact certificate-digest-matching evidence transport COMPLETE. Pilot Gate E resolved; remediate only reference's authenticated Gateway heartbeat/new pairing and expired app-route certificate. Then rerun reference Gates E/J. Rerun evidence-backed gates under existing restricted deployer; do not bypass expired certificate checks. |
 | Production restore drill (F-007) | Approve a deployer-taken `pg_dump`, restored on an isolated host using `scripts/drills/postgres_isolation_restore_drill.py` checks. Set RTO/RPO targets |
 | KMS trust transition (F-002) | Register the KMS key alongside the laptop key, test rejection and rollback, then grant `kms:Sign` |
 | Root keys / MFA (F-004) | Root key absence and root MFA verified live through AWS. Enroll MFA for `accessproof-infra-admin` with the human operator's device. |
 | Elastic IP (F-005) | Approve EIP allocation and the DNS update at GoDaddy |
 | Source renewal ~2026-11-24 | Same sign-in step as F-001; the source renewal timers need live sessions |
 
-## Active Protect 24-hour route renewal correction — candidate (not yet deployed)
-The P0 fix for `ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION` is implemented and tested locally under F-019. It requires interactive Owner authorization and full fresh nonce-bound Guard and employee-route verification. The real pilot has not yet been recertified with that code; Gate E remains FAIL until an approved API-only release and verified live challenge. The manual reference Gateway still needs fresh exact-route pairing and authenticated presence.
+## Active Protect 24-hour route renewal correction — DEPLOYED AND VERIFIED PILOT
+The P0 fix for `ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION` shipped as API/worker r55 under F-019. Interactive pilot Owner-controlled recertification completed with Guard challenge 202, employee-route cutover 202, SharePoint restoration and live Gates A–J 10/10 technical PASS. No route certificate expiry was extended or security gate bypassed. The manual reference Gateway still needs fresh pairing and authenticated presence before its own new challenge.

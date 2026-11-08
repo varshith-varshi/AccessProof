@@ -29,6 +29,36 @@ def test_route_status_counts_current_vs_history():
     assert w.parse_routes('not json',NOW)["state"]=="UNOBSERVABLE"
 
 
+def test_independent_routes_are_not_equivalent_to_app_certificate_or_gateway_presence():
+    from datetime import timedelta
+    import json
+    expiry = (NOW + timedelta(hours=18)).isoformat()
+    remote = {"certified": True, "routes": [{"state": "VALID", "expires_at":
+             (NOW + timedelta(days=4)).isoformat()}]}
+    older = w.parse_routes(json.dumps(remote), NOW)
+    assert older["state"] == "CERTIFIED"
+    assert older["application_route"]["state"] == "UNOBSERVABLE"
+    assert older["gateway"]["state"] == "UNOBSERVABLE"
+    remote["application_route_certificate"] = {
+        "status": "CERTIFIED", "certified": True, "expires_at": expiry,
+    }
+    remote["gateway_presence"] = {
+        "connection": "DISCONNECTED", "enforcement_ready_reported": False, "reason": "HEARTBEAT_EXPIRED",
+    }
+    disconnected = w.parse_routes(json.dumps(remote), NOW)
+    assert disconnected["application_route"]["state"] == "CERTIFIED"
+    assert disconnected["gateway"]["state"] == "NOT_READY"
+    remote["gateway_presence"].update(connection="CONNECTED", enforcement_ready_reported=True)
+    ready = w.parse_routes(json.dumps(remote), NOW)
+    assert ready["gateway"]["state"] == "READY"
+    assert ready["application_route"]["renewal_window"] is False
+    remote["application_route_certificate"]["expires_at"] = (NOW - timedelta(hours=1)).isoformat()
+    expired = w.parse_routes(json.dumps(remote), NOW)
+    assert expired["application_route"]["state"] == "EXPIRED"
+    remote["application_route_certificate"]["expires_at"] = "2026-11-08T08:00:00"  # timezone ambiguous
+    assert w.parse_routes(json.dumps(remote), NOW)["state"] == "UNOBSERVABLE"
+
+
 def test_only_named_readonly_operations_are_allowed(monkeypatch):
     calls=[]
     monkeypatch.setattr(w,"aws",lambda *a: calls.append(a))
@@ -67,9 +97,12 @@ def test_ssm_invocation_uses_pinned_document_and_instance(monkeypatch):
 
 def test_watch_never_claims_renewal_independence(monkeypatch):
     monkeypatch.setattr(w.hp,"report",lambda **kwargs:{"host_prerequisites":"PASS"})
+    app_expiry = datetime.now(timezone.utc).timestamp() + 18 * 3600
+    app_expiry_utc = datetime.fromtimestamp(app_expiry, tz=timezone.utc).isoformat()
+    healthy_route = '{"certified":true,"routes":[{"state":"VALID","expires_at":"2026-11-15T06:00:00+00:00"}], "application_route_certificate":{"certified":true,"status":"CERTIFIED","expires_at":"' + app_expiry_utc + '"},"gateway_presence":{"connection":"CONNECTED","enforcement_ready_reported":true}}'
     monkeypatch.setattr(w,"read_only",lambda op,**kw:
-                        f"{NOW.timestamp()+15*86400}|verified" if op=="certificate_status"
-                        else '{"certified":true,"routes":[{"state":"VALID","expires_at":"2026-11-11T06:00:00+00:00"}]}')
+                        f"{datetime.now(timezone.utc).timestamp()+15*86400}|verified" if op=="certificate_status"
+                        else healthy_route)
     data=w.watch(instance="i-0123456789abcdef0",role_arn="role",key_arn="key")
     assert data["monitor_status"]=="UP"
     assert data["monitored_scope_count"] == 2

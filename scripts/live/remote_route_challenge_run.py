@@ -179,6 +179,15 @@ def main() -> int:
                    help="Existing Protect app only: OWNER session + explicit controlled recertification; never changes Protect mode")
     a = p.parse_args()
     cfg = json.loads(Path(a.config).read_text())
+    # Fail BEFORE modifying a synthetic SharePoint permission if the scoped
+    # AWS certifier profile or remote-route evidence is unavailable. The
+    # same status is rechecked after restoration for cutover proof.
+    try:
+        remote_preflight = remote_route_status(cfg)
+    except Exception as exc:
+        raise SystemExit(f"RESTRICTED_REMOTE_ROUTE_PREFLIGHT_REQUIRED:{type(exc).__name__}") from exc
+    if not remote_preflight.get("certified"):
+        raise SystemExit("REMOTE_ROUTES_NOT_CERTIFIED")
     result: dict = {"schema": "accessproof.remote_route_challenge_run/v1", "started_at": now(), "attempts": [],
                     "organization_id": cfg["organization_id"], "application_id": cfg["application_id"]}
 

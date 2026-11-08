@@ -1,0 +1,33 @@
+{
+  "api_release": "api-r55-controlled-recert-a26eeb8d5555",
+  "application_id": "sharepoint-rag-staging",
+  "command_id": "4c866f61-c970-4048-9627-c0d075013a46",
+  "evaluated_at": "2026-11-08T13:48:55.756994+00:00",
+  "failing_checks": {
+    "E_GATEWAY": {
+      "gateway_connected": "DISCONNECTED",
+      "gateway_enforcement_ready": "HEARTBEAT_EXPIRED",
+      "route_certified": "EXPIRED"
+    },
+    "J_ACTIVATION": {
+      "activation_checklist": "GATEWAY_LIVE_AND_ENFORCEMENT_READY",
+      "protect_acknowledged_by_guard": "protect"
+    }
+  },
+  "gates": {
+    "A_INFRASTRUCTURE": "PASS",
+    "B_IDENTITY": "PASS",
+    "C_SHAREPOINT_SOURCE": "PASS",
+    "D_GUARD": "PASS",
+    "E_GATEWAY": "FAIL",
+    "F_LAYER1": "PASS",
+    "G_LAYER2": "PASS",
+    "H_REVOCATION_AND_CACHE": "PASS",
+    "I_DATABASE_SECURITY": "PASS",
+    "J_ACTIVATION": "FAIL"
+  },
+  "note": "Read-only production gates. No consent, pairing, permission or certificate mutation.",
+  "organization_id": "48ee8c86-d4d8-4cde-b00b-bc779f965f4f",
+  "schema": "accessproof.live_reference_gates_after_r55/v1",
+  "verdict": "SHAREPOINT PRODUCTION PROTECT \u2014 NOT VERIFIED"
+}

@@ -1,0 +1,32 @@
+{
+  "application_id": "pilot-hr-rag",
+  "deployed_api_release": "api-r55-controlled-recert-a26eeb8d5555",
+  "gates": {
+    "evaluated_at": "2026-11-08T13:22:54.929134+00:00",
+    "ssm_command_id": "6e4182cf-4758-4c37-a67b-0322902b69b5",
+    "statuses": {
+      "A_INFRASTRUCTURE": "PASS",
+      "B_IDENTITY": "PASS",
+      "C_SHAREPOINT_SOURCE": "PASS",
+      "D_GUARD": "PASS",
+      "E_GATEWAY": "PASS",
+      "F_LAYER1": "PASS",
+      "G_LAYER2": "PASS",
+      "H_REVOCATION_AND_CACHE": "PASS",
+      "I_DATABASE_SECURITY": "PASS",
+      "J_ACTIVATION": "PASS"
+    },
+    "verdict": "TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL"
+  },
+  "org": "0fb98b25-bd7d-445e-a192-4ff8ee730760",
+  "owner_controlled_route_certification": {
+    "customer_route_cutover_http_status": 202,
+    "finished_at": "2026-11-08T13:22:08.101353+00:00",
+    "machine_challenge_http_status": 202,
+    "outcome": "CUTOVER_VERIFIED",
+    "recovery_file_present": false,
+    "sharepoint_grant_restored_at": "2026-11-08T13:20:35.993409+00:00"
+  },
+  "schema": "accessproof.live_pilot_recertification_and_gates/v1",
+  "scope_note": "Existing pilot application only; technical pass requires independent reviewer approval. Not GA approval."
+}

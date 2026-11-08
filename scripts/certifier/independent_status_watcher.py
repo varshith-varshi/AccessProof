@@ -119,11 +119,32 @@ def parse_routes(raw: str, now: datetime) -> dict:
         def remaining(x):
             return (datetime.fromisoformat(x["expires_at"].replace("Z", "+00:00")) - now).total_seconds() / 86400
         valid_days = [remaining(r) for r in current]
+        app = obj.get("application_route_certificate")
+        gw = obj.get("gateway_presence")
+        app_cert = {"state": "UNOBSERVABLE", "expires_in_hours": None}
+        if isinstance(app, dict) and isinstance(app.get("status"), str):
+            app_cert["state"] = "NOT_CERTIFIED"
+            if (app.get("certified") is True and app.get("status") == "CERTIFIED"
+                    and isinstance(app.get("expires_at"), str)):
+                expires = datetime.fromisoformat(app["expires_at"].replace("Z", "+00:00"))
+                if expires.tzinfo is None:
+                    raise ValueError("APP_CERTIFICATE_EXPIRY_WITHOUT_TIMEZONE")
+                hours = (expires - now).total_seconds() / 3600
+                app_cert = {"state": "CERTIFIED" if hours > 0 else "EXPIRED",
+                            "expires_in_hours": round(hours, 2),
+                            "renewal_window": hours <= 6}
+        gw_status = {"state": "UNOBSERVABLE"}
+        if isinstance(gw, dict):
+            gw_status = {"state": "READY" if gw.get("connection") == "CONNECTED"
+                         and gw.get("enforcement_ready_reported") is True else "NOT_READY",
+                         "reason": gw.get("reason")}
         return {"state": "CERTIFIED" if obj.get("certified") and valid_days and min(valid_days)>0 else "NOT_CERTIFIED",
                 "valid_route_count": len(current),
                 "historically_invalidated_count": sum(r.get("state") == "INVALIDATED" for r in routes),
                 "earliest_valid_expiry_days": round(min(valid_days), 3) if valid_days else None,
-                "renewal_window": bool(valid_days) and min(valid_days) <= 2}
+                "renewal_window": bool(valid_days) and min(valid_days) <= 2,
+                "application_route": app_cert,
+                "gateway": gw_status}
     except (ValueError, TypeError, KeyError, AttributeError):
         return {"state": "UNOBSERVABLE"}
 
@@ -151,14 +172,18 @@ def watch(*, instance: str, role_arn: str, key_arn: str) -> dict:
             routes = {"state": "UNOBSERVABLE", "error_type": type(exc).__name__}
         scopes[label] = {"source": source, "routes": routes,
                          "certification_healthy": (source["state"] == "VALID"
-                                                   and routes["state"] == "CERTIFIED")}
+                                                   and routes["state"] == "CERTIFIED"
+                                                   and routes.get("application_route", {}).get("state") == "CERTIFIED"
+                                                   and routes.get("gateway", {}).get("state") == "READY")}
 
-    # The production documents/API, not this watcher, remain the authority on
-    # certification. Never report healthy if a monitored scope is missing,
-    # expired, uncertified or unobservable.
+    # Remote routes and application-level route certificates are DIFFERENT
+    # contracts. The watcher's v2 version could report UP even while Gate E
+    # had expired (24h) app certification or stale Gateway presence. Refuse
+    # to mark UP without fresh app-bound certificate AND authenticated ready
+    # Gateway. Actual Protect readiness still requires formal gates A–J.
     healthy = len(scopes) == len(MONITORED) and all(
         entry["certification_healthy"] for entry in scopes.values())
-    return {"schema": "accessproof.independent_certificate_status/v2",
+    return {"schema": "accessproof.independent_certificate_status/v3",
             "checked_at": now.isoformat(),
             "monitored_scope_count": len(scopes), "scopes": scopes,
             "monitor_status": "UP" if healthy else "DEGRADED",
