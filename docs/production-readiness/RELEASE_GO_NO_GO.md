@@ -47,3 +47,7 @@ The same command worked on 2026-11-08. If an early run fails, its existing certi
 
 ## Active Protect 24-hour route renewal correction — DEPLOYED AND VERIFIED PILOT
 The P0 fix for `ACTIVE_PROTECT_REQUIRES_CONTROLLED_RECERTIFICATION` shipped as API/worker r55 under F-019. Interactive pilot Owner-controlled recertification completed with Guard challenge 202, employee-route cutover 202, SharePoint restoration and live Gates A–J 10/10 technical PASS. No route certificate expiry was extended or security gate bypassed. The manual reference Gateway still needs fresh pairing and authenticated presence before its own new challenge.
+
+
+## Monitoring r56 rollback incident — 2026-11-08
+A read-only status extension for F-020 was attempted as API release `api-r56-monitor-app-route-0347e33632f1` but FAILED the public API health check during the recreate. The deployment script rolled back the API/worker; independent read-only CLI schema and production preflight confirmed the former release, and pilot Gates A–J still passed 10/10. Monitoring v3 remains NOT deployed. The local release script now has bounded public readiness retries and single-pass rollback traps (F-021); live release retry requires full unchanged authorization/disk/rollback gates.

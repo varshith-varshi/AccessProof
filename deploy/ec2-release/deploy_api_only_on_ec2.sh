@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Isolated, checksum-bound API + worker release; images built OFF the 2GB host.
-set -Eeuo pipefail
+# Do not inherit ERR traps into functions/command substitutions: a transient
+# curl failure otherwise invokes rollback twice in competing shells.
+set -euo pipefail
 umask 077
 RID="${1:?release id}"; ARCHIVE="${2:?artifact}"; SHA="${3:?sha256}"
 EXPECTED_DB_REVISION="${EXPECTED_DB_REVISION:?expected production database revision}"
@@ -28,7 +30,20 @@ health(){
 }
 db_revision(){ compose exec -T db psql -U accessproof -d accessproof -tAc 'select version_num from alembic_version' | tr -d '[:space:]'; }
 reload_nginx(){ compose exec -T nginx nginx -t && compose exec -T nginx nginx -s reload; }
-public_health(){ [[ "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 https://api.accessproof.in/health/ready)" == 200 ]]; }
+public_health(){
+  local http_code attempt
+  # API container health can become READY before the public Nginx/TLS socket
+  # finishes reloading. A single curl (55) must not abort a safe release.
+  # Keep a bounded deadline and require an actual HTTP 200 (never skip it).
+  for attempt in {1..12}; do
+    if http_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8       https://api.accessproof.in/health/ready 2>/dev/null)" && [[ "$http_code" == 200 ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo 'PUBLIC_API_HEALTH_NOT_200_WITHIN_RETRY_WINDOW' >&2
+  return 1
+}
 rollback(){
   local rc=$?
   trap - ERR

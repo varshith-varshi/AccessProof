@@ -1,0 +1,24 @@
+{
+  "evaluated_at": "2026-11-08T14:06:57.375899+00:00",
+  "event": "r56 monitor status API-only release FAILED; automatic API/worker rollback observed",
+  "failed_release_ssm_command_id": "11244a06-671a-4c67-805e-2c3581bd4375",
+  "gates": {
+    "A_INFRASTRUCTURE": "PASS",
+    "B_IDENTITY": "PASS",
+    "C_SHAREPOINT_SOURCE": "PASS",
+    "D_GUARD": "PASS",
+    "E_GATEWAY": "PASS",
+    "F_LAYER1": "PASS",
+    "G_LAYER2": "PASS",
+    "H_REVOCATION_AND_CACHE": "PASS",
+    "I_DATABASE_SECURITY": "PASS",
+    "J_ACTIVATION": "PASS"
+  },
+  "independent_status_cli_v3_fields_present": false,
+  "note": "Rollback was independently corroborated by existing read-only CLI schema and 10/10 gates. Monitoring v3 NOT deployed.",
+  "postrollback_gates_command_id": "1ba224fc-2e23-44de-ae41-b5f98d96f3df",
+  "postrollback_preflight": "PASS",
+  "public_api_http_status": 200,
+  "schema": "accessproof.postfailedrelease_pilot_gates/v1",
+  "verdict": "TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL"
+}
