@@ -7,6 +7,10 @@ For every configured route:
   * if its certificate expires within --recertify-days (default 2; certificates
     last 7 days), run the FULL 14-check certification (includes one live
     revocation) and import the new certificate into production;
+  * if it expires within --opportunistic-days (default 4) AND both employee
+    sessions are live with a known wall-clock end at least
+    --session-margin-hours away, re-certify early (same full certification),
+    so a fresh sign-in does not have to survive until the mandatory window;
   * otherwise sign a LIVE attestation of the route's current binding and apply
     it in production: a changed configuration INVALIDATES the certificate
     (Gate E fails) until re-certified.
@@ -59,6 +63,29 @@ def employee_sessions_ready(sessions: dict | None = None) -> tuple[bool, list[st
     sessions = employee_sessions(Path.home()) if sessions is None else sessions
     missing = sorted(a for a, info in sessions.items() if info.get("status") == "UNAVAILABLE")
     return (not missing and len(sessions) >= 2), missing
+
+
+def sessions_cover_full_run(margin_hours: float, sessions: dict | None = None,
+                            at: datetime | None = None) -> bool:
+    """True only when BOTH sessions report a known wall-clock end beyond the margin.
+
+    Used solely to decide whether an OPTIONAL early re-certification may start;
+    legacy sessions with unknown lifetime never qualify (they may end mid-run).
+    """
+    sessions = employee_sessions(Path.home()) if sessions is None else sessions
+    at = at or datetime.now(timezone.utc)
+    if len(sessions) < 2:
+        return False
+    for info in sessions.values():
+        if info.get("status") != "OK":
+            return False
+        try:
+            end = datetime.fromisoformat(info["session_expires_at"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if end.tzinfo is None or (end - at).total_seconds() < margin_hours * 3600:
+            return False
+    return True
 
 
 def production(action: str, route: dict, document: dict) -> dict:
@@ -118,10 +145,36 @@ def observe_attestation(route: dict, cert_path: Path, *, retries: int = 2) -> tu
     return None, "TRANSIENT_ROUTE_UNAVAILABLE"
 
 
+def recertify(route: dict, cert_path: Path, remaining: float, trigger: str) -> bool:
+    """Full certification + production import. Logs every outcome; never extends."""
+    ready, missing = employee_sessions_ready()
+    if not ready:
+        log({"route": route["name"], "action": "recertify", "ok": False, "trigger": trigger,
+             "detail": "EMPLOYEE_SESSION_UNAVAILABLE:" + ",".join(missing),
+             "days_remaining": round(remaining, 2)})
+        return False
+    out = STATE / f"{route['name']}.run-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.json"
+    r = certifier(route, "--issue", "--out", str(out))
+    new = Path(str(out) + ".certificate.json")
+    if r.returncode != 0 or not new.exists() or json.loads(new.read_text())["status"] != "CERTIFIED":
+        log({"route": route["name"], "action": "recertify", "ok": False, "trigger": trigger,
+             "detail": (r.stdout + r.stderr)[-300:]})
+        return False
+    result = production("import", route, json.loads(new.read_text()))
+    if result.get("ok"):
+        new.replace(cert_path)
+    log({"route": route["name"], "action": "recertify+import", "ok": result.get("ok"), "trigger": trigger,
+         "event": result.get("event") or result.get("error"), "days_remaining": round(remaining, 2)})
+    return bool(result.get("ok"))
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", default=str(Path.home() / ".config/accessproof/remote-routes.json"))
     p.add_argument("--recertify-days", type=float, default=2.0)
+    p.add_argument("--opportunistic-days", type=float, default=4.0,
+                   help="re-certify early within this many days when live sessions cover a full run")
+    p.add_argument("--session-margin-hours", type=float, default=3.0)
     p.add_argument("--only")
     a = p.parse_args()
     cfg_path = Path(a.config)
@@ -129,6 +182,7 @@ def main() -> int:
         raise SystemExit("config must be 0600")
     routes = json.loads(cfg_path.read_text())
     failures = 0
+    early_ok: bool | None = None                    # evaluated lazily, once per run
     for route in routes:
         if a.only and route["name"] != a.only:
             continue
@@ -136,29 +190,20 @@ def main() -> int:
         try:
             cert = json.loads(cert_path.read_text())
             remaining = (datetime.fromisoformat(cert["expires_at"]) - datetime.now(timezone.utc)).total_seconds() / 86400
-            if remaining <= a.recertify_days:
-                ready, missing = employee_sessions_ready()
-                if not ready:
-                    failures += 1
-                    log({"route": route["name"], "action": "recertify", "ok": False,
-                         "detail": "EMPLOYEE_SESSION_UNAVAILABLE:" + ",".join(missing),
-                         "days_remaining": round(remaining, 2)})
+            early = False
+            if a.recertify_days < remaining <= a.opportunistic_days:
+                if early_ok is None:
+                    early_ok = sessions_cover_full_run(a.session_margin_hours)
+                early = early_ok
+            due = remaining <= a.recertify_days
+            if due or early:
+                if recertify(route, cert_path, remaining, "due" if due else "early"):
                     continue
-                out = STATE / f"{route['name']}.run-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.json"
-                r = certifier(route, "--issue", "--out", str(out))
-                new = Path(str(out) + ".certificate.json")
-                if r.returncode != 0 or not new.exists() or json.loads(new.read_text())["status"] != "CERTIFIED":
-                    failures += 1
-                    log({"route": route["name"], "action": "recertify", "ok": False,
-                         "detail": (r.stdout + r.stderr)[-300:]})
+                failures += 1
+                if due:
                     continue
-                result = production("import", route, json.loads(new.read_text()))
-                if result.get("ok"):
-                    new.replace(cert_path)
-                log({"route": route["name"], "action": "recertify+import", "ok": result.get("ok"),
-                     "event": result.get("event") or result.get("error")})
-                failures += 0 if result.get("ok") else 1
-                continue
+                # A failed OPTIONAL early attempt must not starve the route of its
+                # live attestation (that would fail it closed while still certified).
             att, observation_state = observe_attestation(route, cert_path)
             if not att:
                 failures += 1

@@ -93,3 +93,85 @@ def test_sessions_ready_requires_both_employees():
     assert not renewal.employee_sessions_ready({'alice': {'status': 'OK'}})[0]
     assert renewal.employee_sessions_ready(
         {'alice': {'status': 'LIFETIME_UNKNOWN'}, 'bob': {'status': 'OK'}})[0]  # legacy but live
+
+
+def _early_setup(monkeypatch, tmp_path, *, hours_left, sessions):
+    import os
+    import sys
+    from datetime import datetime, timedelta, timezone
+    state = tmp_path / 'certs'
+    state.mkdir()
+    (state / 'r1.certificate.json').write_text(json.dumps({
+        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=hours_left)).isoformat(),
+        'fingerprint': 'f', 'status': 'CERTIFIED'}))
+    cfg = tmp_path / 'routes.json'
+    cfg.write_text(json.dumps([{'name': 'r1', 'organization_id': 'o', 'application_id': 'a',
+                                'route_url': 'u', 'rag_exec': 'x'}]))
+    os.chmod(cfg, 0o600)
+    calls, logged = [], []
+    monkeypatch.setattr(renewal, 'STATE', state)
+    monkeypatch.setattr(renewal, 'log', logged.append)
+    monkeypatch.setattr(renewal, 'employee_sessions', lambda home: sessions)
+    monkeypatch.setattr(sys, 'argv', ['x', '--config', str(cfg)])
+    return calls, logged
+
+
+def _session(hours):
+    from datetime import datetime, timedelta, timezone
+    return {'status': 'OK', 'session_expires_at': (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()}
+
+
+def test_early_recertification_runs_when_sessions_cover_full_run(monkeypatch, tmp_path):
+    calls, logged = _early_setup(monkeypatch, tmp_path, hours_left=72,
+                                 sessions={'alice': _session(30), 'bob': _session(30)})
+
+    def fake_certifier(route, *extra):
+        calls.append(extra)
+        out = Path(extra[extra.index('--out') + 1] + '.certificate.json')
+        out.write_text(json.dumps({'status': 'CERTIFIED', 'fingerprint': 'g', 'expires_at': 'x'}))
+        return result(code=0)
+    monkeypatch.setattr(renewal, 'certifier', fake_certifier)
+    monkeypatch.setattr(renewal, 'production', lambda action, route, doc: {'ok': action == 'import', 'event': 'e'})
+    assert renewal.main() == 0
+    assert calls and calls[0][0] == '--issue'
+    assert logged[-1]['action'] == 'recertify+import' and logged[-1]['trigger'] == 'early'
+
+
+def test_early_recertification_skipped_for_legacy_or_short_sessions(monkeypatch, tmp_path):
+    """Unknown or too-short session lifetime never starts an optional run that could die midway."""
+    for sessions in ({'alice': {'status': 'LIFETIME_UNKNOWN'}, 'bob': _session(30)},
+                     {'alice': _session(1), 'bob': _session(30)},
+                     {'alice': _session(30)}):
+        sub = tmp_path / str(len(list(tmp_path.iterdir())))
+        sub.mkdir()
+        calls, logged = _early_setup(monkeypatch, sub, hours_left=72, sessions=sessions)
+        monkeypatch.setattr(renewal, 'observe_attestation',
+                            lambda route, cert: ({'matches': True, 'changed_fields': [], 'signature': 's'}, 'SIGNED'))
+        monkeypatch.setattr(renewal, 'production', lambda action, route, doc: (
+            (_ for _ in ()).throw(AssertionError('no import')) if action == 'import' else {'ok': True, 'status': {}}))
+        monkeypatch.setattr(renewal, 'certifier', lambda *a, **k: (_ for _ in ()).throw(AssertionError('must not issue')))
+        assert renewal.main() == 0
+        assert [x['action'] for x in logged] == ['attest']
+
+
+def test_failed_early_recertification_still_attests(monkeypatch, tmp_path):
+    calls, logged = _early_setup(monkeypatch, tmp_path, hours_left=72,
+                                 sessions={'alice': _session(30), 'bob': _session(30)})
+    monkeypatch.setattr(renewal, 'certifier', lambda route, *extra: result(stderr='CHECK_FAILED', code=1))
+    monkeypatch.setattr(renewal, 'observe_attestation',
+                        lambda route, cert: ({'matches': True, 'changed_fields': [], 'signature': 's'}, 'SIGNED'))
+    monkeypatch.setattr(renewal, 'production', lambda action, route, doc: {'ok': True, 'status': {}})
+    assert renewal.main() == 1                      # surfaced for alerting
+    assert [x['action'] for x in logged] == ['recertify', 'attest']
+    assert logged[0]['trigger'] == 'early'
+
+
+def test_due_recertification_unchanged_by_early_window(monkeypatch, tmp_path):
+    """Inside the mandatory window a legacy (unknown-lifetime) live session still recertifies."""
+    calls, logged = _early_setup(monkeypatch, tmp_path, hours_left=20,
+                                 sessions={'alice': {'status': 'LIFETIME_UNKNOWN'}, 'bob': _session(30)})
+    monkeypatch.setattr(renewal, 'certifier', lambda route, *extra: result(stderr='X', code=1))
+    monkeypatch.setattr(renewal, 'observe_attestation',
+                        lambda *a: (_ for _ in ()).throw(AssertionError('due failure must not attest instead')))
+    assert renewal.main() == 1
+    assert logged[0]['trigger'] == 'due'

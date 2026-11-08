@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "2.2",
+  "description": "Read-only AccessProof production security gates A-J for one organization/application.",
+  "parameters": {
+    "organizationId": {
+      "type": "String",
+      "interpolationType": "ENV_VAR",
+      "allowedPattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "applicationId": {
+      "type": "String",
+      "interpolationType": "ENV_VAR",
+      "allowedPattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    }
+  },
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "securityGates",
+      "inputs": {
+        "timeoutSeconds": "300",
+        "runCommand": [
+          "set -eu",
+          "META=$(curl -fsS --max-time 2 -X PUT http://169.254.169.254/latest/api/token -H \"X-aws-ec2-metadata-token-ttl-seconds: 60\")",
+          "SELF=$(curl -fsS --max-time 2 -H \"X-aws-ec2-metadata-token: $META\" http://169.254.169.254/latest/meta-data/instance-id)",
+          "test \"$SELF\" = \"i-0c11427d4d9c1b438\" || { echo \"Wrong production instance; refusing\" >&2; exit 2; }",
+          "test -n \"${SSM_organizationId:-}\" && test -n \"${SSM_applicationId:-}\" || { echo \"SSM agent does not support ENV_VAR interpolation; refusing\" >&2; exit 2; }",
+          "printf %s \"$SSM_organizationId\" | grep -Eqx \"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\" || exit 2",
+          "printf %s \"$SSM_applicationId\" | grep -Eqx \"[a-z0-9][a-z0-9-]{0,63}\" || exit 2",
+          "cd /home/ubuntu/accessproof",
+          "umask 077",
+          "state() { c=$(docker compose -f docker-compose.ec2.yml ps -q \"$1\" 2>/dev/null || true); if [ -n \"$c\" ]; then docker inspect -f \"{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}\" \"$c\"; else echo missing; fi; }",
+          "HEAD_REV=$(docker compose -f docker-compose.ec2.yml exec -T api alembic heads 2>/dev/null | awk '/\\(head\\)/{print $1}')",
+          "DB_REV=$(docker compose -f docker-compose.ec2.yml exec -T db psql -U accessproof -d accessproof -tAc \"select version_num from alembic_version\" | tr -d \"[:space:]\")",
+          "ROLLBACKS=$(ls -d /home/ubuntu/accessproof-releases/*/rollback 2>/dev/null | wc -l)",
+          "BUNDLE=$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps({\"host_facts\": {\"api_healthy\": a[0]==\"healthy\", \"worker_running\": a[1] in (\"running\",\"healthy\"), \"db_healthy\": a[2]==\"healthy\", \"redis_healthy\": a[3]==\"healthy\", \"web_healthy\": a[4]==\"healthy\", \"migration_at_head\": bool(a[5]) and a[5]==a[6], \"rollback_available\": int(a[7])>0}, \"evidence\": None}))' \"$(state api)\" \"$(state worker)\" \"$(state db)\" \"$(state redis)\" \"$(state web)\" \"$HEAD_REV\" \"$DB_REV\" \"$ROLLBACKS\")",
+          "printf %s \"$BUNDLE\" | docker compose -f docker-compose.ec2.yml exec -T api python scripts/production_security_gates.py --organization-id \"$SSM_organizationId\" --application-id \"$SSM_applicationId\" --stdin-bundle"
+        ]
+      }
+    }
+  ]
+}

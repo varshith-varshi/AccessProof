@@ -1,0 +1,69 @@
+{
+  "started_at": "2026-11-08T08:55:13.537032+00:00",
+  "postgres": "postgres (PostgreSQL) 17.11",
+  "seeded_tables": 50,
+  "source": {
+    "isolation": {
+      "tables": 50,
+      "violations": [],
+      "cross_tenant_insert": "REJECTED:ProgrammingError",
+      "audit": {
+        "current_user": "accessproof_app",
+        "superuser": false,
+        "bypassrls": false,
+        "owns_tables": false,
+        "tables_missing_policy": [],
+        "settable_bypass_policies": 0,
+        "tenant_tables_checked": 59
+      },
+      "ok": true
+    },
+    "snapshot": {
+      "row_counts": {
+        "tables": 50,
+        "total_rows": 100
+      },
+      "alembic_revision": "x8c9d0e1f2a3",
+      "forced_rls_tables": 59,
+      "policies": 118
+    }
+  },
+  "backup": {
+    "sha256": "9acd90267094fcbd04305f338676d6a2ee5823d78e48fd2eb6951535d90a2fd7",
+    "size_bytes": 386542,
+    "seconds": 0.31
+  },
+  "restore": {
+    "seconds": 7.346,
+    "database": "accessproof_drill_restore"
+  },
+  "restored": {
+    "isolation": {
+      "tables": 50,
+      "violations": [],
+      "cross_tenant_insert": "REJECTED:ProgrammingError",
+      "audit": {
+        "current_user": "accessproof_app",
+        "superuser": false,
+        "bypassrls": false,
+        "owns_tables": false,
+        "tables_missing_policy": [],
+        "settable_bypass_policies": 0,
+        "tenant_tables_checked": 59
+      },
+      "ok": true
+    },
+    "snapshot": {
+      "row_counts": {
+        "tables": 50,
+        "total_rows": 100
+      },
+      "alembic_revision": "x8c9d0e1f2a3",
+      "forced_rls_tables": 59,
+      "policies": 118
+    }
+  },
+  "snapshot_equal": true,
+  "ok": true,
+  "finished_at": "2026-11-08T08:55:23.821958+00:00"
+}

@@ -16,6 +16,7 @@ PROD = 'i-0c11427d4d9c1b438'
 BUCKET = f'accessproof-release-artifacts-{ACCOUNT}-{REGION}'
 DOCUMENT_RELEASE = 'AccessProof-Deployer-ProductionRelease'
 DOCUMENT_PREFLIGHT = 'AccessProof-Deployer-ProductionPreflight'
+DOCUMENT_GATES = 'AccessProof-Deployer-ProductionGates'
 
 
 def common() -> list[str]:
@@ -41,6 +42,43 @@ def preflight() -> dict:
                 'echo "SERVICES"',
                 "docker compose -f docker-compose.ec2.yml ps --format '{{.Service}} {{.Status}}'",
                 'echo "ZIP_SHA256=$(docker exec "$(docker compose -f docker-compose.ec2.yml ps -q web)" sha256sum /app/public/downloads/accessproof-gateway-connector.zip | cut -d\' \' -f1)"',
+            ]},
+        }],
+    }
+
+
+def gates() -> dict:
+    """Read-only production gates A-J (same logic as deploy/ec2-release/run_security_gates.sh).
+
+    Only two validated identifiers are accepted, via ENV_VAR interpolation (never
+    spliced into the shell text). Host facts are streamed into the read-only API
+    container on stdin; nothing is written, restarted or migrated.
+    """
+    compose = 'docker compose -f docker-compose.ec2.yml'
+    return {
+        'schemaVersion': '2.2',
+        'description': 'Read-only AccessProof production security gates A-J for one organization/application.',
+        'parameters': {
+            'organizationId': {'type': 'String', 'interpolationType': 'ENV_VAR',
+                               'allowedPattern': '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'},
+            'applicationId': {'type': 'String', 'interpolationType': 'ENV_VAR',
+                              'allowedPattern': '^[a-z0-9][a-z0-9-]{0,63}$'},
+        },
+        'mainSteps': [{
+            'action': 'aws:runShellScript',
+            'name': 'securityGates',
+            'inputs': {'timeoutSeconds': '300', 'runCommand': common() + [
+                'test -n "${SSM_organizationId:-}" && test -n "${SSM_applicationId:-}" || { echo "SSM agent does not support ENV_VAR interpolation; refusing" >&2; exit 2; }',
+                'printf %s "$SSM_organizationId" | grep -Eqx "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" || exit 2',
+                'printf %s "$SSM_applicationId" | grep -Eqx "[a-z0-9][a-z0-9-]{0,63}" || exit 2',
+                'cd /home/ubuntu/accessproof',
+                'umask 077',
+                f'state() {{ c=$({compose} ps -q "$1" 2>/dev/null || true); if [ -n "$c" ]; then docker inspect -f "{{{{if .State.Health}}}}{{{{.State.Health.Status}}}}{{{{else}}}}{{{{.State.Status}}}}{{{{end}}}}" "$c"; else echo missing; fi; }}',
+                f'HEAD_REV=$({compose} exec -T api alembic heads 2>/dev/null | awk \'/\\(head\\)/{{print $1}}\')',
+                f'DB_REV=$({compose} exec -T db psql -U accessproof -d accessproof -tAc "select version_num from alembic_version" | tr -d "[:space:]")',
+                'ROLLBACKS=$(ls -d /home/ubuntu/accessproof-releases/*/rollback 2>/dev/null | wc -l)',
+                'BUNDLE=$(python3 -c \'import json,sys; a=sys.argv[1:]; print(json.dumps({"host_facts": {"api_healthy": a[0]=="healthy", "worker_running": a[1] in ("running","healthy"), "db_healthy": a[2]=="healthy", "redis_healthy": a[3]=="healthy", "web_healthy": a[4]=="healthy", "migration_at_head": bool(a[5]) and a[5]==a[6], "rollback_available": int(a[7])>0}, "evidence": None}))\' "$(state api)" "$(state worker)" "$(state db)" "$(state redis)" "$(state web)" "$HEAD_REV" "$DB_REV" "$ROLLBACKS")',
+                f'printf %s "$BUNDLE" | {compose} exec -T api python scripts/production_security_gates.py --organization-id "$SSM_organizationId" --application-id "$SSM_applicationId" --stdin-bundle',
             ]},
         }],
     }
@@ -94,9 +132,9 @@ def release() -> dict:
 
 def role_policy() -> dict:
     prod_resource = f'arn:aws:ec2:{REGION}:{ACCOUNT}:instance/{PROD}'
-    docs = [f'arn:aws:ssm:{REGION}:{ACCOUNT}:document/{name}' for name in (DOCUMENT_RELEASE, DOCUMENT_PREFLIGHT)]
+    docs = [f'arn:aws:ssm:{REGION}:{ACCOUNT}:document/{name}' for name in (DOCUMENT_RELEASE, DOCUMENT_PREFLIGHT, DOCUMENT_GATES)]
     return {'Version': '2012-10-17', 'Statement': [
-        {'Sid': 'OnlyProductionReleaseAndPreflight', 'Effect': 'Allow', 'Action': ['ssm:SendCommand'], 'Resource': [prod_resource, *docs]},
+        {'Sid': 'OnlyProductionReleasePreflightAndGates', 'Effect': 'Allow', 'Action': ['ssm:SendCommand'], 'Resource': [prod_resource, *docs]},
         {'Sid': 'ReadCommandResultsOnlyInReleaseRegion', 'Effect': 'Allow', 'Action': ['ssm:GetCommandInvocation', 'ssm:ListCommands', 'ssm:DescribeInstanceInformation'], 'Resource': '*', 'Condition': {'StringEquals': {'aws:RequestedRegion': REGION}}},
         {'Sid': 'PublishReleaseArchivesOnly', 'Effect': 'Allow', 'Action': ['s3:PutObject', 's3:GetObject'], 'Resource': f'arn:aws:s3:::{BUCKET}/releases/*'},
         {'Sid': 'NeverUseAWSManagedShellDocument', 'Effect': 'Deny', 'Action': 'ssm:SendCommand', 'Resource': 'arn:aws:ssm:*::document/*'},
@@ -112,7 +150,7 @@ def role_policy() -> dict:
 
 def render() -> None:
     out = ROOT / 'ssm'; out.mkdir(parents=True, exist_ok=True)
-    for name, contents in ((DOCUMENT_PREFLIGHT, preflight()), (DOCUMENT_RELEASE, release())):
+    for name, contents in ((DOCUMENT_PREFLIGHT, preflight()), (DOCUMENT_RELEASE, release()), (DOCUMENT_GATES, gates())):
         (out / f'{name}.json').write_text(json.dumps(contents, indent=2) + '\n')
     (ROOT / 'iam-policy-production-deployer.json').write_text(json.dumps(role_policy(), indent=2) + '\n')
     print('Generated pinned production SSM documents and least-privilege IAM policy.')

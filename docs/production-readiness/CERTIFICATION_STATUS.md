@@ -1,6 +1,6 @@
 # Certification status
 
-Verified 2026-11-08T08:30Z via the restricted read-only SSM document `AccessProof-Certifier-ProductionReadOnly` (profile `accessproof-certifier`, not root).
+Verified 2026-11-08T08:50Z via the restricted read-only SSM document `AccessProof-Certifier-ProductionReadOnly` (profile `accessproof-certifier`, not root).
 
 ## Route certificates (production)
 
@@ -12,7 +12,7 @@ Verified 2026-11-08T08:30Z via the restricted read-only SSM document `AccessProo
 | `0fb98b25…` / pilot-hr-rag | langchain | VALID | 2026-11-11 18:02 | 2026-11-08 05:32 | 2026-11-10 05:27 timer run |
 
 Status: CERTIFIED (signed by `ap-certifier-2026-11`, offline Ed25519 on the owner laptop).
-**Expiry risk: P0, see FINDINGS F-001.** The recertification needs live Alice and Bob sessions that will have ended before it runs.
+**Expiry risk: P0, see FINDINGS F-001.** Recertification needs live Alice and Bob sessions. With F-001b, one sign-in using `AP_RECERTIFY_AFTER_SIGNIN=1` recertifies all three routes immediately, because they are within the 4-day early window. The mandatory ≤2-day timer path remains as a fallback.
 
 ## Source certificates
 
@@ -36,7 +36,7 @@ No trust change was made this session. A KMS trust transition requires owner aut
 
 | Unit (owner laptop, user systemd) | State | Last result |
 |---|---|---|
-| accessproof-route-attestation.timer | active | 2026-11-08 05:32Z OK (3/3). A 04:09Z run failed transiently (tunnel reset), succeeded on retry |
+| accessproof-route-attestation.timer | active (next 17:23Z ± 10 min) | 2026-11-08 05:32Z OK (3/3). Now also runs early recertification when sessions cover a full run |
 | accessproof-cert-renewal{,-pilot}.timer | active | daily; window not yet open |
 | accessproof-renewal-watchdog.timer | active | WARNING (expected: WATCH + new EMPLOYEE_SESSION_LIFETIME_UNKNOWN) |
 | accessproof-source-expiry-monitor.timer | active | OK |

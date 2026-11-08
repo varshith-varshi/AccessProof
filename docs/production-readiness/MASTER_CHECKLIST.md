@@ -1,30 +1,33 @@
 # Master production-readiness checklist
 
-Last updated 2026-11-08T08:35Z. Details are in the sibling reports. "Last PASS" dates come from earlier dated evidence when this session could not re-run the check.
+Last updated 2026-11-08T09:15Z. Details are in the sibling reports. "Last PASS" dates come from earlier dated evidence when this session could not re-run the check.
 
 | ID | Group | Requirement | Pri | Status | Evidence | Verified | Remaining dependency | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| A | Infrastructure | API, web, DB and Redis healthy; release pinned | P0 | VERIFIED_LIVE (public health); release NOT re-verified | INFRASTRUCTURE_STATUS | 08:35Z | deployer `--preflight` | PARTIAL |
-| B | Identity | Entra OIDC verification, employee identity binding | P0 | Last PASS 2026-11-05 | gates run 11-05 | 11-05 | gate re-run | NOT_VERIFIED |
-| C | SharePoint source | Source certified for exact scope | P0 | CERTIFIED, 26 d left | `source_expiry_monitor` live | 08:3xZ | renewal ~11-24 needs sessions | PASS |
+| A | Infrastructure | API, web, DB and Redis healthy; release pinned; migration at head | P0 | VERIFIED_LIVE: `web-r54-tls-doctor-501a74cdb9a2`; 5 services up (api/db/redis/web healthy); DB `x8c9d0e1f2a3` = repo head; ZIP `9db1c5a9…`; disk 9 GB | deployer `--preflight` SSM `75149f4e…`; public `/health/ready` 200 | 08:58Z | — | PASS (host facts); formal gate A via F-003 |
+| B | Identity | Entra OIDC verification, employee identity binding | P0 | Last PASS 2026-11-05; live Entra tokens verified (`VERIFIED alice/bob` oid/tid/iss) | gates 11-05; session logs | 11-05 | F-003 | NOT_VERIFIED (gate) |
+| C | SharePoint source | Source certified for exact scope | P0 | CERTIFIED, about 27 d left (expires 2026-12-04) | `source_expiry_monitor` LIVE_READ_ONLY | 08:3xZ | renewal ~11-24 needs sessions | PASS |
 | D | Guard | Guard reachable, fail-closed | P0 | VERIFIED_LIVE via route attestation 05:31Z | attestation log | 05:31Z | — | PASS (attestation scope) |
-| E | Gateway / routes | Certified routes VALID | **P0** | VALID, **expire 2026-11-11** | `route_status` live | 08:30Z | **F-001 owner action** | AT RISK |
-| F | Layer 1 | Retrieval filtered per employee | P0 | Last PASS in route certs 11-05 | route certs | 11-05 | gate re-run | NOT_VERIFIED today |
-| G | Final answer verification | Provenance and release gate | P0 | Last PASS 11-05 | gates | 11-05 | gate re-run | NOT_VERIFIED today |
-| H | Revocation and cache | In-flight revocation; no cross-employee cache reuse | P0 | TESTED_LOCAL; live in route cert 11-05 | tests + certs | 08:35Z (tests) | gate re-run | NOT_VERIFIED live today |
-| I | Database security | RLS runtime role, tenant isolation | P0 | Last PASS 11-05 | gates | 11-05 | in-container run | NOT_VERIFIED |
-| J | Activation | Owner approval recorded; Protect active | P0 | Approved 11-05; mode not visible to certifier | evidence dir | 11-05 | Owner dashboard confirm | NOT_VERIFIED today |
-| R1 | Reliability | Laptop-independent renewal | P0 (GA) | BLOCKED | F-002 | 08:3xZ | owner + customer authorizations | BLOCKED |
-| R2 | Reliability | Backup restore drill with RTO/RPO | P1 | NOT_VERIFIED | — | — | isolated restore | OPEN |
-| R3 | Reliability | Rollback tested | P1 | Web-only release has preflight and previous digest accepted; no rollback drill recorded | deployer | 11-05 | drill | OPEN |
+| E | Gateway / routes | Certified routes VALID | **P0** | VALID ×3, **expire 2026-11-11 17:02/18:02/19:00Z** | `route_status` read-only SSM | 08:50Z | **F-001 owner sign-in** | AT RISK |
+| F | Layer 1 | Retrieval filtered per employee | P0 | Last PASS in route certs 11-05 | route certs | 11-05 | F-001 run re-proves it | NOT_VERIFIED today |
+| G | Final answer verification | Provenance and release gate | P0 | Last PASS 11-05 | gates | 11-05 | F-003 | NOT_VERIFIED today |
+| H | Revocation and cache | In-flight revocation; no cross-employee cache reuse | P0 | TESTED_LOCAL (suite); live in route cert 11-05 | tests + certs | 09:1xZ (tests) | F-001 run re-proves it | NOT_VERIFIED live today |
+| I | Database security | RLS runtime role, tenant isolation | P0 | **TESTED_LOCAL on real PG 17** (two tenants, 50 tables, read/write/insert/GUC bypass, before and after restore; negative control fails as expected); live gate last PASS 11-05 | `evidence/postgres_isolation_restore_drill_2026-11-08.json` | 09:05Z | F-003 for live | PARTIAL |
+| J | Activation | Owner approval recorded; Protect active | P0 | Approved 11-05; mode not visible to certifier | evidence dir | 11-05 | Owner dashboard confirm / F-003 | NOT_VERIFIED today |
+| R1 | Reliability | Laptop-independent renewal | P0 (GA) | BLOCKED. The owner window for route renewal is reduced from about 46 h to about 1 h (F-001b) | F-002 | 09:10Z | owner + customer authorizations | BLOCKED |
+| R2 | Reliability | Backup restore drill with RTO/RPO | P1 | Restore path TESTED_LOCAL (dump 0.31 s, restore 7.3 s, at synthetic scale); production data NOT_VERIFIED; no backup schedule found | drill evidence | 09:05Z | owner-approved production drill; targets | OPEN |
+| R3 | Reliability | Rollback tested | P1 | Web-only release keeps the previous digest; no rollback drill recorded | deployer | 11-07 | drill | OPEN |
 | R4 | Reliability | Off-laptop alerting | P1 | Local desktop only; EC2 watcher observes | — | — | alarm channel | OPEN |
-| S1 | Security | Unit + security suite green | P0 | TESTED_LOCAL 1630/9 skip/0 fail | SECURITY_TEST_RESULTS | 08:35Z | — | PASS |
-| S2 | Security | Mixed allow/deny partial answers (`15b870a`) live | P1 | IMPLEMENTED + TESTED_LOCAL, not deployed | — | — | release + live verification | OPEN |
-| S3 | Security | Cross-tenant live test | P1 | NOT_VERIFIED (one real tenant) | — | — | second tenant | OPEN |
-| G1 | Governance | No root use; MFA on admins | P1 | Root keys exist; MFA missing on infra-admin | F-004 | 11-08 | owner | OPEN |
+| S1 | Security | Unit + security suite green | P0 | TESTED_LOCAL (see SECURITY_TEST_RESULTS) | pytest | 09:1xZ | — | PASS |
+| S2 | Security | Mixed allow/deny partial answers | P1 | DEPLOYED (Gateway code unchanged since `501a74c`) + TESTED_LOCAL; live NOT_VERIFIED | `test_gateway_partial_cached_context.py` | 09:1xZ | live observation | OPEN |
+| S3 | Security | Cross-tenant live test | P1 | NOT_VERIFIED live (one real tenant); DB-level cross-tenant isolation TESTED_LOCAL | drill | 09:05Z | second tenant | OPEN |
+| G1 | Governance | No root use; MFA on admins | P1 | Root keys exist; MFA missing on infra-admin; root NOT used this session | F-004 | 11-08 | owner | OPEN |
 | O1 | Onboarding | Fresh real customer journey | P0 (GA) | Partial | CUSTOMER_ONBOARDING_STATUS | — | real tenant consent + owner approval | OPEN |
 
-## Commands for gate re-run (owner or deployer; not runnable by the certifier identity)
-Run inside the production API container:
-`python scripts/production_security_gates.py --organization-id <org> --application-id <app> --stdin-bundle < bundle.json`
-Run it for both `48ee8c86…/sharepoint-rag-staging` and `0fb98b25…/pilot-hr-rag`. Exit 0 means TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL.
+## Gate re-run
+After the owner runs `deploy/deployer/register_gates_document.sh` once:
+```
+deploy/deployer/ship_production.sh --gates 48ee8c86-d4d8-4cde-b00b-bc779f965f4f sharepoint-rag-staging
+deploy/deployer/ship_production.sh --gates 0fb98b25-bd7d-445e-a192-4ff8ee730760 pilot-hr-rag
+```
+Exit 0 means TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL. Reviewer approval is still required.

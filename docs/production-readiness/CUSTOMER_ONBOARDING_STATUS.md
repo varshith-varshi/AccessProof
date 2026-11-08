@@ -1,6 +1,6 @@
 # Customer onboarding status
 
-Last updated 2026-11-08T08:35Z. Nothing in this journey was re-executed this session; doing so creates production resources and needs customer identities. Status comes from the latest dated evidence.
+Last updated 2026-11-08T09:15Z. Nothing in this journey was re-executed in either session today; doing so creates production resources and needs customer identities. Status comes from the latest dated evidence.
 
 | Step | Status | Evidence / gap |
 |---|---|---|
@@ -10,7 +10,7 @@ Last updated 2026-11-08T08:35Z. Nothing in this journey was re-executed this ses
 | Selected-site authorization | VERIFIED_LIVE for the single owner tenant only | — |
 | SharePoint connection + permission sync | VERIFIED_LIVE (pilot + reference sources) | source certs valid to 2026-12-04 |
 | Guard installation | VERIFIED_LIVE on Linux Docker; Docker Desktop setup page NOT_VERIFIED | — |
-| Gateway pairing | VERIFIED_LIVE (pilot); R44 challenge CLI fix live but not exercised on a fresh install | `docs/CUSTOMER_ONBOARDING_SMOKE_R44.md` |
+| Gateway pairing | VERIFIED_LIVE (pilot); the R54 installer (ZIP `9db1c5a9…`, VERIFIED_LIVE served) has not been exercised on a fresh install | `docs/CUSTOMER_ONBOARDING_SMOKE_R44.md`, `docs/GATEWAY_HEARTBEAT_RECOVERY_2026-11-07.md` |
 | RAG discovery and selection | TESTED_LOCAL / VERIFIED_LIVE (pilot) | — |
 | Signed route verification | CERTIFIED (pilot-langchain); operator-assisted with live employee identities by design | CERTIFICATION_STATUS.md |
 | Source certification | CERTIFIED (pilot + reference) | — |

@@ -17,5 +17,12 @@ for actor in alice bob; do
     >> "$HOME/.ap-id/$actor.log" 2>&1 < /dev/null &
   echo $! > "$pid_file"
 done
+if [[ "${AP_RECERTIFY_AFTER_SIGNIN:-0}" == 1 ]]; then
+  # Once both sign-ins complete, trigger the route attestation run so an early
+  # re-certification happens now instead of waiting for the timer window.
+  : > "$HOME/.ap-id/recertify-after-signin.log"; chmod 600 "$HOME/.ap-id/recertify-after-signin.log"
+  setsid nohup env -u PYTHONPATH .venv/bin/python -u scripts/certifier/recertify_after_signin.py \
+    >> "$HOME/.ap-id/recertify-after-signin.log" 2>&1 < /dev/null &
+fi
 sleep 4
 for actor in alice bob; do echo "== $actor"; grep -E 'https://login|VERIFIED|SERVING|IDENTITY_FAILURE' "$HOME/.ap-id/$actor.log" || true; done

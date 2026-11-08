@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "OnlyProductionReleaseAndPreflight",
+      "Sid": "OnlyProductionReleasePreflightAndGates",
       "Effect": "Allow",
       "Action": [
         "ssm:SendCommand"
@@ -10,7 +10,8 @@
       "Resource": [
         "arn:aws:ec2:eu-north-1:102076848988:instance/i-0c11427d4d9c1b438",
         "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionRelease",
-        "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionPreflight"
+        "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionPreflight",
+        "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionGates"
       ]
     },
     {
