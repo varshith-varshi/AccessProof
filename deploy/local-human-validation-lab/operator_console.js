@@ -6,8 +6,10 @@ let runtimeReady = false;
 function setText(id, value) { $(id).textContent = value == null ? "—" : String(value); }
 function refreshExpectation() {
   const actor = $("actor").value;
-  const doc = $("document").value;
-  setText("expectation", doc ? `Expected SharePoint permission: ${permissions[actor]?.[doc] ?? "Unknown"} for ${actor}` : "Choose a test document");
+  const doc = $("diagnostics").open ? $("document").value : "";
+  setText("expectation", doc
+    ? `Diagnostic: expected SharePoint permission is ${permissions[actor]?.[doc] ?? "Unknown"} for ${actor}`
+    : "Automatic retrieval: AccessProof decides which relevant chunks this employee can use.");
 }
 function showIdentity(actor, data) {
   const signedIn = data?.state === "SIGNED_IN";
@@ -43,12 +45,12 @@ async function refresh() {
     permissions = data.expected || {};
     for (const actor of ["alice", "bob"]) showIdentity(actor, data.actors?.[actor]);
     if ($("document").options.length < 2) {
-      $("document").replaceChildren();
+      $("document").replaceChildren(new Option("Use automatic retrieval (default)", ""));
       for (const doc of data.documents || []) {
         const option = new Option(doc, doc);
         $("document").add(option);
       }
-      $("document").value = "finance_alice.txt";
+      $("document").value = "";
     }
     $("ask").disabled = !runtimeReady || !sessions[$("actor").value];
     refreshExpectation();
@@ -63,23 +65,27 @@ $("actor").addEventListener("change", () => {
   refreshExpectation();
 });
 $("document").addEventListener("change", refreshExpectation);
+$("diagnostics").addEventListener("toggle", refreshExpectation);
 $("chat-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const actor = $("actor").value;
-  const document_name = $("document").value;
+  // A collapsed diagnostic panel is never a hidden file-selection override.
+  const document_name = $("diagnostics").open ? $("document").value : "";
   if (!runtimeReady || !sessions[actor]) { setText("result-state", "Guard/Gateway must be ready and the employee must sign in before sending a request."); return; }
   $("ask").disabled = true;
-  setText("result-state", "Sending signed, source-bound request through AccessProof…");
+  setText("result-state", "Retrieving question-relevant SharePoint chunks → AccessProof Layer 1/2 → model…");
   setText("decision", "In progress");
   setText("actual", "Pending");
-  setText("expected", permissions[actor]?.[document_name] ?? "Unknown");
+  setText("expected", document_name ? permissions[actor]?.[document_name] ?? "Unknown" : "Not predetermined — live Gateway decision");
   setText("audit", "Not independently checked");
   setText("answer", "Waiting for Guard/Gateway verdict and model response…");
   try {
     const res = await fetch("/api/chat", {
       method: "POST", credentials: "same-origin", cache: "no-store",
       headers: {"Content-Type": "application/json", "X-AccessProof-Human-Test": "1"},
-      body: JSON.stringify({actor, document_name, question: $("question").value}),
+      body: JSON.stringify(document_name
+        ? {actor, document_name, question: $("question").value}
+        : {actor, question: $("question").value}),
     });
     const result = await res.json();
     if (!res.ok || result.outcome === "INCONCLUSIVE") {
@@ -90,8 +96,11 @@ $("chat-form").addEventListener("submit", async (event) => {
     } else {
       setText("decision", result.outcome);
       setText("actual", result.outcome === "ALLOWED" ? "ALLOW" : "DENY");
+      const diagnostic = result.retrieval_mode === "diagnostic" && result.expected !== "NOT_PREDETERMINED";
       const matches = result.outcome === "ALLOWED" ? result.expected === "ALLOW" : result.expected === "DENY";
-      setText("result-state", `${result.outcome} · ${matches ? "Expected behavior observed" : "UNEXPECTED RESULT — investigate!"}`);
+      setText("result-state", diagnostic
+        ? `${result.outcome} · ${matches ? "Expected diagnostic behavior observed" : "UNEXPECTED RESULT — investigate!"}`
+        : `${result.outcome} · automatic retrieval; Gateway decision (Guard audit pending)`);
       setText("answer", result.outcome === "ALLOWED" ? result.answer : "Access denied. No document data was returned.");
       if (result.decision_id) setText("audit", `Gateway decision ID: ${result.decision_id}; Guard audit still requires confirmation`);
     }

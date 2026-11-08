@@ -38,6 +38,18 @@ def chunks_of(body: str, chunk_words: int = 180, overlap: int = 32) -> list[str]
     return result
 
 
+# Natural-language questions include common filler words. Filtering them out
+# prevents BM25 OR queries from ranking unrelated files by those words alone.
+_QUESTION_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "could", "did",
+    "do", "does", "explain", "find", "for", "from", "give", "how", "i",
+    "in", "is", "it", "me", "of", "on", "our", "please", "show", "summarize",
+    "tell", "that", "the", "their", "there", "these", "this", "to", "us",
+    "was", "were", "what", "when", "where", "which", "who", "why", "with",
+    "would", "you", "your",
+})
+
+
 class Index:
     def __init__(self, path: str):
         self.path = path
@@ -103,15 +115,43 @@ class Index:
         return [Match(**dict(row)) for row in rows]
 
     def search(self, question: str, limit: int = 5) -> list[Match]:
-        # Safe quoting: do not give user-controlled FTS5 syntax to SQLite.
-        tokens = [word for word in re.findall(r"[a-zA-Z0-9]{2,}", question.lower())][:20]
-        if not tokens:
+        """Find relevant signed indexed chunks from the QUESTION, not a file picker.
+
+        FTS5 identifies content candidates. Reranking favors more distinct
+        meaningful query terms and matching document titles over isolated
+        stopword/BM25 hits. This is RELEVANCE ONLY: each resulting attested
+        chunk still requires AccessProof Gateway Layer 1 and Layer 2 checks.
+        """
+        terms = list(dict.fromkeys(
+            token for token in re.findall(r"[a-zA-Z0-9]{2,}", question.lower())
+            if token not in _QUESTION_STOPWORDS
+        ))[:20]
+        if not terms:
             return []
-        query = " OR ".join('"' + token + '"' for token in tokens)
+        query = " OR ".join('"' + token + '"' for token in terms)
+        top_k = max(1, min(limit, 20))
+        # Retrieve extra FTS candidates before reranking so a generic BM25 hit
+        # cannot displace a more relevant document solely by row ordering.
+        candidates = min(300, max(60, top_k * 12))
         with closing(self._open()) as db, db:
             rows = db.execute(
                 "SELECT doc_id, chunk_id, text, version, name, url, attestation, "
                 "bm25(chunks) AS score FROM chunks WHERE chunks MATCH ? "
-                "ORDER BY score ASC LIMIT ?", (query, max(1, min(limit, 20))),
+                "ORDER BY score ASC LIMIT ?", (query, candidates),
             ).fetchall()
-        return [Match(**dict(row)) for row in rows]
+        meaningful = set(terms)
+        ranked = []
+        for row in rows:
+            match = Match(**dict(row))
+            content_terms = set(re.findall(r"[a-z0-9]{2,}", match.text.lower()))
+            title_terms = set(re.findall(r"[a-z0-9]{2,}", match.name.lower()))
+            overlap = meaningful & (content_terms | title_terms)
+            title_overlap = meaningful & title_terms
+            if not overlap:
+                continue
+            ranked.append((
+                -len(overlap), -len(title_overlap), match.score,
+                match.doc_id, match.chunk_id, match,
+            ))
+        ranked.sort(key=lambda item: item[:5])
+        return [entry[5] for entry in ranked[:top_k]]

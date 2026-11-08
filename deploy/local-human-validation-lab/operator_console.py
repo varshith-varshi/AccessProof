@@ -268,7 +268,9 @@ def readiness(request: Request):
 class Prompt(BaseModel):
     actor: Literal["alice", "bob"]
     question: str = Field(min_length=2, max_length=1000)
-    document_name: str = Field(min_length=3, max_length=120)
+    # Optional ONLY for an explicit canary diagnostic. Ordinary questions
+    # retrieve signed candidates automatically from the SharePoint index.
+    document_name: str | None = Field(default=None, min_length=3, max_length=120)
 
 
 @app.post("/api/chat")
@@ -278,8 +280,13 @@ def chat(request: Request, prompt: Prompt):
         raise HTTPException(403, "SAME_ORIGIN_REQUIRED")
     if request.headers.get("x-accessproof-human-test") != "1":
         raise HTTPException(403, "OPERATOR_TEST_HEADER_REQUIRED")
-    if prompt.document_name not in ALLOWED_DOCUMENTS:
+    if prompt.document_name is not None and prompt.document_name not in ALLOWED_DOCUMENTS:
         raise HTTPException(400, "ONLY_APPROVED_SYNTHETIC_CANARIES_SUPPORTED")
+    # For question-first chat, an expected allow/deny result cannot be
+    # precomputed. AccessProof's live Gateway decision is authoritative.
+    expected = (EXPECTED[prompt.actor][prompt.document_name]
+                if prompt.document_name is not None else "NOT_PREDETERMINED")
+    retrieval_mode = "diagnostic" if prompt.document_name else "automatic"
     if not _runtime_readiness()["ready_to_test"]:
         raise HTTPException(503, "ACCESSPROOF_ENFORCEMENT_NOT_READY")
     if time.monotonic() - app.state.last_request < 1:
@@ -296,7 +303,8 @@ def chat(request: Request, prompt: Prompt):
         with httpx.Client(timeout=100, trust_env=False, follow_redirects=False) as client:
             upstream = client.post(
                 RAG + "/chat/protected",
-                json={"question": prompt.question, "document_name": prompt.document_name},
+                json=({"question": prompt.question, "document_name": prompt.document_name}
+                      if prompt.document_name is not None else {"question": prompt.question}),
                 headers={"Authorization": "Bearer " + token, "Cache-Control": "no-store"},
             )
     except httpx.HTTPError as exc:
@@ -304,17 +312,17 @@ def chat(request: Request, prompt: Prompt):
     data = upstream.json() if "application/json" in upstream.headers.get("content-type", "") else {}
     if upstream.status_code == 403:
         return JSONResponse(status_code=200, content={
-            "actor": prompt.actor, "document_name": prompt.document_name,
+            "actor": prompt.actor, "retrieval_mode": retrieval_mode,
             "outcome": "DENIED", "http_status": 403,
-            "expected": EXPECTED[prompt.actor][prompt.document_name],
+            "expected": expected,
             "guard_audit_confirmation": "NOT_CHECKED",
             "answer": None,
         })
     if upstream.status_code != 200:
         return JSONResponse(status_code=503, content={
-            "actor": prompt.actor, "document_name": prompt.document_name,
+            "actor": prompt.actor, "retrieval_mode": retrieval_mode,
             "outcome": "INCONCLUSIVE", "http_status": upstream.status_code,
-            "expected": EXPECTED[prompt.actor][prompt.document_name],
+            "expected": expected,
             "reason": str(data.get("detail") or "PROTECTED_REQUEST_FAILED")[:120],
         })
     gate = data.get("accessproof") or {}
@@ -323,8 +331,8 @@ def chat(request: Request, prompt: Prompt):
             or not isinstance(data.get("answer"), str)):
         raise HTTPException(502, "UNVERIFIED_GATEWAY_RESPONSE")
     return {
-        "actor": prompt.actor, "document_name": prompt.document_name,
-        "outcome": "ALLOWED", "expected": EXPECTED[prompt.actor][prompt.document_name],
+        "actor": prompt.actor, "retrieval_mode": retrieval_mode,
+        "outcome": "ALLOWED", "expected": expected,
         "guard_audit_confirmation": "NOT_CHECKED",
         "decision_id": str(gate["decision_id"])[:130],
         "answer": data["answer"],

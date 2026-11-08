@@ -35,21 +35,26 @@
     <small>Each identity must complete its own Microsoft sign-in. A name selected below never replaces authentication.</small>
   </section>
   <section class="card">
-    <h2>2. Protected question</h2>
+    <h2>2. Ask a protected question</h2>
+    <p>Ask naturally. The RAG automatically retrieves relevant, signed SharePoint excerpts.
+       AccessProof checks each candidate before the model receives it and verifies the answer before release.</p>
     <form id="chat-form">
-      <div class="fields">
-        <label>Send as
-          <select id="actor" required><option value="alice">Alice</option><option value="bob">Bob</option></select>
-        </label>
-        <label>Approved test document
-          <select id="document" required><option value="">Loading test documents…</option></select>
-        </label>
-      </div>
-      <label>Your question
-        <textarea id="question" rows="3" minlength="2" maxlength="1000" required>Summarize the selected test document. Quote its key facts using the indexed SharePoint source.</textarea>
+      <label>Send as
+        <select id="actor" required><option value="alice">Alice</option><option value="bob">Bob</option></select>
       </label>
-      <p id="expectation" class="subtle">Expected decision will appear here.</p>
-      <button type="submit" id="ask" disabled>Send through AccessProof Gateway</button>
+      <label>Your question
+        <textarea id="question" rows="3" minlength="2" maxlength="1000" required placeholder="Ask about finance, engineering, or a company policy"></textarea>
+      </label>
+      <details id="diagnostics">
+        <summary>Advanced: target one synthetic document for a permission test</summary>
+        <p class="subtle">Diagnostic mode only. Normal chatbot questions never require a file picker.
+        Selecting a file does not bypass AccessProof authorization.</p>
+        <label>Approved synthetic test document
+          <select id="document"><option value="">Use automatic retrieval (default)</option></select>
+        </label>
+      </details>
+      <p id="expectation" class="subtle">Automatic retrieval; AccessProof makes the live permission decision.</p>
+      <button type="submit" id="ask" disabled>Ask protected RAG</button>
     </form>
   </section>
   <section class="card">
@@ -57,12 +62,13 @@
     <p id="result-state" class="status">No test run yet.</p>
     <dl id="evidence" class="evidence">
       <div><dt>Gateway decision</dt><dd id="decision">—</dd></div>
-      <div><dt>Expected result</dt><dd id="expected">—</dd></div>
+      <div><dt>Expected result (diagnostic only)</dt><dd id="expected">—</dd></div>
       <div><dt>Actual result</dt><dd id="actual">—</dd></div>
       <div><dt>Guard audit verification</dt><dd id="audit">Not yet independently checked</dd></div>
     </dl>
     <pre id="answer" aria-live="polite">The answer appears only when AccessProof authorizes the request.</pre>
-    <p class="note">An HTTP response by itself is not proof of a secure product. Confirm matching Guard audit events,
+    <p class="note">Automatic retrieval selects candidate source chunks, but only Gateway-authorized content may reach the model.
+      Unauthorized candidate names and snippets are never shown in this console. An HTTP response by itself is not proof of a secure product. Confirm matching Guard audit events,
       effective SharePoint permissions, revocation, and cache protection before marking validation passed.</p>
   </section>
   <footer>Local-only operator console · <code>127.0.0.1:28290</code> · credentials never enter the page</footer>

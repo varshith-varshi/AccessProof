@@ -112,3 +112,34 @@ a production security gate.
   binding readiness, certification window and Gateway Guard-error semantics).
 - **Not performed:** an actual Ubuntu reboot; production always-on host
   migration; live revoke/restore; independent source certification.
+
+## Question-first protected RAG (2026-11-08)
+
+The local human-validation console now defaults to natural questions without
+requiring users to select files. A real signed-in employee is still required.
+The retriever automatically chooses relevant signed SharePoint chunks based
+on question terms, content/title overlap, and FTS5 relevance scoring. The
+AccessProof Gateway still applies Layer 1 authorization before the model sees
+retrieved chunks and Layer 2 verification before releasing an answer.
+
+The optional advanced diagnostic file picker remains for controlled synthetic
+Alice/Bob permission tests. Open-ended questions have no predetermined allow/
+deny expectation. Unauthorized candidates are not disclosed in browser
+citations or excerpts.
+
+Live host: ~/Downloads/accessproof-human-validation-rag.
+Local operator UI: http://127.0.0.1:28290 (one-time session required).
+Protected RAG: http://127.0.0.1:28189/chat/protected (real bearer required).
+Baseline remains disabled. The separate certified production and remote RAG
+routes were not modified.
+
+Launch the UI on the owner's laptop:
+    bash ~/Downloads/accessproof-human-validation-rag/open-validation.sh
+
+Tests:
+    PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q deploy/local-human-validation-lab/tests/test_question_first_chat.py
+
+Retrieval tests can run in the dependency-locked RAG Docker image with the
+question-first index.py mounted read-only. The live deployment retains the
+previous image tag accessproof-human-validation-rag:rollback-question-first-20261108.
+Pre-change operator/index sources were backed up alongside the live files.
