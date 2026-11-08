@@ -91,3 +91,44 @@ def test_socket_probe_refuses_token_queries(tmp_path: Path) -> None:
     for secret in ("api_token", "access_token", "id_token"):
         with pytest.raises(ValueError):
             _socket_query(tmp_path / "x.sock", secret)
+
+
+def test_guard_not_ready_raises_warning_even_with_healthy_certificates(tmp_path):
+    """2026-11-08: the pilot Guard failed every request closed (POLICY_SYNC_STALE,
+    DNS ConnectError) for hours while certificates and attestations were OK."""
+    from datetime import datetime, timezone
+    from scripts.certifier import renewal_watchdog as w
+    guards = w.guard_readiness(["http://127.0.0.1:8081"], fetch=lambda u: {
+        "ready": False, "policy_fresh": False, "sync_error": "ConnectError"})
+    assert guards["http://127.0.0.1:8081"]["status"] == "NOT_READY"
+    result = w.check(tmp_path, datetime.now(timezone.utc), prerequisites={"local_prerequisites_present": True},
+                     sessions={}, guards=guards)
+    assert "GUARD_NOT_READY:8081:ConnectError" in result["warnings"]
+
+
+def test_guard_probe_is_loopback_only_and_reports_unreachable(tmp_path):
+    import json
+    import os
+    from scripts.certifier import renewal_watchdog as w
+    cfg = tmp_path / ".config/accessproof"
+    cfg.mkdir(parents=True)
+    (cfg / "remote-routes.json").write_text(json.dumps([
+        {"name": "a"}, {"name": "b", "env": {"AP_RT_GUARD_URL": "http://127.0.0.1:8081"}},
+        {"name": "c", "env": {"AP_RT_GUARD_URL": "https://guard.example.com"}}]))
+    os.chmod(cfg / "remote-routes.json", 0o600)
+    assert w.guard_urls(tmp_path) == ["http://127.0.0.1:8080", "http://127.0.0.1:8081"]
+
+    def down(url):
+        raise OSError("refused")
+    assert w.guard_readiness(["http://127.0.0.1:8080"], fetch=down)["http://127.0.0.1:8080"]["status"] == "UNREACHABLE"
+
+
+def test_per_run_outputs_are_not_treated_as_active_certificates(tmp_path):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from scripts.certifier import renewal_watchdog as w
+    now = datetime.now(timezone.utc)
+    (tmp_path / "r1.certificate.json").write_text(json.dumps(
+        {"status": "CERTIFIED", "signature": "s", "expires_at": (now + timedelta(days=6)).isoformat()}))
+    (tmp_path / "r1.run-20261108T091707Z.json.certificate.json").write_text(json.dumps({"status": "NOT_CERTIFIED"}))
+    assert set(w.inspect_certificates(tmp_path, now)) == {"r1"}

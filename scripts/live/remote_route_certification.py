@@ -300,10 +300,19 @@ def ask_allowed(o: Observer, actor: str, q: str, attempts: int = 4) -> tuple[dic
     for _ in range(attempts):
         s = o.ask(actor, q)
         tries.append(s)
-        if not (s["http_status"] == 503 and s.get("detail") == "AUTHORIZATION_REVISION_CHANGED"):
+        if not positive_request_retryable(s):
             break
         time.sleep(5)
     return tries[-1], tries
+
+
+def positive_request_retryable(s: dict) -> bool:
+    """Fail-closed outcomes that say nothing about whether AUTHORIZED content is
+    released: a real revision change, a transient Guard 503, or a dropped route
+    connection. Only POSITIVE checks retry; denial checks never use this."""
+    if s.get("http_status") == 503 and s.get("detail") in ("AUTHORIZATION_REVISION_CHANGED", "GUARD_REQUEST_FAILED"):
+        return True
+    return s.get("http_status") is None and str(s.get("detail") or "").startswith("ROUTE_UNREACHABLE")
 
 
 def run_basic(o: Observer, results: list[dict], ctx: dict) -> None:
@@ -560,12 +569,31 @@ def run_fail_closed(o: Observer, results: list[dict], outage: str = "edge-networ
                                                                 "witness": [s] if s else [], "gateway_audit": gw}))
 
 
+def straddle_next_step(l1_rows: list[dict], admitted: bool, s: dict, fin: str) -> str:
+    """Decide whether the mid-request search may continue after a non-conclusive attempt.
+
+    Only POSITIVE evidence that Layer 1 excludes the document ends the search: a
+    Layer 1 audit row that did not allow it, or a model call whose context lacks it.
+    A transport failure that produced no Guard evidence is retried (within the
+    caller's budget); it says nothing about authorization. This never changes the
+    PASS/FAIL criteria, it only stops a dropped connection from ending observation.
+    """
+    if l1_rows and not admitted:
+        return "stop"
+    if s.get("model_calls") and fin not in (s.get("model_context_documents") or []):
+        return "stop"
+    if not l1_rows and str(s.get("detail") or "").startswith("ROUTE_UNREACHABLE"):
+        return "retry_transport"
+    return "continue"
+
+
 def run_revocation(o: Observer, results: list[dict], ctx: dict, budget: float = 300.0) -> None:
     trial = rt.Trial("A", SOCK["alice"])
     item = trial.item_id()
     fin = "finance_alice.txt"
     pre_hash = (ctx.get("alice_allow") or {}).get("answer_sha256")
     mid: dict | None = None
+    ambiguous: dict | None = None
     attempts: list[dict] = []
     revoke_rec = None
     stable = None
@@ -586,11 +614,15 @@ def run_revocation(o: Observer, results: list[dict], ctx: dict, budget: float = 
             # Layer 1 rows list candidates; whether the document was admitted is proven
             # afterwards by the model-context witness for this request.
             admitted = bool(l1) and l1[-1]["result"] == "allow"
-            flipped_at, held_from = None, time.time()
+            flipped_at, held_from, unavailable_during_hold = None, time.time(), []
             while admitted and time.time() - held_from < 22:
                 d = rt.guard_decision(token("alice"), item)
-                if d != "ALLOW":
+                if d == "DENY":
                     flipped_at = now(); break
+                if d != "ALLOW":
+                    # e.g. HTTP_503:SOURCE_ACL_STALE while the Guard resyncs: not a
+                    # revocation decision; keep holding for an explicit DENY.
+                    unavailable_during_hold.append((now(), d))
                 time.sleep(1)
             HOLD.unlink(missing_ok=True)
             th.join(150)
@@ -598,7 +630,8 @@ def run_revocation(o: Observer, results: list[dict], ctx: dict, budget: float = 
             g = o.guard_rows([rid], wait=15.0)[rid]
             l2 = [r for r in g if r["layer"] == "layer2"]
             gw = o.gateway_audit().get(rid, [])
-            rec = {"request": s, "layer1_admitted": admitted, "guard_flip_during_hold": flipped_at, "guard_audit": g, "gateway_audit": gw}
+            rec = {"request": s, "layer1_admitted": admitted, "guard_flip_during_hold": flipped_at,
+                   "guard_unavailable_during_hold": unavailable_during_hold[-5:], "guard_audit": g, "gateway_audit": gw}
             attempts.append(rec)
             if s is None:
                 continue
@@ -609,10 +642,19 @@ def run_revocation(o: Observer, results: list[dict], ctx: dict, budget: float = 
                 elif l2 and l2[-1]["result"] == "block" and l2[-1]["reason"] in REVOCATION_REASONS and gw:
                     mid = {"status": "PASS", **rec}
                 else:
-                    mid = {"status": "UNOBSERVABLE", **rec}
-            elif not admitted or (s["model_calls"] and fin not in s["model_context_documents"]):
-                break   # Layer 1 already excludes the document: the straddle window has passed.
+                    # Blocked, but not attributable to the revocation (e.g. Guard
+                    # 503 -> GUARD_REQUEST_FAILED). Never a PASS; keep searching
+                    # within the budget instead of ending observation.
+                    ambiguous = {"status": "UNOBSERVABLE", **rec}
+            else:
+                step = straddle_next_step(l1, admitted, s, fin)
+                if step == "stop":
+                    break   # Layer 1 provably excludes the document: the straddle window has passed.
+                if step == "retry_transport":
+                    time.sleep(3)   # the request never reached the Guard: no evidence either way
         HOLD.unlink(missing_ok=True)
+        if mid is None and ambiguous is not None:
+            mid = ambiguous
         # Stable denial, then the employee route must not use the revoked document.
         denials, t_stable = [], time.time()
         while time.time() - t_stable < budget:

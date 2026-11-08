@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageOnlyTheGatesDocument",
+      "Effect": "Allow",
+      "Action": ["ssm:DescribeDocument", "ssm:CreateDocument", "ssm:UpdateDocument", "ssm:UpdateDocumentDefaultVersion"],
+      "Resource": "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Deployer-ProductionGates"
+    },
+    {
+      "Sid": "ReadAndSetOnlyTheDeployerInlinePolicy",
+      "Effect": "Allow",
+      "Action": ["iam:ListRolePolicies", "iam:GetRolePolicy", "iam:PutRolePolicy"],
+      "Resource": "arn:aws:iam::102076848988:role/accessproof-production-deployer"
+    }
+  ]
+}

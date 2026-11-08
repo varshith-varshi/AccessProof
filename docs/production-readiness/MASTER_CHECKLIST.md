@@ -1,17 +1,17 @@
 # Master production-readiness checklist
 
-Last updated 2026-11-08T09:15Z. Details are in the sibling reports. "Last PASS" dates come from earlier dated evidence when this session could not re-run the check.
+Last updated 2026-11-08T10:05Z. Details are in the sibling reports. "Last PASS" dates come from earlier dated evidence when this session could not re-run the check.
 
 | ID | Group | Requirement | Pri | Status | Evidence | Verified | Remaining dependency | Verdict |
 |---|---|---|---|---|---|---|---|---|
 | A | Infrastructure | API, web, DB and Redis healthy; release pinned; migration at head | P0 | VERIFIED_LIVE: `web-r54-tls-doctor-501a74cdb9a2`; 5 services up (api/db/redis/web healthy); DB `x8c9d0e1f2a3` = repo head; ZIP `9db1c5a9…`; disk 9 GB | deployer `--preflight` SSM `75149f4e…`; public `/health/ready` 200 | 08:58Z | — | PASS (host facts); formal gate A via F-003 |
 | B | Identity | Entra OIDC verification, employee identity binding | P0 | Last PASS 2026-11-05; live Entra tokens verified (`VERIFIED alice/bob` oid/tid/iss) | gates 11-05; session logs | 11-05 | F-003 | NOT_VERIFIED (gate) |
 | C | SharePoint source | Source certified for exact scope | P0 | CERTIFIED, about 27 d left (expires 2026-12-04) | `source_expiry_monitor` LIVE_READ_ONLY | 08:3xZ | renewal ~11-24 needs sessions | PASS |
-| D | Guard | Guard reachable, fail-closed | P0 | VERIFIED_LIVE via route attestation 05:31Z | attestation log | 05:31Z | — | PASS (attestation scope) |
-| E | Gateway / routes | Certified routes VALID | **P0** | VALID ×3, **expire 2026-11-11 17:02/18:02/19:00Z** | `route_status` read-only SSM | 08:50Z | **F-001 owner sign-in** | AT RISK |
-| F | Layer 1 | Retrieval filtered per employee | P0 | Last PASS in route certs 11-05 | route certs | 11-05 | F-001 run re-proves it | NOT_VERIFIED today |
+| D | Guard | Guard reachable, fail-closed | P0 | Pilot Guard was failing closed (POLICY_SYNC_STALE, F-011), restarted, healthy; both Guards ready; watchdog now alerts on Guard readiness | /health, watchdog | 10:02Z | off-laptop alerting (R4) | PASS |
+| E | Gateway / routes | Certified routes VALID | **P0** | CERTIFIED + VERIFIED_LIVE: VALID ×3, renewed 14/14, expire 2026-11-15 09:25–10:00Z | `route_status` read-only SSM | 10:01Z | next renewal ~11-11 (one sign-in) | PASS |
+| F | Layer 1 | Retrieval filtered per employee | P0 | VERIFIED_LIVE in today's 3 route certifications | route certs | 10:00Z | — | PASS (route scope) |
 | G | Final answer verification | Provenance and release gate | P0 | Last PASS 11-05 | gates | 11-05 | F-003 | NOT_VERIFIED today |
-| H | Revocation and cache | In-flight revocation; no cross-employee cache reuse | P0 | TESTED_LOCAL (suite); live in route cert 11-05 | tests + certs | 09:1xZ (tests) | F-001 run re-proves it | NOT_VERIFIED live today |
+| H | Revocation and cache | In-flight revocation; no cross-employee cache reuse | P0 | VERIFIED_LIVE today: MIDREQUEST blocked with AUTHORIZATION_REVISION_CHANGED, revoked doc denied, cache replay prevented, SharePoint restored | route certs | 10:00Z | — | PASS (route scope) |
 | I | Database security | RLS runtime role, tenant isolation | P0 | **TESTED_LOCAL on real PG 17** (two tenants, 50 tables, read/write/insert/GUC bypass, before and after restore; negative control fails as expected); live gate last PASS 11-05 | `evidence/postgres_isolation_restore_drill_2026-11-08.json` | 09:05Z | F-003 for live | PARTIAL |
 | J | Activation | Owner approval recorded; Protect active | P0 | Approved 11-05; mode not visible to certifier | evidence dir | 11-05 | Owner dashboard confirm / F-003 | NOT_VERIFIED today |
 | R1 | Reliability | Laptop-independent renewal | P0 (GA) | BLOCKED. The owner window for route renewal is reduced from about 46 h to about 1 h (F-001b) | F-002 | 09:10Z | owner + customer authorizations | BLOCKED |

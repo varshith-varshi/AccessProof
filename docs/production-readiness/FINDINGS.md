@@ -52,7 +52,14 @@ This file contains no secrets, tokens, passwords or document content.
   - Tests: 6 new (`test_route_attestation_observation_retry.py` ×4, `test_recertify_after_signin.py` ×2).
 - The new code takes effect on the next timer run, because the user units run from this worktree. Without fresh sessions, that run attests normally, so behaviour is unchanged.
 
-**Verdict:** OPEN. P0 until new route certificates are imported and VERIFIED_LIVE. The owner action is now one command plus two sign-ins (see `RELEASE_GO_NO_GO.md`).
+**Resolution 2026-11-08T10:01Z:** the owner signed in with `AP_RECERTIFY_AFTER_SIGNIN=1`.
+- crossserver-llamaindex was renewed at 09:25Z on the first run.
+- crossserver-langchain and pilot-langchain failed first (F-010, F-011, F-013), then were renewed at 09:57Z and 10:00Z after the fixes.
+- All three are VALID in production through 2026-11-15, verified with read-only `route_status`.
+- Both new certifications passed 14/14 checks. MIDREQUEST passed with a genuine `503 AUTHORIZATION_REVISION_CHANGED`.
+- SharePoint restore: verified (see CERTIFICATION_STATUS).
+
+**Verdict:** CLOSED for this cycle. The next renewal is due by about 2026-11-11; the early window opens then, with the same one-command sign-in.
 
 ---
 
@@ -162,3 +169,72 @@ This file contains no secrets, tokens, passwords or document content.
   It covers 50 tenant tables, before and after restore.
 - **Negative control:** the same checks run as the superuser flag all four violation classes, which proves the checks can fail.
 - **Remaining:** live gate I on production, through F-003.
+
+## F-010 — Mid-request Layer 2 search ended on a tunnel drop (crossserver-langchain UNOBSERVABLE)
+
+| Priority | P0 (blocked renewal) | Status | FIXED + TESTED_LOCAL 2026-11-08T09:35Z |
+|---|---|---|---|
+
+- **Observed (run `crossserver-langchain.run-20261108T091707Z`):**
+  - Attempt 1 was admitted by Layer 1 and held, but the Guard had not flipped yet. The response was then lost with `ROUTE_UNREACHABLE:RemoteDisconnected`.
+  - Attempt 2 failed immediately with `ROUTE_UNREACHABLE:URLError` and produced no Guard rows.
+  - The SSH-over-SSM tunnel had hit its keepalive timeout at 09:20:10Z and restarted at 09:20:43Z (restart counter 121).
+- **Root cause:** the straddle loop treated "no Layer 1 allow row" as proof that Layer 1 already excluded the document, and stopped. A transport failure therefore ended observation.
+- **Fix:** `straddle_next_step()` in `scripts/live/remote_route_certification.py`.
+  - The search stops only on positive exclusion evidence: a Layer 1 non-allow row, or a model call whose context lacks the document.
+  - A transport failure with no Guard evidence is retried within the existing 300 s budget.
+  - The PASS/FAIL criteria are unchanged, and UNOBSERVABLE still blocks certification.
+- **Tests:** `tests/unit/test_route_cert_midrequest_straddle.py` (4).
+- **Comparison:** the llamaindex run used the same logic and PASSED: its second attempt was blocked with `AUTHORIZATION_REVISION_CHANGED` (HTTP 503).
+
+## F-011 — Pilot Guard failed closed for hours undetected (POLICY_SYNC_STALE)
+
+| Priority | P0 (availability; not a leak) | Status | Remediated + monitoring FIXED 2026-11-08T09:40Z |
+|---|---|---|---|
+
+- **Observed:**
+  - The pilot recertification run went NOT_CERTIFIED, with basic checks UNOBSERVABLE and `503 GUARD_REQUEST_FAILED`.
+  - The pilot Guard `/health` reported `ready:false`, `policy_fresh:false`, `sync_error: ConnectError`.
+  - Inside the container, DNS for `api.accessproof.in` failed (`gaierror`), while the host resolved it.
+  - This is the known stale embedded-DNS upstream after a laptop network change.
+- Every protected pilot request failed closed. The FAIL entries (forged/cache/audit) are evidence gaps caused by the Guard returning 503, not leaks.
+- **Remediation:** `docker restart ap-pilot-guard`. Afterwards: `ready:true`, `policy_fresh:true`, and a live Guard decision for Alice on the trial document of ALLOW.
+- **Monitoring fix:** `renewal_watchdog.py` now probes each loopback Guard's `/health` used by the certified routes and raises `GUARD_NOT_READY:<port>:<sync_error>` or `GUARD_UNREACHABLE`. It also no longer counts failed per-run `*.run-*` outputs as active certificates.
+- **Tests:** 3 new in `tests/unit/test_certifier_renewal_watchdog.py`.
+- **Remaining:** the alert is still local to the laptop (R4).
+
+## F-012 — Gates registration script fell back to the expired root login
+
+| Priority | P1 | Status | FIXED (script) / BLOCKED on owner IAM grant |
+|---|---|---|---|
+
+- **Root cause:** `env -u AWS_PROFILE aws …` strips the profile, so the CLI used the `default` profile. That profile is a root `aws login` session.
+- **Fix:** `register_gates_document.sh` now behaves as follows.
+  - It requires an explicit profile (`AP_REGISTRAR_PROFILE`, default `accessproof-infra-admin`).
+  - It refuses `default`, root ARNs and the deployer, and strips any ambient credentials.
+  - It verifies the identity with STS.
+  - It runs read-only permission probes and exits 3, naming each missing permission, before making any change.
+  - It skips the IAM update if the deployer policy already allows the gates document.
+  - Tests: `tests/unit/test_register_gates_identity.py` (4), using a stub `aws` that never contacts AWS.
+- **Finding:** no non-root identity in the account can create this document or change the deployer policy. `accessproof-infra-admin` can only assume the certifier-bootstrap role, which is scoped to certifier resources. This is intentional least privilege.
+- **Owner action:** attach `deploy/deployer/iam-policy-gates-document-registrar.json` (one document ARN plus the deployer role's inline policy) to `accessproof-infra-admin`. Then run `aws login --profile accessproof-infra-admin` and `deploy/deployer/register_gates_document.sh`.
+- The auto-mode classifier blocks Claude from running the registration, so the owner runs it.
+
+## F-013 — Positive checks and the straddle search ended on one transient fail-closed response
+
+| Priority | P0 (blocked renewal) | Status | FIXED + VERIFIED_LIVE 2026-11-08T10:00Z |
+|---|---|---|---|
+
+- **Observed (09:40–09:49Z reruns):**
+  - Pilot: the first allowed question hit a transient Guard 503 (`GUARD_REQUEST_FAILED`). `ask_allowed` retried only on `AUTHORIZATION_REVISION_CHANGED`, so `AUTHORIZED_ACCESS_RELEASED` and `TRUSTED_PROVENANCE_VERIFIED` went UNOBSERVABLE.
+  - crossserver-langchain: the hold loop treated a Guard `HTTP_503` (ACL resync after revocation) as "flipped". Layer 2 then answered 503, which the Gateway reports as `GUARD_REQUEST_FAILED`, and that single ambiguous attempt ended the search.
+  - The `ALTERNATE_ROUTES_PROTECTED` and `FAIL_CLOSED_GATEWAY_UNAVAILABLE` FAILs had `http_status: null` (tunnel dropped 09:42:56–09:43:28Z). Nothing was returned, so these were not leaks.
+- **Fix in `scripts/live/remote_route_certification.py`:**
+  1. `positive_request_retryable()`: positive checks only retry a revision change, a Guard 503 or `ROUTE_UNREACHABLE`. Every attempt is recorded. Denial checks never retry.
+  2. Only an explicit `DENY` counts as the flip during the hold. Guard 503s are recorded as `guard_unavailable_during_hold`.
+  3. An ambiguous block keeps the search going; it is reported as UNOBSERVABLE only if no clean outcome follows.
+  - PASS still requires a Layer 2 block with a revocation reason plus a matching Gateway audit entry, and FAIL still stops immediately.
+- **Tunnel:** `RestartSec` lowered from 20 to 3 and `StartLimitIntervalSec=0`, in the repo template and the installed unit (daemon-reload only). It had restarted 123 times.
+- **Tests:** `test_route_cert_midrequest_straddle.py`, now 6 tests.
+- **Live result:** both routes CERTIFIED 14/14 on the next run.
+- **Remaining (P2):** the Gateway collapses every Guard 503 into `GUARD_REQUEST_FAILED`, which hides the reason (contrary to D-20). Changing it means a new Gateway image, which changes route bindings and needs a planned release plus recertification. Deferred deliberately.

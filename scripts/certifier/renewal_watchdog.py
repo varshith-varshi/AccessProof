@@ -10,6 +10,8 @@ import argparse
 import json
 import socket
 import sys
+import urllib.request
+from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -27,6 +29,8 @@ def inspect_certificates(directory: Path, now: datetime) -> dict[str, dict]:
     results = {}
     for path in sorted(directory.glob("*.certificate.json")):
         name = path.name.removesuffix(".certificate.json")
+        if ".run-" in name:
+            continue  # per-run output of a (possibly failed) certification, not the active certificate
         try:
             if path.is_symlink() or not path.is_file():
                 raise ValueError("Unsafe certificate file")
@@ -141,8 +145,42 @@ def session_warnings(sessions: dict[str, dict], needed_until: datetime | None) -
     return warnings
 
 
+DEFAULT_GUARD_URL = "http://127.0.0.1:8080"
+
+
+def guard_urls(home: Path) -> list[str]:
+    """Loopback Guard URLs used by the certified routes (never a remote host)."""
+    cfg = home / ".config/accessproof/remote-routes.json"
+    try:
+        routes = json.loads(cfg.read_text())
+    except (OSError, ValueError):
+        return []
+    urls = {(r.get("env") or {}).get("AP_RT_GUARD_URL") or DEFAULT_GUARD_URL for r in routes if isinstance(r, dict)}
+    return sorted(u for u in urls if urlparse(u).hostname in ("127.0.0.1", "localhost"))
+
+
+def guard_readiness(urls: list[str], fetch=None) -> dict[str, dict]:
+    """Non-secret /health of each local Guard. A Guard that is not ready fails
+    every protected request closed (e.g. POLICY_SYNC_STALE), so it must alert even
+    while route certificates and attestations look healthy."""
+    def _get(url: str) -> dict:
+        with urllib.request.urlopen(url.rstrip("/") + "/health", timeout=5) as r:  # noqa: S310 (loopback only)
+            return json.loads(r.read())
+    fetch = fetch or _get
+    out = {}
+    for url in urls:
+        try:
+            h = fetch(url)
+            ready = h.get("ready") is True and h.get("policy_fresh") is not False
+            out[url] = {"status": "OK" if ready else "NOT_READY", "sync_error": h.get("sync_error"),
+                        "policy_fresh": h.get("policy_fresh")}
+        except (OSError, ValueError) as exc:
+            out[url] = {"status": "UNREACHABLE", "sync_error": type(exc).__name__}
+    return out
+
+
 def check(home: Path, now: datetime, *, prerequisites: dict | None = None,
-          sessions: dict | None = None) -> dict:
+          sessions: dict | None = None, guards: dict | None = None) -> dict:
     dependencies = prerequisites if prerequisites is not None else dependency_report(home)
     certificates = inspect_certificates(home / ".ap-id/route-certs", now)
     attestations = last_attestations(home / ".ap-id/route-attestation.log", set(certificates), now)
@@ -160,10 +198,14 @@ def check(home: Path, now: datetime, *, prerequisites: dict | None = None,
     needed_until = recertification_window_end(certificates, now)
     employee = sessions if sessions is not None else (employee_sessions(home) if needed_until else {})
     warnings.extend(session_warnings(employee, needed_until))
+    guards = guards if guards is not None else guard_readiness(guard_urls(home))
+    for url, info in sorted(guards.items()):
+        if info["status"] != "OK":
+            warnings.append(f"GUARD_{info['status']}:{urlparse(url).port}:{info.get('sync_error') or 'not_ready'}")
     return {"checked_at": now.isoformat(), "status": "WARNING" if warnings else "OK",
             "renewal_host": "OWNER_LAPTOP_NOT_ALWAYS_ON", "local_dependencies_present": dependencies.get("local_prerequisites_present") is True,
             "route_certificates": certificates, "route_attestation": attestations, "warnings": warnings,
-            "employee_sessions": employee,
+            "employee_sessions": employee, "guards": guards,
             "employee_sessions_needed_until": needed_until.isoformat() if needed_until else None,
             "source_certificate_live_check": "NOT_PERFORMED", "migration_complete": False}
 

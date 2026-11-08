@@ -1,18 +1,22 @@
 # Certification status
 
-Verified 2026-11-08T08:50Z via the restricted read-only SSM document `AccessProof-Certifier-ProductionReadOnly` (profile `accessproof-certifier`, not root).
+Verified 2026-11-08T10:01Z via the restricted read-only SSM document `AccessProof-Certifier-ProductionReadOnly` (profile `accessproof-certifier`, not root).
 
 ## Route certificates (production)
 
 | Org / app | Framework | State | Expires (UTC) | Last attested (UTC) | Recert due (≤48 h) |
 |---|---|---|---|---|---|
-| `48ee8c86…` / sharepoint-rag-staging | langchain | VALID | 2026-11-11 17:02 | 2026-11-08 05:31 | 2026-11-09 17:27 timer run |
-| `48ee8c86…` / sharepoint-rag-staging | llamaindex | VALID | 2026-11-11 19:00 | 2026-11-08 05:32 | 2026-11-10 05:27 timer run |
+| `48ee8c86…` / sharepoint-rag-staging | langchain | VALID (renewed early, 14/14) | **2026-11-15 09:57** | 2026-11-08 09:57 | early window from ~2026-11-11 |
+| `48ee8c86…` / sharepoint-rag-staging | llamaindex | VALID (renewed early, 14/14) | **2026-11-15 09:25** | 2026-11-08 09:57 | early window from ~2026-11-11 |
 | `48ee8c86…` / sharepoint-rag-staging | llamaindex (old) | INVALIDATED (superseded) | — | — | excluded from valid counts |
-| `0fb98b25…` / pilot-hr-rag | langchain | VALID | 2026-11-11 18:02 | 2026-11-08 05:32 | 2026-11-10 05:27 timer run |
+| `0fb98b25…` / pilot-hr-rag | langchain | VALID (renewed early, 14/14) | **2026-11-15 10:00** | 2026-11-08 10:00 | early window from ~2026-11-11 |
 
 Status: CERTIFIED (signed by `ap-certifier-2026-11`, offline Ed25519 on the owner laptop).
-**Expiry risk: P0, see FINDINGS F-001.** Recertification needs live Alice and Bob sessions. With F-001b, one sign-in using `AP_RECERTIFY_AFTER_SIGNIN=1` recertifies all three routes immediately, because they are within the 4-day early window. The mandatory ≤2-day timer path remains as a fallback.
+**2026-11-11 expiry risk: RESOLVED** (F-001). Temporary SharePoint permission change, verified 10:01Z:
+- the revocation recovery record is absent;
+- Alice's direct read grant on the trial document exists again (read-only Graph check);
+- the lab Guard and the pilot Guard both return ALLOW for Alice;
+- each certification recorded `restored_allow_at`.
 
 ## Source certificates
 
