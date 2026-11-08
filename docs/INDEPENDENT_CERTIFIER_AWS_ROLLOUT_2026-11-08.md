@@ -39,3 +39,19 @@ AWS CloudFormation stack, VPC and instance IDs can be verified with AWS CLI Desc
 Idempotent read-only host bootstrap: scripts/certifier/bootstrap_independent_host_ssm.py.
 Cloud stack: deploy/certifier/independent/isolated-certifier-stack.json.
 The bootstrap never copies signing secrets or Microsoft sessions, never enables certificate signing, and never claims source/route certification.
+
+## Independent HTTPS and Microsoft OAuth configuration check
+
+Read-only network probes sent through the restricted infra operator role to
+the new private host returned:
+- Microsoft Entra OpenID discovery: HTTP 200.
+- Microsoft Graph /v1.0/me with no token: HTTP 401 (expected unauthenticated).
+- Production AccessProof API /health/ready: HTTP 200.
+- Microsoft Entra public-client device code endpoint for the existing
+  reference sign-in app and tenant: SUCCESS, 900-second expiry, 5-second poll
+  interval. The disposable device code was NOT printed or retained; no actor
+  has signed in and no delegated or refresh token was obtained.
+
+This establishes that a FRESH authorized device-code sign-in is technically
+available from the private host. It does not constitute employee consent,
+credential custody, service restart recovery, or valid renewal evidence.
