@@ -125,7 +125,8 @@ invoke() {
   local doc="$1" parameters="$2" id status
   id=$(awsrelease ssm send-command --region "$REGION" --instance-ids "$INSTANCE" \
       --document-name "$doc" --parameters "file://$parameters" \
-      --comment "AccessProof pinned release $RID" --query Command.CommandId --output text)
+      --comment "AccessProof pinned release $RID" --query Command.CommandId --output text) || id=""
+  [[ "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo 'SSM SendCommand failed; nothing submitted' >&2; return 2; }
   echo "SSM command submitted; ID=$id"
   for _ in {1..240}; do
     status=$(awsrelease ssm get-command-invocation --region "$REGION" --command-id "$id" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || echo Pending)
@@ -166,7 +167,8 @@ case "$MODE" in
   check_identity
   python3 -c 'import json,sys; json.dump({"organizationId":[sys.argv[1]],"applicationId":[sys.argv[2]]},open(sys.argv[3],"w"))' \
     "$GATE_ORG" "$GATE_APP" "$WORK/params.json"
-  invoke "$GATES_DOC" "$WORK/params.json" || true
+  rc=0; invoke "$GATES_DOC" "$WORK/params.json" || rc=$?
+  [[ $rc -ne 2 ]] || { echo 'GATES_NOT_RUN (document not permitted or not registered; see register_gates_document.sh)' >&2; exit 2; }
   grep -q 'TECHNICAL_GATES_PASSED_PENDING_REVIEWER_APPROVAL' "$WORK/invocation.json" || { echo 'GATES_NOT_PASSED' >&2; exit 1; }
   echo 'GATES_PASSED (technical; reviewer approval still required)'; exit 0 ;;
  --execute)

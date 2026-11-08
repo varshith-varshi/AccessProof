@@ -1,0 +1,11 @@
+[Unit]
+Description=AccessProof local Guard stale-DNS self-heal (restart only on proven condition)
+After=network-online.target docker.service
+OnFailure=accessproof-renewal-watchdog-alert.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/AccessProof-universal
+ExecStart=/usr/bin/env -u PYTHONPATH %h/Projects/AccessProof-universal/.venv/bin/python -u scripts/certifier/guard_dns_recovery.py --recover
+TimeoutStartSec=5min
+NoNewPrivileges=yes

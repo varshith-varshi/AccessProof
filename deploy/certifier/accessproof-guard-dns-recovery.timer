@@ -1,0 +1,10 @@
+[Unit]
+Description=Check local Guard readiness every 5 minutes; self-heal stale container DNS
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -238,3 +238,17 @@ This file contains no secrets, tokens, passwords or document content.
 - **Tests:** `test_route_cert_midrequest_straddle.py`, now 6 tests.
 - **Live result:** both routes CERTIFIED 14/14 on the next run.
 - **Remaining (P2):** the Gateway collapses every Guard 503 into `GUARD_REQUEST_FAILED`, which hides the reason (contrary to D-20). Changing it means a new Gateway image, which changes route bindings and needs a planned release plus recertification. Deferred deliberately.
+
+
+## F-014 — Guard DNS self-heal and specific Guard 503 diagnostics staged for review
+
+| Priority | P1 (availability/diagnostics) | Status | TESTED_LOCAL, NOT_DEPLOYED, 2026-11-08 |
+|---|---|---|---|
+
+- `scripts/certifier/guard_dns_recovery.py` is a conservative recovery helper for the two local certified-route Guards. It only proposes a restart when Guard health reports a transport synchronization error, container DNS explicitly fails, host DNS succeeds, no source/route certification is active, and its restart cooldown has elapsed.
+- Docker exec failures, missing containers, unavailable Python, and probe timeouts return UNKNOWN rather than being treated as a DNS failure. This avoids unnecessary container restarts. Manual and systemd certificate jobs also suppress recovery.
+- The five-minute systemd service/timer files are **templates only**; they were **not installed or enabled**. The operator must separately review and authorize timer installation. A read-only dry run reported both Guards OK and restarted neither.
+- `packages/rag_core/protection.py` now preserves only four fixed authorization-staleness error codes from Guard HTTP 503 responses. Unknown or non-503 errors remain `GUARD_REQUEST_FAILED`. All such responses still block with no model generation; the Gateway HTTP status remains 503. Existing D-20 tests were updated and negative cases added.
+- This Gateway code is **not deployed**. Shipping it changes the customer Gateway image/route binding and requires an approved release and renewed route certification; it must not be presented as a live fix.
+- `deploy/deployer/ship_production.sh --gates` now fails fast when SSM SendCommand cannot be submitted, instead of hiding the failure and waiting for a nonexistent command. The separate non-root gates-registration IAM grant is still pending.
+- Evidence: 48 focused tests passed; the entire `tests/unit tests/security` suite completed with exit code 0 and no failures; Ruff, bash syntax, and `git diff --check` passed. Production infrastructure was not modified.

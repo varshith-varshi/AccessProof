@@ -16,6 +16,23 @@ import httpx
 from .attestation import AttestationError, ContentBinding, SourceAttestationVerifier
 from .cache import CachedAnswerManifest, CachedAnswerManifestVerifier
 
+# Guard 503 refusals that describe authorization state, safe to surface verbatim.
+GUARD_STATE_REASONS = frozenset({
+    "SOURCE_ACL_STALE", "POLICY_SYNC_STALE",
+    "AUTHORIZATION_REVISION_NOT_SYNCED", "AUTHORIZATION_REVISION_MISSING",
+})
+
+
+def _guard_unavailable_reason(response: "httpx.Response | None") -> str | None:
+    if response is None or response.status_code != 503:
+        return None
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        return None
+    return detail if isinstance(detail, str) and detail in GUARD_STATE_REASONS else None
+
+
 
 @dataclass(frozen=True)
 class RetrievedResource:
@@ -439,6 +456,13 @@ class ProtectedRAG:
                 return ProtectedResponse("block", None, "IDENTITY_REJECTED")
             if status == 403:
                 return ProtectedResponse("block", None, "GUARD_POLICY_DENIED")
+            if status == 503:
+                # A Guard that is up but refuses because its authorization state is
+                # not current (e.g. ACL resync right after a revocation) is not an
+                # outage. Pass through ONLY these fixed codes; never Guard text.
+                reason = _guard_unavailable_reason(exc.response)
+                if reason:
+                    return ProtectedResponse("block", None, reason)
             return ProtectedResponse("block", None, "GUARD_REQUEST_FAILED")
         except httpx.HTTPError:
             return ProtectedResponse("block", None, "GUARD_REQUEST_FAILED")
