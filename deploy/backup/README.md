@@ -1,14 +1,14 @@
 # AccessProof production disaster recovery — approval and deployment guide
 
-**Status: REVIEWED CODE ONLY. NOT DEPLOYED. NO PRODUCTION BACKUP OR RESTORE PERFORMED.**
+**Status (2026-11-08): AWS backup storage infrastructure DEPLOYED; database backup job NOT INSTALLED OR ENABLED; no production PostgreSQL archive/isolated restore has been verified. This is NOT production DR certification.**
 
-This package prepares a dedicated encrypted PostgreSQL archive path. It does not automatically approve any data transfer or create AWS resources. Pilot/GA readiness remains NO-GO until a live encrypted recovery point and isolated production-data restoration are verified.
+The CloudFormation stack for this package has been deployed following the owner's instruction and independently verified; it created billable S3, KMS and IAM resources. **It has not performed any PostgreSQL backup or transferred customer database contents.** Pilot/GA disaster-recovery readiness remains NO-GO until a live encrypted database recovery point and isolated production-data restoration are verified.
 
 ## Owner and infrastructure approvals required
 
 The owner must explicitly approve the backup region, encrypted bucket name, 30-day minimum Object Lock retention and its recurring costs, recovery scope, and proposed objectives (RPO 1 hour / RTO 4 hours). **These are proposed targets, not guarantees.** The owner must also authorize a scheduled production database export, a separate isolated restore host, role and key custody, alert destination and retention lifecycle. Production and restored customer data must not be placed on the owner's laptop.
 
-A non-root infrastructure administrator must confirm the **real** IAM role behind production's instance profile `AccessProofEC2SSMManaged20261101`, not infer the role ARN from the profile name. The restricted `accessproof-infra-scoped` profile currently receives `AccessDenied` for `iam:GetInstanceProfile` and `s3:ListAllMyBuckets`. It must not be escalated using the AWS root account.
+Root-level read-only inspection confirmed that production's actual EC2 IAM role is `AccessProofEC2SSMManaged20261101`, matching the instance profile name. As a one-time owner-requested bootstrap, the AWS connection deployed the scoped stack and attached an exact-ARN `sts:AssumeRole` grant from this instance role to `AccessProofProductionBackupWriter`. **Do not use root for scheduled backup runtime, ongoing renewals, or production release.** The restricted `accessproof-infra-scoped` profile's interactive login remained expired during this continuation.
 
 The admin should also verify the approved isolated restore host IAM identity and encryption of its EBS root/data volumes, then review this template, IAM trust, bucket permissions and any existing backup facilities for duplication/conflicts.
 

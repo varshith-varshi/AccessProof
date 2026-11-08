@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "2.2",
+  "description": "AccessProof production backup prerequisite inspection; pinned instance, fixed read-only commands, no secrets or arbitrary parameters.",
+  "parameters": {},
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "backupReadOnlyPreflight",
+      "inputs": {
+        "timeoutSeconds": "70",
+        "runCommand": [
+          "set -eu",
+          "META=$(curl -fsS --max-time 2 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')",
+          "SELF=$(curl -fsS --max-time 2 -H \"X-aws-ec2-metadata-token: $META\" http://169.254.169.254/latest/meta-data/instance-id)",
+          "test \"$SELF\" = 'i-0c11427d4d9c1b438' || { echo WRONG_PRODUCTION_INSTANCE; exit 2; }",
+          "cd /home/ubuntu/accessproof",
+          "for bin in python3 aws pg_dump pg_restore docker systemctl; do if command -v \"$bin\" >/dev/null 2>&1; then echo \"HOST_TOOL_${bin}=PRESENT\"; else echo \"HOST_TOOL_${bin}=MISSING\"; fi; done",
+          "DBID=$(docker compose -f docker-compose.ec2.yml ps -q db)",
+          "test -n \"$DBID\" || { echo DB_CONTAINER_MISSING; exit 2; }",
+          "docker exec \"$DBID\" pg_dump --version | sed 's/^/DB_CONTAINER_PG_DUMP=/'",
+          "docker exec \"$DBID\" psql -U accessproof -d accessproof -tAc 'select version()' | sed -E 's/(PostgreSQL [0-9]+).*/\\1/' | sed 's/^/DB_CONTAINER_DATABASE=/'",
+          "if test -f /etc/accessproof-backup/config.env; then echo BACKUP_CONFIG_PRESENT=YES; else echo BACKUP_CONFIG_PRESENT=NO; fi",
+          "if test -e /etc/accessproof-backup/pgpass; then echo BACKUP_PGPASS_PRESENT=YES; else echo BACKUP_PGPASS_PRESENT=NO; fi",
+          "echo \"DISK_FREE_GB=$(df -BG --output=avail / | tail -1 | tr -dc 0-9)\"",
+          "echo BACKUP_PREFLIGHT_COMPLETE"
+        ]
+      }
+    }
+  ]
+}
