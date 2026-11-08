@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import io
+import base64
+import hashlib
 import subprocess
 
 import pytest
@@ -82,7 +84,57 @@ def test_strict_object_encryption_is_required(monkeypatch):
         "SSEKMSKeyId": KMS,
     })
     with pytest.raises(b.BackupRefused, match="ENCRYPTED"):
-        b.verify_object("accessproof-prod-backups", "safe", KMS, 20)
+        b.verify_object("accessproof-prod-backups", "safe", KMS, 20, "a" * 64)
+
+
+def test_uploaded_object_requires_s3_checksum_and_full_readback(monkeypatch):
+    body = b"accessproof backup archive"
+    digest = hashlib.sha256(body).hexdigest()
+    encoded = base64.b64encode(bytes.fromhex(digest)).decode("ascii")
+    observed = []
+    readbacks = []
+
+    def head(args):
+        observed.append(args)
+        return {"ServerSideEncryption": "aws:kms", "SSEKMSKeyId": KMS,
+                "ContentLength": len(body), "ChecksumType": "FULL_OBJECT",
+                "ChecksumSHA256": encoded}
+
+    monkeypatch.setattr(b, "aws_json", head)
+    monkeypatch.setattr(b, "verify_download", lambda *args: readbacks.append(args))
+    b.verify_object("accessproof-prod-backups", "safe", KMS, len(body), digest)
+    assert "--checksum-mode" in observed[0] and "ENABLED" in observed[0]
+    assert readbacks == [("accessproof-prod-backups", "safe", len(body), digest)]
+    monkeypatch.setattr(b, "aws_json", lambda _: {
+        "ServerSideEncryption": "aws:kms", "SSEKMSKeyId": KMS,
+        "ContentLength": len(body), "ChecksumType": "FULL_OBJECT",
+        "ChecksumSHA256": "A" * len(encoded),
+    })
+    with pytest.raises(b.BackupRefused, match="ENCRYPTED_S3_OBJECT_VERIFICATION_FAILED"):
+        b.verify_object("accessproof-prod-backups", "safe", KMS, len(body), digest)
+    assert len(readbacks) == 1
+
+
+def test_s3_composite_checksum_is_not_full_file_digest(monkeypatch):
+    body = b"x" * 128
+    digest = hashlib.sha256(body).hexdigest()
+    # Multipart SHA256 returned by S3 describes individual part digests,
+    # not the total object's SHA256. Full download is still required.
+    mock_composite = base64.b64encode(b"z" * 32).decode("ascii")
+    monkeypatch.setattr(b, "aws_json", lambda _: {
+        "ServerSideEncryption": "aws:kms", "SSEKMSKeyId": KMS,
+        "ContentLength": len(body), "ChecksumType": "COMPOSITE",
+        "ChecksumSHA256": mock_composite,
+    })
+    got = []
+    monkeypatch.setattr(b, "verify_download", lambda *args: got.append(args))
+    b.verify_object("accessproof-prod-backups", "archive", KMS, len(body), digest)
+    assert got == [("accessproof-prod-backups", "archive", len(body), digest)]
+
+
+def test_upload_requests_s3_sha256_checksum_generation():
+    args = b.upload_args("accessproof-prod-backups", "database/a.dump", KMS)
+    assert args[args.index("--checksum-algorithm") + 1] == "SHA256"
 
 
 def test_only_signed_off_manifest_marks_backup_committed(monkeypatch, tmp_path):
@@ -224,3 +276,96 @@ def test_stream_timeout_kills_both_processes_and_never_commits(monkeypatch, tmp_
                   user="backup_reader", pgpass=tmp_path / "unread")
     assert dump.killed and upload.killed
     assert dump.waited and upload.waited
+
+
+@pytest.mark.parametrize("download_content,expected_content,passes", [
+    (b"PGDMP-verified-backup", b"PGDMP-verified-backup", True),
+    (b"PGDMP-tampered-backup", b"PGDMP-verified-backup", False),
+    (b"PGDMP-verified-backup-extra", b"PGDMP-verified-backup", False),
+])
+def test_s3_readback_verifies_full_bytes_without_temp_file(
+    monkeypatch, download_content, expected_content, passes,
+):
+    import sys
+    real_popen = subprocess.Popen
+    seen = []
+
+    def fake_popen(argv, **kwargs):
+        seen.append(argv)
+        assert "--checksum-mode" in argv
+        assert argv[:4] == ["aws", "s3", "cp", "s3://accessproof-prod-backups/backup"]
+        script = f"import sys; sys.stdout.buffer.write(bytes.fromhex({download_content.hex()!r}))"
+        return real_popen([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(b.subprocess, "Popen", fake_popen)
+    expected = hashlib.sha256(expected_content).hexdigest()
+    args = ("accessproof-prod-backups", "backup", len(expected_content), expected)
+    if passes:
+        b.verify_download(*args)
+    else:
+        with pytest.raises(b.BackupRefused, match="READBACK"):
+            b.verify_download(*args)
+    assert len(seen) == 1
+
+
+def test_s3_readback_fails_if_downloader_exits_nonzero(monkeypatch):
+    import sys
+    real_popen = subprocess.Popen
+
+    def fake_popen(argv, **kwargs):
+        return real_popen([sys.executable, "-c",
+                           "import sys; sys.stdout.buffer.write(b'abc'); sys.exit(4)"],
+                          **kwargs)
+
+    monkeypatch.setattr(b.subprocess, "Popen", fake_popen)
+    with pytest.raises(b.BackupRefused, match="READBACK_SHA256_MISMATCH"):
+        b.verify_download("accessproof-prod-backups", "bad", 3,
+                          hashlib.sha256(b"abc").hexdigest())
+
+
+def test_missing_s3_checksum_fails_before_download(monkeypatch):
+    monkeypatch.setattr(b, "aws_json", lambda _: {
+        "ServerSideEncryption": "aws:kms", "SSEKMSKeyId": KMS,
+        "ContentLength": 10, "ChecksumType": "COMPOSITE",
+    })
+    monkeypatch.setattr(b, "verify_download", lambda *args: (_ for _ in ()).throw(
+        AssertionError("must not trust object missing S3 checksum")))
+    with pytest.raises(b.BackupRefused, match="ENCRYPTED_S3_OBJECT_VERIFICATION_FAILED"):
+        b.verify_object("accessproof-prod-backups", "missing", KMS, 10, "a" * 64)
+
+
+def test_failed_full_object_readback_does_not_commit_manifest(monkeypatch, tmp_path):
+    class FakeDump:
+        def __init__(self):
+            self.stdout = io.BytesIO(b"PGDMPtest-content")
+        def wait(self, timeout):
+            return 0
+        def terminate(self):
+            pass
+
+    class FakeUpload:
+        def __init__(self):
+            self.stdin = io.BytesIO()
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(b, "verify_host_and_role", lambda: None)
+    monkeypatch.setattr(b, "check_settings", lambda **kwargs: None)
+    monkeypatch.setattr(
+        b.subprocess, "Popen",
+        lambda argv, **kwargs: FakeDump() if argv[0] == "pg_dump" else FakeUpload(),
+    )
+    monkeypatch.setattr(
+        b, "verify_object",
+        lambda *args: (_ for _ in ()).throw(b.BackupRefused("BACKUP_READBACK_SHA256_MISMATCH")),
+    )
+    monkeypatch.setattr(
+        b.subprocess, "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("No manifest may be uploaded after failed readback")
+        ),
+    )
+    with pytest.raises(b.BackupRefused, match="BACKUP_READBACK_SHA256_MISMATCH"):
+        b.perform(bucket="accessproof-prod-backups", key_arn=KMS,
+                  db_host="127.0.0.1", port=5432, database="accessproof",
+                  user="backup_reader", pgpass=tmp_path / "unread")

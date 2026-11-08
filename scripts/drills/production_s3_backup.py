@@ -8,18 +8,23 @@ A completed backup does not establish RPO/RTO or restore readiness.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import ipaddress
+import io
 import json
 import os
 import re
+import select
 import stat
 import subprocess
 import sys
+import time
 import uuid
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, cast
 
 REGION = "eu-north-1"
 ACCOUNT = "102076848988"
@@ -54,12 +59,12 @@ def imds_instance_id() -> str | None:
             headers={"X-aws-ec2-metadata-token": token},
         )
         with opener.open(request, timeout=2) as response:
-            return response.read(100).decode("ascii")
+            return cast(str, response.read(100).decode("ascii"))
     except (OSError, ValueError, UnicodeError):
         return None
 
 
-def aws_json(args: list[str], *, timeout: int = 30) -> dict:
+def aws_json(args: list[str], *, timeout: int = 30) -> dict[str, Any]:
     try:
         result = subprocess.run(
             ["aws", *args, "--region", REGION, "--output", "json"],
@@ -119,23 +124,102 @@ def pg_command(*, db_host: str, port: int, database: str, user: str) -> list[str
 
 
 def upload_args(bucket: str, key: str, kms_key: str) -> list[str]:
+    # Ask S3 to calculate and retain an object checksum while the AWS CLI
+    # streams stdin.  Encryption and ContentLength alone cannot prove that the
+    # committed object is the exact byte stream hashed in our manifest.
     return [
         "aws", "s3", "cp", "-", f"s3://{bucket}/{key}",
         "--sse", "aws:kms", "--sse-kms-key-id", kms_key,
+        "--checksum-algorithm", "SHA256",
         "--region", REGION, "--only-show-errors",
     ]
 
 
-def verify_object(bucket: str, key: str, kms_arn: str, length: int) -> None:
-    head = aws_json(["s3api", "head-object", "--bucket", bucket, "--key", key])
+def download_args(bucket: str, key: str) -> list[str]:
+    """Use the approved role's read access only to verify an uploaded object."""
+    return ["aws", "s3", "cp", f"s3://{bucket}/{key}", "-",
+            "--checksum-mode", "ENABLED", "--region", REGION,
+            "--only-show-errors"]
+
+
+def verify_download(bucket: str, key: str, length: int, sha256_hex: str) -> None:
+    """Verify full object bytes after S3 decryption, streaming only into RAM.
+
+    S3's SHA256 on a multipart upload is COMPOSITE, not SHA256(file). The
+    round trip proves the actual retrievable object matches the pg_dump bytes.
+    Never write a decrypted archive to disk, stdout, or logs.
+    """
+    try:
+        process = subprocess.Popen(download_args(bucket, key),
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL)
+    except OSError as exc:
+        raise BackupRefused("BACKUP_READBACK_START_FAILED") from exc
+    size = 0
+    digest = hashlib.sha256()
+    deadline = time.monotonic() + 600
+    try:
+        if process.stdout is None:
+            raise BackupRefused("BACKUP_READBACK_STREAM_MISSING")
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise BackupRefused("BACKUP_READBACK_TIMEOUT")
+            # read1 after select avoids blocking for a full 1 MiB and permits
+            # bounded readback even if the AWS CLI stops producing bytes.
+            ready, _, _ = select.select([process.stdout], [], [], min(60.0, remaining))
+            if not ready:
+                raise BackupRefused("BACKUP_READBACK_STALLED")
+            part = cast(io.BufferedReader, process.stdout).read1(1024 * 1024)
+            if not part:
+                break
+            size += len(part)
+            if size > length:
+                raise BackupRefused("BACKUP_READBACK_SIZE_MISMATCH")
+            digest.update(part)
+        if (process.wait(timeout=30) != 0 or size != length
+                or digest.hexdigest() != sha256_hex):
+            raise BackupRefused("BACKUP_READBACK_SHA256_MISMATCH")
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise BackupRefused("BACKUP_READBACK_FAILED") from exc
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=15)
+
+
+def verify_object(bucket: str, key: str, kms_arn: str, length: int,
+                  sha256_hex: str) -> None:
+    """Verify encryption, S3 checksum type, and full retrieved object bytes."""
+    try:
+        expected = base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
+    except ValueError as exc:
+        raise BackupRefused("BACKUP_SHA256_INVALID") from exc
+    head = aws_json(["s3api", "head-object", "--bucket", bucket, "--key", key,
+                     "--checksum-mode", "ENABLED"])
+    stored = head.get("ChecksumSHA256")
+    try:
+        stored_raw = (base64.b64decode(stored, validate=True)
+                      if isinstance(stored, str) else b"")
+    except ValueError as exc:
+        raise BackupRefused("ENCRYPTED_S3_OBJECT_VERIFICATION_FAILED") from exc
+    checksum_type = head.get("ChecksumType")
     if (head.get("ServerSideEncryption") != "aws:kms"
             or head.get("SSEKMSKeyId") != kms_arn
-            or head.get("ContentLength") != length):
+            or head.get("ContentLength") != length
+            or len(stored_raw) != 32
+            or checksum_type not in (None, "COMPOSITE", "FULL_OBJECT")
+            or (checksum_type != "COMPOSITE" and stored != expected)):
         raise BackupRefused("ENCRYPTED_S3_OBJECT_VERIFICATION_FAILED")
+    # COMPOSITE is a checksum of multipart part hashes. It MUST NOT be compared
+    # to the full-object digest. Validate full bytes in either case.
+    verify_download(bucket, key, length, sha256_hex)
 
 
 def perform(*, bucket: str, key_arn: str, db_host: str, port: int,
-            database: str, user: str, pgpass: Path) -> dict:
+            database: str, user: str, pgpass: Path) -> dict[str, Any]:
     verify_host_and_role()
     check_settings(bucket=bucket, key_arn=key_arn, db_host=db_host,
                    pgpass=pgpass, database=database, user=user, port=port)
@@ -205,7 +289,8 @@ def perform(*, bucket: str, key_arn: str, db_host: str, port: int,
         # The uncommitted archive key is never trusted as a recovery point:
         # the manifest is intentionally absent on any incomplete upload.
         raise BackupRefused("BACKUP_STREAM_FAILED_NO_COMMIT_MANIFEST")
-    verify_object(bucket, archive_key, key_arn, count)
+    archive_sha256 = digest.hexdigest()
+    verify_object(bucket, archive_key, key_arn, count, archive_sha256)
     manifest = {
         "schema": "accessproof.production_postgres_backup/v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -213,7 +298,7 @@ def perform(*, bucket: str, key_arn: str, db_host: str, port: int,
         "database": database,
         "object_key": archive_key,
         "bucket": bucket,
-        "archive_sha256": digest.hexdigest(),
+        "archive_sha256": archive_sha256,
         "archive_bytes": count,
         "s3_kms_key_arn": key_arn,
         "restore_verified": False,
@@ -224,11 +309,12 @@ def perform(*, bucket: str, key_arn: str, db_host: str, port: int,
                             capture_output=True, check=False, timeout=90)
     if marker.returncode:
         raise BackupRefused("BACKUP_MANIFEST_UPLOAD_FAILED")
-    verify_object(bucket, manifest_key, key_arn, len(encoded))
+    verify_object(bucket, manifest_key, key_arn, len(encoded),
+                  hashlib.sha256(encoded).hexdigest())
     # Never print connection secrets, source contents, or PGPASSFILE.
     return {"state": "ENCRYPTED_ARCHIVE_COMMITTED_RESTORE_UNVERIFIED",
             "bucket": bucket, "archive_key": archive_key, "manifest_key": manifest_key,
-            "archive_bytes": count, "archive_sha256": digest.hexdigest(),
+            "archive_bytes": count, "archive_sha256": archive_sha256,
             "restore_verified": False}
 
 
