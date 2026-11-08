@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -67,6 +68,45 @@ def certifier(route: dict, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(cmd + list(extra), cwd=ROOT, env=env, capture_output=True, text=True, timeout=3000)
 
 
+_TRANSIENT_OBSERVATION_MARKERS = (
+    "ConnectionResetError", "ConnectionRefusedError", "Connection reset by peer",
+    "Connection refused", "[Errno 104]", "[Errno 111]", "TimeoutError",
+    "timed out", "Temporary failure in name resolution",
+)
+
+
+def observe_attestation(route: dict, cert_path: Path, *, retries: int = 2) -> tuple[dict | None, str]:
+    """Retry ONLY a missing attestation caused by transport failure.
+
+    A signed mismatch, denied authorization, malformed attestation, or failed
+    production import is never converted to success or retried. Each attempt
+    must gather a new LIVE binding; no cached evidence is used.
+    """
+    for attempt in range(retries + 1):
+        run = certifier(route, "--attest", str(cert_path))
+        candidate = None
+        if run.stdout.strip():
+            try:
+                value = json.loads(run.stdout.strip().splitlines()[-1])
+                candidate = value if isinstance(value, dict) else None
+            except (ValueError, IndexError):
+                pass
+        if candidate and isinstance(candidate.get("signature"), str):
+            # An observable binding mismatch must be surfaced to production,
+            # so it can invalidate the old route. Never reattempt mismatches.
+            return candidate, "SIGNED"
+        error = (run.stderr or "UNOBSERVABLE")[-1500:]
+        # No exception traceback or credential-bearing stderr leaves this
+        # helper: only a small stable error class is logged downstream.
+        transient = any(marker in error for marker in _TRANSIENT_OBSERVATION_MARKERS)
+        if not transient:
+            return None, "OBSERVATION_FAILED"
+        if attempt == retries:
+            return None, "TRANSIENT_ROUTE_UNAVAILABLE"
+        time.sleep((attempt + 1) * 3)
+    return None, "TRANSIENT_ROUTE_UNAVAILABLE"
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", default=str(Path.home() / ".config/accessproof/remote-routes.json"))
@@ -101,11 +141,11 @@ def main() -> int:
                      "event": result.get("event") or result.get("error")})
                 failures += 0 if result.get("ok") else 1
                 continue
-            r = certifier(route, "--attest", str(cert_path))
-            att = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else None
-            if not att or "signature" not in att:
+            att, observation_state = observe_attestation(route, cert_path)
+            if not att:
                 failures += 1
-                log({"route": route["name"], "action": "attest", "ok": False, "detail": (r.stderr or "UNOBSERVABLE")[-300:]})
+                log({"route": route["name"], "action": "attest", "ok": False,
+                     "detail": observation_state})
                 continue
             result = production("attest", route, att)
             state = [x["state"] for x in (result.get("status") or {}).get("routes", []) if x["fingerprint"] == cert["fingerprint"]]
