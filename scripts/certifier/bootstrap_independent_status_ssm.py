@@ -49,7 +49,20 @@ def make_commands(instance: str, role: str, key: str) -> list[str]:
         "cd "+root,
         "bash deploy/certifier/independent/install_status_watcher.sh "+instance+" "+role+" "+key,
         "systemctl reset-failed accessproof-independent-certificate-status.service || true",
-        "systemctl start accessproof-independent-certificate-status.service",
+        # The watcher intentionally exits 2 when a source, app certificate, or
+        # Gateway is degraded. Verify that observed state instead of reporting
+        # a false bootstrap failure. Unexpected failures still halt the install.
+        "if systemctl start accessproof-independent-certificate-status.service; then",
+        "  echo WATCHER_OBSERVATION=UP",
+        "else",
+        "  code=$(systemctl show accessproof-independent-certificate-status.service -p ExecMainStatus --value)",
+        "  result=$(systemctl show accessproof-independent-certificate-status.service -p Result --value)",
+        "  [ \"$code\" = 2 ] && [ \"$result\" = exit-code ] || { echo WATCHER_UNEXPECTED_SERVICE_FAILURE >&2; exit 17; }",
+        "  journalctl -u accessproof-independent-certificate-status.service -n 40 --no-pager --output=cat | python3 -c 'import json,sys; r=[json.loads(x) for x in sys.stdin if x.startswith(\"{\") and \"monitor_status\" in x]; assert r and r[-1][\"monitor_status\"] == \"DEGRADED\"' ",
+        "  echo WATCHER_OBSERVATION=DEGRADED",
+        "fi",
+        "systemctl is-enabled accessproof-independent-certificate-status.timer",
+        "systemctl is-active accessproof-independent-certificate-status.timer",
         "systemctl show accessproof-independent-certificate-status.service -p Result -p ExecMainStatus",
         "journalctl -u accessproof-independent-certificate-status.service -n 10 --no-pager --output=cat",
     ])
@@ -59,6 +72,13 @@ def make_commands(instance: str, role: str, key: str) -> list[str]:
 
 
 def main() -> int:
+    # Reading --help must never submit a privileged SSM installation.
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        print("Usage: python bootstrap_independent_status_ssm.py [--help]")
+        print("Without arguments: re-install and run read-only watcher on pinned certifier EC2.")
+        return 0
+    if len(sys.argv) != 1:
+        raise RuntimeError("UNEXPECTED_ARGUMENT")
     instance, role, key = verify_target()
     params={"commands": make_commands(instance,role,key), "executionTimeout":["220"]}
     with tempfile.NamedTemporaryFile("w",prefix="ap-certifier-readonly-status-",suffix=".json",delete=False) as out:

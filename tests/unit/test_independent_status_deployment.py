@@ -1,7 +1,6 @@
 """The read-only watcher can be reinstalled after an in-place stack update."""
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 import pytest
@@ -54,3 +53,27 @@ def test_installer_never_copies_signer_employee_tokens_or_imports():
     assert not any("refresh_token" in x or ".sock" in x or "kms:Sign" in x
                    or "ProductionImport" in x for x in c)
     assert any("install_status_watcher.sh" in x for x in c)
+
+
+def test_degraded_status_is_recognized_but_not_masked():
+    commands = "\n".join(b.make_commands(INSTANCE, ROLE, KEY))
+    assert 'WATCHER_OBSERVATION=DEGRADED' in commands
+    assert 'WATCHER_UNEXPECTED_SERVICE_FAILURE' in commands
+    assert 'ExecMainStatus --value' in commands
+    assert 'monitor_status' in commands and 'DEGRADED' in commands
+    assert 'systemctl is-enabled accessproof-independent-certificate-status.timer' in commands
+    assert 'systemctl is-active accessproof-independent-certificate-status.timer' in commands
+
+
+def test_help_does_not_send_installation_to_aws(monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'argv', ['bootstrap_independent_status_ssm.py', '--help'])
+    monkeypatch.setattr(b, 'verify_target', lambda: pytest.fail('help submitted AWS'))
+    assert b.main() == 0
+    assert 'Usage' in capsys.readouterr().out
+
+
+def test_unknown_bootstrap_arguments_fail_before_aws(monkeypatch):
+    monkeypatch.setattr(sys, 'argv', ['bootstrap_independent_status_ssm.py', '--unexpected'])
+    monkeypatch.setattr(b, 'verify_target', lambda: pytest.fail('unexpected AWS access'))
+    with pytest.raises(RuntimeError, match='UNEXPECTED_ARGUMENT'):
+        b.main()

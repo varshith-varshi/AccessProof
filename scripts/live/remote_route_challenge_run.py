@@ -174,7 +174,7 @@ def main() -> int:
     p.add_argument("--config", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--attempts", type=int, default=3)
-    p.add_argument("--revoke-lead", type=float, default=28.0)
+    p.add_argument("--revoke-lead", type=float, default=38.0)
     p.add_argument("--controlled-recertification", action="store_true",
                    help="Existing Protect app only: OWNER session + explicit controlled recertification; never changes Protect mode")
     a = p.parse_args()
