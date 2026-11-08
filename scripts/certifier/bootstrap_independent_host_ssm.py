@@ -44,7 +44,7 @@ def verify_target() -> tuple[str,str,str]:
     if not str(caller.get("Arn", "")).startswith(OPERATOR_ARN_PREFIX):
         raise RuntimeError("AUTHENTICATED_SCOPED_CERTIFIER_OPERATOR_REQUIRED")
     s = aws("cloudformation","describe-stacks","--stack-name",STACK)["Stacks"][0]
-    if s["StackStatus"] != "CREATE_COMPLETE":
+    if s["StackStatus"] not in {"CREATE_COMPLETE", "UPDATE_COMPLETE"}:
         raise RuntimeError("INDEPENDENT_STACK_NOT_COMPLETE")
     outputs = {v["OutputKey"]:v["OutputValue"] for v in s.get("Outputs",[])}
     instance = outputs.get("CertifierInstanceId","")

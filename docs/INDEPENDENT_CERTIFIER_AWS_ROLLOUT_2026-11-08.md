@@ -55,3 +55,33 @@ the new private host returned:
 This establishes that a FRESH authorized device-code sign-in is technically
 available from the private host. It does not constitute employee consent,
 credential custody, service restart recovery, or valid renewal evidence.
+
+## Independent production certificate status observation (added November 8)
+
+After the initial host-identity preflight, the isolated EC2 now has a separate
+hourly read-only watcher. CloudFormation granted the execution role exactly:
+SSM SendCommand on the EXISTING AccessProof-Certifier-ProductionReadOnly
+document AND the pinned production EC2 i-0c11427d4d9c1b438, plus
+GetCommandInvocation to retrieve the result. It did not grant AWS-RunShellScript
+on production, ProductionImport, KMS Sign, role creation, or interactive SSM.
+
+On EC2, accessproof-independent-certificate-status.timer is enabled and
+active, running independent_status_watcher.py under a hardened DynamicUser
+with per-run private HOME and short-lived assumed-role credentials.
+Before every run it reconfirms actual EC2 IMDSv2 identity, the expected
+assumed execution role and the new KMS Ed25519 PUBLIC key metadata.
+The watcher reads fresh source and route state, reports only compact
+expiry/status counts, and never writes production data or creates evidence.
+
+Successful first live run (UTC 2026-11-08 06:06:35):
+- monitor_status: UP.
+- SharePoint source: VALID, 26.397 days remaining.
+- Two current certified routes: VALID, earliest expiry in 3.456 days.
+- One historical INVALIDATED route record correctly excluded from valid counts.
+- signing_enabled: false, renewal_independent: false.
+
+The status watcher detects approaching expiry but does NOT renew certificates,
+does NOT host a Gateway/Guard, and cannot independently certify any route.
+Existing laptop renewal timers remain active and necessary.
+Local script: scripts/certifier/bootstrap_independent_status_ssm.py.
+Installed verifier timer: accessproof-independent-certificate-status.timer.

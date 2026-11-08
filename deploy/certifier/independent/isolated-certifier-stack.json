@@ -188,6 +188,34 @@
                 }
               ]
             }
+          },
+          {
+            "PolicyName": "ProductionCertifiedStateReadOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "OnlyFixedReadOnlyDocumentOnPinnedProductionInstance",
+                  "Effect": "Allow",
+                  "Action": "ssm:SendCommand",
+                  "Resource": [
+                    "arn:aws:ssm:eu-north-1:102076848988:document/AccessProof-Certifier-ProductionReadOnly",
+                    "arn:aws:ec2:eu-north-1:102076848988:instance/i-0c11427d4d9c1b438"
+                  ]
+                },
+                {
+                  "Sid": "ReadOnlyResultOfOwnStatusInvocation",
+                  "Effect": "Allow",
+                  "Action": "ssm:GetCommandInvocation",
+                  "Resource": "*",
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:RequestedRegion": "eu-north-1"
+                    }
+                  }
+                }
+              ]
+            }
           }
         ],
         "Tags": [
