@@ -96,3 +96,25 @@ but cannot generate a signature, establish employee auth, or certify a route.
 Completion is established only when a real independently held signer issues
 and imports fresh certified evidence with independently authorized employee
 sessions and a customer-approved route, while the laptop is OFF.
+
+## November 8, 2026 operator access check
+
+The AWS connector is authenticated as root, and the laptop default AWS login
+session has expired. Current non-root roles permit staging tunneling,
+certificate operations, or existing production releases only; no authorized
+infrastructure deployer exists. Root access must not bypass those boundaries.
+
+After a non-root infrastructure administrator creates an approved named AWS
+profile, run this read-only preflight:
+
+    AWS_PROFILE=APPROVED_NONROOT_INFRASTRUCTURE_PROFILE python3 scripts/certifier/independent_deployment_preflight.py
+
+It checks role identity, CloudFormation validation authorization, VPC/subnet
+identity, and deployment-stack conflicts. It does not create resources or ever
+claim certificate renewal is operational. Using the restricted certifier role
+on November 8 resulted in PREFLIGHT_CHECKS_FAILED (CloudFormation denied).
+
+A separately consented Entra employee authentication path and a genuinely
+independent Guard/Gateway route remain prerequisites even after provisioning.
+Existing laptop certificate renewal timers must remain active until full
+independent signing/import and laptop-off evidence are witnessed.
