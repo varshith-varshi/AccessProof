@@ -32,7 +32,7 @@ Run `5bb0f039-397b-4240-91f2-8da9079485e4` succeeded with:
 
 Existing source volume `vol-049776e139f349d46` is 40 GiB, unencrypted.
 
-An on-demand crash-consistent source snapshot `snap-0ba4c1748a1868f54` was initiated as a temporary unencrypted intermediate. A KMS-encrypted copy `snap-02389ea2f494259ad` was requested. **Do not call either usable until AWS reports completed and encryption is independently verified.** No application-consistent quiesce or DB restore has been performed. Verify the KMS-encrypted copy before considering deletion of the *new temporary source* snapshot. Never delete the older pre-existing `snap-006a1e5576a6df5ac` without explicit separate authorization.
+An on-demand crash-consistent source snapshot `snap-0ba4c1748a1868f54` was initiated as a temporary unencrypted intermediate. The initial early copy attempt `snap-02389ea2f494259ad` failed with `Source snapshot is not complete` and the failed copy was deleted. The previously completed November 5 snapshot `snap-006a1e5576a6df5ac` was independently copied to encrypted historical fallback `snap-0243658cf9c7ce134`, **verified completed and KMS-encrypted**. The newer source snapshot completed, and its **fresh encrypted copy** `snap-040c53509d6090c66` independently reached `completed`, with KMS key `f4fa2b73-3a5e-4ae7-8919-9a013a5ba61e` and matching source-snapshot tag. Only after verifying that encrypted copy, the temporary unencrypted source `snap-0ba4c1748a1868f54` was deleted successfully. No application-consistent quiesce or database restore has been performed. Never delete the older pre-existing `snap-006a1e5576a6df5ac` without explicit separate authorization.
 
 This emergency EBS copy cannot count as a proven PostgreSQL RPO/RTO or replace continuous database backups.
 
