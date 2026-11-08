@@ -70,6 +70,9 @@ Environment=AWS_PROFILE=accessproof-certifier
 Environment=AWS_CONFIG_FILE=/etc/accessproof-independent-certifier/aws-config
 Environment=AWS_SHARED_CREDENTIALS_FILE=/dev/null
 Environment=AWS_EC2_METADATA_DISABLED=false
+Environment=HOME=/run/accessproof-independent-certifier
+RuntimeDirectory=accessproof-independent-certifier
+RuntimeDirectoryMode=0700
 ExecStart=/usr/bin/python3 /opt/accessproof-independent-certifier/independent_host_preflight.py --expected-instance-id $INSTANCE_ID --expected-role-arn $EXEC_ROLE --kms-key-arn $KMS_ARN
 NoNewPrivileges=yes
 ProtectSystem=strict
@@ -81,7 +84,7 @@ ProtectControlGroups=yes
 CapabilityBoundingSet=
 RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-MemoryMax=128M
+MemoryMax=256M
 TimeoutStartSec=75s
 StandardOutput=journal
 StandardError=journal

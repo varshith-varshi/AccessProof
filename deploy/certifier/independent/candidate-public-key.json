@@ -1,0 +1,11 @@
+{
+  "schema": "accessproof.certifier_candidate_public_key/v1",
+  "key_id": "kms-certifier-2026-11",
+  "kms_key_arn": "arn:aws:kms:eu-north-1:102076848988:key/0f040c1c-afc8-4227-9f9f-18aa014c5f10",
+  "public_key_base64url": "LkPcr-JJVwZovQVA3KzwNj7OStWxAc12YAW02o2nDZI",
+  "ed25519_raw_public_sha256": "fc56631e460b046c5ae11b109d5fddc9e5be60cf6534f1bce55b8abae829a3c9",
+  "key_spec": "ECC_NIST_EDWARDS25519",
+  "signing_algorithm": "ED25519_SHA_512",
+  "prod_trust_status": "NOT_REGISTERED",
+  "signing_enabled": false
+}

@@ -142,7 +142,8 @@
             "Key": "Product",
             "Value": "AccessProof"
           }
-        ]
+        ],
+        "RoleName": "AccessProofIndependentCertifierBase2026"
       }
     },
     "CertifierExecutionRole": {
@@ -194,7 +195,8 @@
             "Key": "Product",
             "Value": "AccessProof"
           }
-        ]
+        ],
+        "RoleName": "AccessProofIndependentCertifierExec2026"
       }
     },
     "AllowBaseRoleToAssumeExecution": {
@@ -230,7 +232,8 @@
           {
             "Ref": "CertifierBaseRole"
           }
-        ]
+        ],
+        "InstanceProfileName": "AccessProofIndependentCertifier2026"
       }
     },
     "CertifierInstance": {

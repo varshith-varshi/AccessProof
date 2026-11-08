@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "OnlyApprovedInfraIamUser",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::102076848988:user/accessproof-infra-admin"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
