@@ -238,18 +238,51 @@ class Trial:
         rec = json.loads(RECOVERY.read_text()) if RECOVERY.exists() else None
         if not rec:
             return
-        if rec["kind"] == "direct":
-            self.lab.invite(rec["item"], self.alice_oid)
-        elif rec["kind"] == "group":
-            fx.az("ad", "group", "member", "add", "--group", rec["group"], "--member-id", self.alice_oid)
-        elif rec["kind"] == "inherited":
-            self.lab.invite(rec["folder"], self.alice_oid)
-            self.lab.strip_site_groups(rec["folder"])
-        RECOVERY.unlink(missing_ok=True)
+        # A single local recovery marker is shared by pilot/reference profiles.
+        # Never replay a recovery record against a different source/application.
+        for field, expected in (("organization_id", ORG), ("source_id", SOURCE),
+                                ("application_id", APP)):
+            if rec.get(field) != expected:
+                raise RuntimeError(f"RESTORE_SCOPE_MISMATCH:{field}")
+
+        def restore_once() -> None:
+            kind = rec["kind"]
+            if kind in ("direct", "inherited"):
+                target = rec["item"] if kind == "direct" else rec["folder"]
+                # Graph may have accepted an earlier invite before DNS/transport
+                # failed. Check first to avoid issuing duplicate permissions.
+                if self._grant_on(target) is None:
+                    self.lab.invite(target, self.alice_oid)
+                if self._grant_on(target) is None:
+                    raise RuntimeError("RESTORE_GRANT_NOT_VISIBLE")
+                if kind == "inherited":
+                    self.lab.strip_site_groups(target)
+            elif kind == "group":
+                fx.az("ad", "group", "member", "add", "--group", rec["group"],
+                      "--member-id", self.alice_oid)
+            else:
+                raise RuntimeError("RESTORE_KIND_NOT_AUTOMATICALLY_REVERSIBLE")
+
+        for attempt in range(6):
+            try:
+                restore_once()
+                # Only discard recovery instructions after Graph confirms the
+                # grant is present (or the group command succeeds).
+                RECOVERY.unlink()
+                return
+            except (httpx.TransportError, httpx.HTTPStatusError, RuntimeError) as exc:
+                retry = isinstance(exc, httpx.TransportError) or (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and exc.response.status_code in (408, 429, 500, 502, 503, 504)
+                ) or str(exc) == "RESTORE_GRANT_NOT_VISIBLE"
+                if not retry or attempt == 5:
+                    raise
+                time.sleep(min(2 ** attempt, 16))
 
     def _record(self, rec: dict) -> None:
         RECOVERY.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        RECOVERY.write_text(json.dumps(rec))
+        RECOVERY.write_text(json.dumps({**rec, "organization_id": ORG,
+                                        "source_id": SOURCE, "application_id": APP}))
         RECOVERY.chmod(0o600)
 
     # --- measurement ----------------------------------------------------------------------
