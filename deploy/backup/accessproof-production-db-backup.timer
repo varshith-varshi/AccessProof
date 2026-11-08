@@ -1,0 +1,12 @@
+# TEMPLATE ONLY. A running timer does not verify RPO or successful restoration.
+[Unit]
+Description=Schedule AccessProof encrypted database archives every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=30s
+Unit=accessproof-production-db-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'REVIEW ONLY: AccessProof encrypted PostgreSQL backups. Creates billable S3/KMS/IAM resources after authorized administrator approval.'
+Parameters:
+  BucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{2,61}$'
+  ProductionInstanceRoleArn:
+    Type: String
+    Description: 'Actual production EC2 instance IAM role, reviewed by administrator.'
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/-]+$'
+  IsolatedRestoreOperatorRoleArn:
+    Type: String
+    Description: 'Independent recovery host IAM role, reviewed by administrator.'
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/-]+$'
+  RetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 30
+    MaxValue: 365
+Resources:
+  BackupKmsKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      KeyUsage: ENCRYPT_DECRYPT
+      KeySpec: SYMMETRIC_DEFAULT
+      EnableKeyRotation: true
+      Description: AccessProof encrypted production database backups (NOT certificate signing)
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: IAMAccountKeyAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt BackupKmsKey.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: GOVERNANCE
+            Days: !Ref RetentionDays
+  BackupWriterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AccessProofProductionBackupWriter
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref ProductionInstanceRoleArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: EncryptedDBBackupWriteOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ArchiveWriteAndVerify
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:AbortMultipartUpload]
+                Resource: !Sub '${BackupBucket.Arn}/database/*'
+              - Sid: DatabasePrefixListing
+                Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketMultipartUploads]
+                Resource: !GetAtt BackupBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: [database/*]
+              - Sid: UseKeyOnlyForS3
+                Effect: Allow
+                Action: [kms:GenerateDataKey, kms:Decrypt, kms:DescribeKey]
+                Resource: !GetAtt BackupKmsKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 's3.${AWS::Region}.amazonaws.com'
+  IsolatedRestoreReaderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AccessProofIsolatedRestoreReader
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref IsolatedRestoreOperatorRoleArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: EncryptedDBRestoreReadOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ArchiveReadOnly
+                Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion]
+                Resource: !Sub '${BackupBucket.Arn}/database/*'
+              - Sid: DatabasePrefixListing
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt BackupBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: [database/*]
+              - Sid: DecryptOnlyThroughS3
+                Effect: Allow
+                Action: [kms:Decrypt, kms:DescribeKey]
+                Resource: !GetAtt BackupKmsKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 's3.${AWS::Region}.amazonaws.com'
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RequireTLS
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt BackupBucket.Arn, !Sub '${BackupBucket.Arn}/*']
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          - Sid: RequireExplicitKMSOnUpload
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          - Sid: RequirePinnedKMSOnUpload
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt BackupKmsKey.Arn
+          - Sid: OnlyApprovedWriterMayUpload
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                aws:PrincipalArn: !GetAtt BackupWriterRole.Arn
+Outputs:
+  BackupBucketName:
+    Value: !Ref BackupBucket
+  BackupKmsKeyArn:
+    Value: !GetAtt BackupKmsKey.Arn
+  BackupWriterRoleArn:
+    Value: !GetAtt BackupWriterRole.Arn
+  IsolatedRestoreReaderRoleArn:
+    Value: !GetAtt IsolatedRestoreReaderRole.Arn
