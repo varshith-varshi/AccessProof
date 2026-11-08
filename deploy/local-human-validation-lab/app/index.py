@@ -43,6 +43,7 @@ def chunks_of(body: str, chunk_words: int = 180, overlap: int = 32) -> list[str]
 _QUESTION_STOPWORDS = frozenset({
     "a", "an", "and", "are", "as", "at", "be", "by", "can", "could", "did",
     "do", "does", "explain", "find", "for", "from", "give", "how", "i",
+    "about", "describe", "description", "document", "documents", "file", "files",
     "in", "is", "it", "me", "of", "on", "our", "please", "show", "summarize",
     "tell", "that", "the", "their", "there", "these", "this", "to", "us",
     "was", "were", "what", "when", "where", "which", "who", "why", "with",

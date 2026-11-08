@@ -26,6 +26,8 @@ def exercise():
         assert shared[0].attestation == "signed-2"
         eng = index.search("What is the engineering deployment update?")
         assert eng and eng[0].doc_id == "eng", eng
+        specific = index.search("What does the engineering document describe?")
+        assert [m.doc_id for m in specific] == ["eng"], specific
         assert index.search("What is it?") == []
         assert index.search("!") == []
         for string in ('" OR 1=1 --', "engineering) OR ("):
