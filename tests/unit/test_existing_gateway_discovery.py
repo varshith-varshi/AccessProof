@@ -56,3 +56,19 @@ def test_runtime_is_approved_under_both_docker_image_stores() -> None:
     assert approved_image_ids({"image_id": containerd, "image_ids": [classic, containerd]}) == {classic, containerd}
     assert approved_image_ids({"image_id": classic}) == {classic}
     assert approved_image_ids({"image_id": "nope", "image_ids": [None]}) == set()
+
+
+def test_explicit_legacy_gateway_requires_reviewed_migration(monkeypatch, tmp_path):
+    """A manual legacy image cannot be paired or credentialed by accident."""
+    release = tmp_path / "runtime-release.json"
+    release.write_text('{"image_id":"sha256:' + "a" * 64 + '"}')
+    legacy = [{
+        "Config": {"Image": "accessproof-gateway:legacy", "Labels": {}},
+        "State": {"Status": "running"},
+    }]
+    monkeypatch.setattr(existing_gateway, "_docker", lambda *args: legacy)
+    with pytest.raises(existing_gateway.ExistingGatewayError, match="LEGACY_GATEWAY_MIGRATION_REQUIRED"):
+        existing_gateway.detect(
+            {"application_id": "app", "organization_id": "org"},
+            container_name="manual-gateway", release_path=release,
+        )

@@ -56,7 +56,10 @@ def approved_image_ids(release: dict[str, object]) -> set[str]:
     Docker reports a different image ID under its classic and containerd stores,
     so a single pinned value refuses the genuine runtime on the other store.
     """
-    ids = {release.get("image_id"), *(release.get("image_ids") or [])}
+    ids: list[object] = [release.get("image_id")]
+    extra_ids = release.get("image_ids")
+    if isinstance(extra_ids, list):
+        ids.extend(extra_ids)
     return {item for item in ids if isinstance(item, str) and item.startswith("sha256:")}
 
 
@@ -84,6 +87,16 @@ def detect(pairing: dict[str, str], *, container_name: str | None = None,
         gateway_service = labels.get("com.docker.compose.service")
         if (not isinstance(gateway_service, str)
                 or not gateway_service.startswith("accessproof-gateway")):
+            # An explicitly selected legacy image is useful diagnostic input,
+            # but it must never be silently treated as a supported Gateway.
+            # In particular, an arbitrary container must not receive a
+            # tenant-bound presence credential merely because its operator
+            # typed its name.  The caller can use this precise failure to
+            # follow the reviewed migration path after obtaining a new pairing.
+            image = (item.get("Config") or {}).get("Image")
+            if (container_name and isinstance(image, str)
+                    and image.startswith("accessproof-gateway:")):
+                raise ExistingGatewayError("LEGACY_GATEWAY_MIGRATION_REQUIRED")
             continue
         env = dict(x.split("=", 1) for x in item["Config"].get("Env", []) if "=" in x)
         # Other customer projects are ignored when auto-detecting.
