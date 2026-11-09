@@ -1,0 +1,56 @@
+%% Generated from graph.json by scripts/validate_knowledge_graph.py.
+%% Do not hand-edit; run --write-diagram.
+%% Architecture/navigation view only, not certification evidence.
+flowchart LR
+    customer["Customer organization"]
+    sharepoint["SharePoint Online"]
+    entra["Microsoft Entra ID"]
+    rag["Customer RAG"]
+    web["Next.js customer console"]
+    api["FastAPI control plane"]
+    worker["Background worker"]
+    connector["Microsoft Graph adapter"]
+    acl["ACL and directory sync"]
+    identity["Entra employee identity resolution"]
+    policy["Signed source-bound policy"]
+    guard["Customer-hosted Guard"]
+    gateway["Customer-hosted Gateway"]
+    ingestion["Trusted SharePoint ingestion"]
+    provenance["Signed chunk provenance"]
+    layer1["Layer 1 authorization"]
+    llm["LLM provider/model"]
+    layer2["Layer 2 buffered output gate"]
+    answer["Employee-facing answer"]
+    audit["Guard and Gateway decision evidence"]
+    state["Backend protection status"]
+    certifier["Independent AWS certifier host"]
+    source_cert["Independent SharePoint permission certificate"]
+    route_cert["Route certificate"]
+    customer --> sharepoint
+    customer --> entra
+    customer --> rag
+    web --> api
+    api --> worker
+    sharepoint --> connector
+    worker --> acl
+    connector --> acl
+    entra --> identity
+    identity --> policy
+    acl --> policy
+    api --> policy
+    guard --> policy
+    rag --> gateway
+    ingestion --> sharepoint
+    ingestion --> provenance
+    gateway --> layer1
+    layer1 --> guard
+    layer1 --> llm
+    llm --> layer2
+    layer2 --> guard
+    layer2 --> answer
+    gateway --> audit
+    guard --> audit
+    audit --> api
+    api --> state
+    certifier --> route_cert
+    certifier --> source_cert

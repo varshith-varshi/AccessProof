@@ -1,0 +1,1126 @@
+{
+  "schema": "accessproof.knowledge_graph/v1",
+  "snapshot": {
+    "date": "2026-11-09",
+    "branch": "claude/universal-rag",
+    "inspected_head": "4a0a652",
+    "authority": "Navigation only. Current source code, runtime data, certificates and customer-authorized evidence supersede this graph."
+  },
+  "scopes": {
+    "implemented": "Implementation present; not a live certification claim",
+    "pilot": "Guided current SharePoint/Entra pilot",
+    "conditional": "Customer/environment-specific verification required",
+    "local_only": "Exists but not generally available",
+    "reference_only": "Non-certifying reference/scan",
+    "external": "Requires customer permission or human action",
+    "operational_limited": "Partially deployed; see caveats"
+  },
+  "guardrails": [
+    "Do not treat graph, synthetic test, scanner, installer or Gateway heartbeat as certified protection.",
+    "Typed Owner Approval was removed in 4beeff5. Explicit authorized Enable Protection with mandatory source/Guard/Gateway checks remains.",
+    "PROTECTED_MANUAL_VALIDATION_PENDING is active protection pending independent route validation; PROTECTED_VERIFIED is backend verified, not a checkbox.",
+    "Never bypass tenant, identity, signed provenance, current policy or Layer 2 release gates.",
+    "No unapproved customer permission mutations or deployment; never leak tokens, private keys, employee passwords or AWS credentials.",
+    "AWS independent watcher exists but laptop-independent certificate renewal and production KMS signing trust transition remain incomplete.",
+    "Do not advertise native streaming/WebSockets, arbitrary tool paths or universal Docker/Kubernetes compatibility as certified.",
+    "Preserve existing working-tree changes and check live deployment state before declaring production readiness."
+  ],
+  "nodes": [
+    {
+      "id": "product",
+      "kind": "product",
+      "label": "AccessProof",
+      "scope": "pilot",
+      "description": "Enterprise authorization boundary; guided SharePoint/Entra pilot; not a universal RAG interceptor.",
+      "source_paths": [
+        "docs/CUSTOMER_CLAIMS_REGISTER_2026-11-07.md"
+      ]
+    },
+    {
+      "id": "customer",
+      "kind": "external",
+      "label": "Customer organization",
+      "scope": "external",
+      "description": "Owns tenant, approved SharePoint site, employee identities and private AI application.",
+      "source_paths": [
+        "docs/CUSTOMER_ONBOARDING_CURRENT_2026-11-05.md"
+      ]
+    },
+    {
+      "id": "sharepoint",
+      "kind": "external",
+      "label": "SharePoint Online",
+      "scope": "pilot",
+      "description": "Selected-site document and permission source.",
+      "source_paths": [
+        "connectors/microsoft365/adapter.py"
+      ]
+    },
+    {
+      "id": "entra",
+      "kind": "external",
+      "label": "Microsoft Entra ID",
+      "scope": "pilot",
+      "description": "Trusted employee OIDC; admin consent and explicit selected-site grant are separate.",
+      "source_paths": [
+        "packages/auth/oidc.py"
+      ]
+    },
+    {
+      "id": "rag",
+      "kind": "external",
+      "label": "Customer RAG",
+      "scope": "conditional",
+      "description": "Reviewed RAG with identity forwarding, trusted provenance and complete enforced answer path.",
+      "source_paths": [
+        "docs/CUSTOMER_GATEWAY_INTEGRATION.md"
+      ]
+    },
+    {
+      "id": "web",
+      "kind": "surface",
+      "label": "Next.js customer console",
+      "scope": "implemented",
+      "description": "Onboarding, Gateway pairing, activation, security state and monitoring.",
+      "source_paths": [
+        "web-v2/app/onboarding/page.tsx",
+        "web-v2/app/applications/page.tsx"
+      ]
+    },
+    {
+      "id": "api",
+      "kind": "service",
+      "label": "FastAPI control plane",
+      "scope": "implemented",
+      "description": "Organization/source/app bindings, protection state, signatures and APIs.",
+      "source_paths": [
+        "apps/api/accessproof_api/app.py"
+      ]
+    },
+    {
+      "id": "db",
+      "kind": "infrastructure",
+      "label": "PostgreSQL",
+      "scope": "implemented",
+      "description": "Durable, tenant-isolated source, policy and verification state.",
+      "source_paths": [
+        "apps/api/accessproof_api/db.py",
+        "migrations"
+      ]
+    },
+    {
+      "id": "redis",
+      "kind": "infrastructure",
+      "label": "Redis",
+      "scope": "implemented",
+      "description": "Queue/cache infrastructure, not sole source of authoritative protection state.",
+      "source_paths": [
+        "docker-compose.production.yml"
+      ]
+    },
+    {
+      "id": "worker",
+      "kind": "service",
+      "label": "Background worker",
+      "scope": "implemented",
+      "description": "Sync and reconciliation of permission sources and identity.",
+      "source_paths": [
+        "apps/worker/accessproof_worker/main.py"
+      ]
+    },
+    {
+      "id": "consent",
+      "kind": "module",
+      "label": "Admin consent and Sites.Selected grant",
+      "scope": "pilot",
+      "description": "Customer-authorized tenant consent plus separate selected-site grant; fullcontrol may require explicit approval.",
+      "source_paths": [
+        "packages/auth/microsoft_consent.py",
+        "docs/CUSTOMER_ONBOARDING_CURRENT_2026-11-05.md"
+      ]
+    },
+    {
+      "id": "connector",
+      "kind": "integration",
+      "label": "Microsoft Graph adapter",
+      "scope": "pilot",
+      "description": "Selected-site Graph effective permissions and source scope.",
+      "source_paths": [
+        "connectors/microsoft365/adapter.py",
+        "connectors/microsoft365/sharepoint_effective.py"
+      ]
+    },
+    {
+      "id": "acl",
+      "kind": "module",
+      "label": "ACL and directory sync",
+      "scope": "implemented",
+      "description": "Synchronize employee groups and per-resource authorization state.",
+      "source_paths": [
+        "apps/api/accessproof_api/acl_sync.py",
+        "apps/api/accessproof_api/directory_sync.py"
+      ]
+    },
+    {
+      "id": "identity",
+      "kind": "security",
+      "label": "Entra employee identity resolution",
+      "scope": "implemented",
+      "description": "Map verified tenant and subject to Guard principal, not arbitrary client email fields.",
+      "source_paths": [
+        "apps/api/accessproof_api/identity_resolution.py",
+        "connectors/microsoft365/graph_employee_identity.py"
+      ]
+    },
+    {
+      "id": "revision",
+      "kind": "security",
+      "label": "Authorization revision and revocation",
+      "scope": "implemented",
+      "description": "Prevent stale revision replay; revocation enforced after synced policy reaches Guard.",
+      "source_paths": [
+        "apps/api/accessproof_api/authorization_revision.py",
+        "apps/api/accessproof_api/revocation_timeline.py"
+      ]
+    },
+    {
+      "id": "policy",
+      "kind": "data",
+      "label": "Signed source-bound policy",
+      "scope": "implemented",
+      "description": "Tenant/source-bound versioned permission state installed on customer Guard.",
+      "source_paths": [
+        "apps/api/accessproof_api/guard_pipeline.py",
+        "packages/guard/policy.py"
+      ]
+    },
+    {
+      "id": "guard",
+      "kind": "service",
+      "label": "Customer-hosted Guard",
+      "scope": "implemented",
+      "description": "Checks current policy and identity; health is not proof of protected route.",
+      "source_paths": [
+        "apps/guard/accessproof_guard/app.py",
+        "apps/guard/accessproof_guard/sync.py"
+      ]
+    },
+    {
+      "id": "gateway",
+      "kind": "service",
+      "label": "Customer-hosted Gateway",
+      "scope": "implemented",
+      "description": "Protected HTTP answer path for supported RAG contract.",
+      "source_paths": [
+        "apps/gateway/accessproof_gateway/app.py",
+        "apps/gateway/accessproof_gateway/serve.py"
+      ]
+    },
+    {
+      "id": "discovery",
+      "kind": "module",
+      "label": "Docker Compose RAG discovery",
+      "scope": "implemented",
+      "description": "Read-only host-local candidate inventory; candidate labels do not certify.",
+      "source_paths": [
+        "apps/gateway/accessproof_gateway/application_discovery.py",
+        "apps/gateway/accessproof_gateway/selection_planner.py"
+      ]
+    },
+    {
+      "id": "installer",
+      "kind": "module",
+      "label": "Customer installer",
+      "scope": "implemented",
+      "description": "Customer-run on private Linux Docker Compose host, selects exactly one supported chatbot.",
+      "source_paths": [
+        "apps/gateway/accessproof_gateway/customer_connect.py",
+        "apps/gateway/accessproof_gateway/installer.py"
+      ]
+    },
+    {
+      "id": "pairing",
+      "kind": "security",
+      "label": "Gateway one-time pairing",
+      "scope": "implemented",
+      "description": "Server-bound pairing material and authenticated Gateway heartbeat.",
+      "source_paths": [
+        "apps/api/accessproof_api/gateway_pairing.py",
+        "apps/api/accessproof_api/gateway_presence.py"
+      ]
+    },
+    {
+      "id": "ingestion",
+      "kind": "integration",
+      "label": "Trusted SharePoint ingestion",
+      "scope": "conditional",
+      "description": "Source-scoped signed snapshots; customer content-format coverage is integration-specific.",
+      "source_paths": [
+        "connectors/microsoft365/snapshot_agent.py",
+        "connectors/microsoft365/trusted_ingestion.py"
+      ]
+    },
+    {
+      "id": "provenance",
+      "kind": "security",
+      "label": "Signed chunk provenance",
+      "scope": "implemented",
+      "description": "Trusted resource/chunk lineage; reject model/user claims of authority.",
+      "source_paths": [
+        "packages/rag_core/attestation.py",
+        "packages/rag_core/evidence_manifest.py"
+      ]
+    },
+    {
+      "id": "retrieval",
+      "kind": "module",
+      "label": "Authorized retrieval",
+      "scope": "implemented",
+      "description": "Selected chunks must be bound to the source and employee identity.",
+      "source_paths": [
+        "packages/rag_core/authorized_retrieval.py"
+      ]
+    },
+    {
+      "id": "layer1",
+      "kind": "security",
+      "label": "Layer 1 authorization",
+      "scope": "implemented",
+      "description": "Reject denied content before model context is built.",
+      "source_paths": [
+        "packages/rag_core/protection.py",
+        "packages/guard/service.py"
+      ]
+    },
+    {
+      "id": "llm",
+      "kind": "external",
+      "label": "LLM provider/model",
+      "scope": "conditional",
+      "description": "OpenAI-compatible model interface; Anthropic/Gemini text adapters locally tested, provider validation distinct.",
+      "source_paths": [
+        "apps/gateway/accessproof_gateway/model_adapters.py"
+      ]
+    },
+    {
+      "id": "layer2",
+      "kind": "security",
+      "label": "Layer 2 buffered output gate",
+      "scope": "implemented",
+      "description": "Authorize complete source set and revision before releasing any answer bytes.",
+      "source_paths": [
+        "packages/rag_core/output_safety.py",
+        "packages/rag_core/protection.py"
+      ]
+    },
+    {
+      "id": "answer",
+      "kind": "data",
+      "label": "Employee-facing answer",
+      "scope": "conditional",
+      "description": "Only output from covered route after checks pass; native token streaming unverified.",
+      "source_paths": [
+        "apps/gateway/accessproof_gateway/app.py"
+      ]
+    },
+    {
+      "id": "cache",
+      "kind": "module",
+      "label": "Current-policy cache reauthorization",
+      "scope": "conditional",
+      "description": "Cache hits must honor employee, source, content version and authorization revision.",
+      "source_paths": [
+        "packages/rag_core/cache.py",
+        "packages/rag_core/cache_backends.py"
+      ]
+    },
+    {
+      "id": "audit",
+      "kind": "evidence",
+      "label": "Guard and Gateway decision evidence",
+      "scope": "implemented",
+      "description": "Layer 1 and Layer 2 audit decisions correlate to binding and request.",
+      "source_paths": [
+        "apps/gateway/accessproof_gateway/gateway_audit.py",
+        "apps/api/accessproof_api/observability.py"
+      ]
+    },
+    {
+      "id": "activation",
+      "kind": "workflow",
+      "label": "Explicit secure Protect activation",
+      "scope": "implemented",
+      "description": "Separate typed Owner Approval removed; authorized activation and mandatory technical gates remain.",
+      "source_paths": [
+        "apps/api/accessproof_api/production_gates.py",
+        "tests/security/test_activation_without_owner_approval.py"
+      ]
+    },
+    {
+      "id": "state",
+      "kind": "security",
+      "label": "Backend protection status",
+      "scope": "implemented",
+      "description": "Separates PROTECTED_MANUAL_VALIDATION_PENDING from PROTECTED_VERIFIED and degraded states.",
+      "source_paths": [
+        "apps/api/accessproof_api/protection_state.py",
+        "web-v2/app/protection/page.tsx"
+      ]
+    },
+    {
+      "id": "route_cert",
+      "kind": "security",
+      "label": "Route certificate",
+      "scope": "conditional",
+      "description": "Time-bound proof of exact enforcing route, not merely installer/presence.",
+      "source_paths": [
+        "apps/api/accessproof_api/route_certification.py",
+        "packages/crypto/remote_route_certificate.py"
+      ]
+    },
+    {
+      "id": "source_cert",
+      "kind": "security",
+      "label": "Independent SharePoint permission certificate",
+      "scope": "conditional",
+      "description": "Independent effective-permission evidence with authorized employee sessions.",
+      "source_paths": [
+        "apps/api/accessproof_api/source_certification.py",
+        "packages/crypto/source_certificate.py"
+      ]
+    },
+    {
+      "id": "certifier",
+      "kind": "infrastructure",
+      "label": "Independent AWS certifier host",
+      "scope": "operational_limited",
+      "description": "Read-only watcher deployed; laptop-independent live renewal not yet achieved.",
+      "source_paths": [
+        "docs/INDEPENDENT_CERTIFIER_AWS_ROLLOUT_2026-11-08.md",
+        "scripts/certifier/independent_status_watcher.py"
+      ]
+    },
+    {
+      "id": "kms",
+      "kind": "infrastructure",
+      "label": "Candidate KMS signer",
+      "scope": "operational_limited",
+      "description": "Ed25519 candidate NOT trusted for current production signing.",
+      "source_paths": [
+        "packages/crypto/aws_kms_signer.py",
+        "docs/INDEPENDENT_CERTIFIER_AWS_ROLLOUT_2026-11-08.md"
+      ]
+    },
+    {
+      "id": "monitor",
+      "kind": "module",
+      "label": "Expiry and readiness watchers",
+      "scope": "operational_limited",
+      "description": "Watch certificate expiration; monitoring is not renewal.",
+      "source_paths": [
+        "scripts/certifier/renewal_watchdog.py",
+        "scripts/certifier/source_expiry_monitor.py"
+      ]
+    },
+    {
+      "id": "backup",
+      "kind": "infrastructure",
+      "label": "Backup and recovery",
+      "scope": "operational_limited",
+      "description": "Recovery tooling; production recovery guarantees require verified backup/restore evidence.",
+      "source_paths": [
+        "deploy/backup/README.md"
+      ]
+    },
+    {
+      "id": "release",
+      "kind": "workflow",
+      "label": "Production releases",
+      "scope": "conditional",
+      "description": "Reviewed deployment, health and migrations; user approval and least privilege required.",
+      "source_paths": [
+        "deploy/deployer",
+        "docker-compose.production.yml"
+      ]
+    },
+    {
+      "id": "tests",
+      "kind": "evidence",
+      "label": "Unit and security suites",
+      "scope": "implemented",
+      "description": "Code-level regression and synthetic evidence; not equivalent to customer provider validation.",
+      "source_paths": [
+        "tests/unit",
+        "tests/security"
+      ]
+    },
+    {
+      "id": "sdk",
+      "kind": "integration",
+      "label": "Python RAG client",
+      "scope": "conditional",
+      "description": "Reviewed integration route, not zero-code universal framework support.",
+      "source_paths": [
+        "integrations/rag-clients/python",
+        "docs/CUSTOMER_GATEWAY_INTEGRATION.md"
+      ]
+    },
+    {
+      "id": "google_drive",
+      "kind": "integration",
+      "label": "Google Drive legacy connector",
+      "scope": "local_only",
+      "description": "Existing code but not publicly GA for current SharePoint-focused pilot.",
+      "source_paths": [
+        "connectors/google_drive",
+        "docs/CUSTOMER_CLAIMS_REGISTER_2026-11-07.md"
+      ]
+    },
+    {
+      "id": "multi_source",
+      "kind": "module",
+      "label": "Multi-source enforcement",
+      "scope": "conditional",
+      "description": "Additional customer-specific source and route evidence required.",
+      "source_paths": [
+        "apps/guard/accessproof_guard/multisource.py",
+        "docs/CUSTOMER_GATEWAY_INTEGRATION.md"
+      ]
+    },
+    {
+      "id": "scanner",
+      "kind": "module",
+      "label": "Compatibility scanner",
+      "scope": "reference_only",
+      "description": "Read-only candidate/bypass finder; never grants Protect certification.",
+      "source_paths": [
+        "scripts/compatibility_scan.py",
+        "docs/v4/04_INTEGRATION_COMPATIBILITY.md"
+      ]
+    },
+    {
+      "id": "human_test",
+      "kind": "workflow",
+      "label": "Customer human validation",
+      "scope": "external",
+      "description": "Consented employee allow/deny, revocation/cache, end-user request and audit proof after activation.",
+      "source_paths": [
+        "docs/CUSTOMER_CLAIMS_REGISTER_2026-11-07.md",
+        "docs/CUSTOMER_ONBOARDING_CURRENT_2026-11-05.md"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "product",
+      "to": "web",
+      "type": "exposes"
+    },
+    {
+      "from": "product",
+      "to": "api",
+      "type": "orchestrates"
+    },
+    {
+      "from": "customer",
+      "to": "sharepoint",
+      "type": "owns"
+    },
+    {
+      "from": "customer",
+      "to": "entra",
+      "type": "owns"
+    },
+    {
+      "from": "customer",
+      "to": "rag",
+      "type": "owns"
+    },
+    {
+      "from": "web",
+      "to": "api",
+      "type": "calls"
+    },
+    {
+      "from": "api",
+      "to": "db",
+      "type": "persists_to"
+    },
+    {
+      "from": "api",
+      "to": "worker",
+      "type": "enqueues"
+    },
+    {
+      "from": "worker",
+      "to": "redis",
+      "type": "uses"
+    },
+    {
+      "from": "consent",
+      "to": "connector",
+      "type": "authorizes"
+    },
+    {
+      "from": "entra",
+      "to": "identity",
+      "type": "authenticates"
+    },
+    {
+      "from": "sharepoint",
+      "to": "connector",
+      "type": "feeds"
+    },
+    {
+      "from": "worker",
+      "to": "acl",
+      "type": "runs"
+    },
+    {
+      "from": "connector",
+      "to": "acl",
+      "type": "feeds"
+    },
+    {
+      "from": "acl",
+      "to": "revision",
+      "type": "updates"
+    },
+    {
+      "from": "acl",
+      "to": "policy",
+      "type": "feeds"
+    },
+    {
+      "from": "identity",
+      "to": "policy",
+      "type": "feeds"
+    },
+    {
+      "from": "revision",
+      "to": "policy",
+      "type": "versions"
+    },
+    {
+      "from": "api",
+      "to": "policy",
+      "type": "publishes"
+    },
+    {
+      "from": "guard",
+      "to": "policy",
+      "type": "consumes"
+    },
+    {
+      "from": "installer",
+      "to": "discovery",
+      "type": "uses"
+    },
+    {
+      "from": "discovery",
+      "to": "rag",
+      "type": "inspects"
+    },
+    {
+      "from": "installer",
+      "to": "gateway",
+      "type": "installs"
+    },
+    {
+      "from": "installer",
+      "to": "pairing",
+      "type": "requires"
+    },
+    {
+      "from": "pairing",
+      "to": "gateway",
+      "type": "binds"
+    },
+    {
+      "from": "pairing",
+      "to": "api",
+      "type": "registers_with"
+    },
+    {
+      "from": "rag",
+      "to": "gateway",
+      "type": "routes_through"
+    },
+    {
+      "from": "ingestion",
+      "to": "sharepoint",
+      "type": "reads"
+    },
+    {
+      "from": "ingestion",
+      "to": "provenance",
+      "type": "signs"
+    },
+    {
+      "from": "provenance",
+      "to": "retrieval",
+      "type": "attests"
+    },
+    {
+      "from": "retrieval",
+      "to": "layer1",
+      "type": "submits_to"
+    },
+    {
+      "from": "identity",
+      "to": "layer1",
+      "type": "authenticates"
+    },
+    {
+      "from": "gateway",
+      "to": "layer1",
+      "type": "enforces"
+    },
+    {
+      "from": "guard",
+      "to": "layer1",
+      "type": "evaluates"
+    },
+    {
+      "from": "layer1",
+      "to": "llm",
+      "type": "authorizes_context_to"
+    },
+    {
+      "from": "llm",
+      "to": "layer2",
+      "type": "returns_buffer_to"
+    },
+    {
+      "from": "gateway",
+      "to": "layer2",
+      "type": "enforces"
+    },
+    {
+      "from": "guard",
+      "to": "layer2",
+      "type": "evaluates"
+    },
+    {
+      "from": "provenance",
+      "to": "layer2",
+      "type": "attests"
+    },
+    {
+      "from": "layer2",
+      "to": "answer",
+      "type": "releases"
+    },
+    {
+      "from": "cache",
+      "to": "layer1",
+      "type": "requires"
+    },
+    {
+      "from": "cache",
+      "to": "layer2",
+      "type": "requires"
+    },
+    {
+      "from": "revision",
+      "to": "cache",
+      "type": "invalidates"
+    },
+    {
+      "from": "guard",
+      "to": "audit",
+      "type": "emits"
+    },
+    {
+      "from": "gateway",
+      "to": "audit",
+      "type": "emits"
+    },
+    {
+      "from": "audit",
+      "to": "api",
+      "type": "feeds"
+    },
+    {
+      "from": "activation",
+      "to": "guard",
+      "type": "checks"
+    },
+    {
+      "from": "activation",
+      "to": "gateway",
+      "type": "checks"
+    },
+    {
+      "from": "activation",
+      "to": "acl",
+      "type": "checks"
+    },
+    {
+      "from": "activation",
+      "to": "state",
+      "type": "updates"
+    },
+    {
+      "from": "state",
+      "to": "audit",
+      "type": "summarizes"
+    },
+    {
+      "from": "state",
+      "to": "route_cert",
+      "type": "checks_if_verified"
+    },
+    {
+      "from": "source_cert",
+      "to": "sharepoint",
+      "type": "validates"
+    },
+    {
+      "from": "source_cert",
+      "to": "identity",
+      "type": "depends_on"
+    },
+    {
+      "from": "route_cert",
+      "to": "gateway",
+      "type": "validates"
+    },
+    {
+      "from": "route_cert",
+      "to": "guard",
+      "type": "validates"
+    },
+    {
+      "from": "certifier",
+      "to": "source_cert",
+      "type": "monitors"
+    },
+    {
+      "from": "certifier",
+      "to": "route_cert",
+      "type": "monitors"
+    },
+    {
+      "from": "kms",
+      "to": "source_cert",
+      "type": "candidate_signer_for"
+    },
+    {
+      "from": "kms",
+      "to": "route_cert",
+      "type": "candidate_signer_for"
+    },
+    {
+      "from": "monitor",
+      "to": "source_cert",
+      "type": "monitors"
+    },
+    {
+      "from": "monitor",
+      "to": "route_cert",
+      "type": "monitors"
+    },
+    {
+      "from": "release",
+      "to": "api",
+      "type": "deploys"
+    },
+    {
+      "from": "release",
+      "to": "web",
+      "type": "deploys"
+    },
+    {
+      "from": "release",
+      "to": "worker",
+      "type": "deploys"
+    },
+    {
+      "from": "backup",
+      "to": "db",
+      "type": "protects"
+    },
+    {
+      "from": "tests",
+      "to": "api",
+      "type": "tests"
+    },
+    {
+      "from": "tests",
+      "to": "guard",
+      "type": "tests"
+    },
+    {
+      "from": "tests",
+      "to": "gateway",
+      "type": "tests"
+    },
+    {
+      "from": "sdk",
+      "to": "rag",
+      "type": "integrates"
+    },
+    {
+      "from": "scanner",
+      "to": "rag",
+      "type": "inspects"
+    },
+    {
+      "from": "google_drive",
+      "to": "connector",
+      "type": "alternative_to"
+    },
+    {
+      "from": "multi_source",
+      "to": "guard",
+      "type": "extends"
+    },
+    {
+      "from": "human_test",
+      "to": "answer",
+      "type": "tests"
+    },
+    {
+      "from": "human_test",
+      "to": "state",
+      "type": "checks"
+    },
+    {
+      "from": "human_test",
+      "to": "audit",
+      "type": "uses"
+    },
+    {
+      "from": "api",
+      "to": "state",
+      "type": "computes"
+    },
+    {
+      "from": "layer1",
+      "to": "guard",
+      "type": "consults"
+    },
+    {
+      "from": "layer2",
+      "to": "guard",
+      "type": "consults"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "onboard",
+      "title": "Guided SharePoint/Entra onboarding",
+      "steps": [
+        "customer",
+        "web",
+        "consent",
+        "connector",
+        "acl",
+        "identity",
+        "policy",
+        "guard",
+        "discovery",
+        "installer",
+        "pairing",
+        "gateway",
+        "activation",
+        "state",
+        "human_test"
+      ],
+      "notes": "Selected-site grant, employee sign-in, host access and real customer cutover require authorization."
+    },
+    {
+      "id": "protected_request",
+      "title": "Secure RAG answer",
+      "steps": [
+        "entra",
+        "identity",
+        "rag",
+        "ingestion",
+        "provenance",
+        "retrieval",
+        "gateway",
+        "layer1",
+        "guard",
+        "llm",
+        "layer2",
+        "answer",
+        "audit"
+      ],
+      "notes": "Conceptual dependency order, not a literal stack trace; Layer 1 and Layer 2 both consult Guard."
+    },
+    {
+      "id": "revoke",
+      "title": "Enforce authorization revocation",
+      "steps": [
+        "sharepoint",
+        "connector",
+        "worker",
+        "acl",
+        "revision",
+        "policy",
+        "guard",
+        "cache",
+        "layer1",
+        "layer2",
+        "audit"
+      ],
+      "notes": "Policy enforcement occurs after synchronization, not necessarily immediately after provider mutation."
+    },
+    {
+      "id": "certificate_watch",
+      "title": "Certification monitoring",
+      "steps": [
+        "source_cert",
+        "route_cert",
+        "certifier",
+        "monitor",
+        "kms"
+      ],
+      "notes": "Independent watcher is not yet independent renewal; candidate KMS key is not trusted."
+    }
+  ],
+  "diagram": {
+    "nodes": [
+      "customer",
+      "sharepoint",
+      "entra",
+      "rag",
+      "web",
+      "api",
+      "worker",
+      "connector",
+      "acl",
+      "identity",
+      "policy",
+      "guard",
+      "gateway",
+      "ingestion",
+      "provenance",
+      "layer1",
+      "llm",
+      "layer2",
+      "answer",
+      "audit",
+      "state",
+      "certifier",
+      "source_cert",
+      "route_cert"
+    ],
+    "edges": [
+      [
+        "customer",
+        "sharepoint"
+      ],
+      [
+        "customer",
+        "entra"
+      ],
+      [
+        "customer",
+        "rag"
+      ],
+      [
+        "web",
+        "api"
+      ],
+      [
+        "api",
+        "worker"
+      ],
+      [
+        "sharepoint",
+        "connector"
+      ],
+      [
+        "worker",
+        "acl"
+      ],
+      [
+        "connector",
+        "acl"
+      ],
+      [
+        "entra",
+        "identity"
+      ],
+      [
+        "identity",
+        "policy"
+      ],
+      [
+        "acl",
+        "policy"
+      ],
+      [
+        "api",
+        "policy"
+      ],
+      [
+        "guard",
+        "policy"
+      ],
+      [
+        "rag",
+        "gateway"
+      ],
+      [
+        "ingestion",
+        "sharepoint"
+      ],
+      [
+        "ingestion",
+        "provenance"
+      ],
+      [
+        "gateway",
+        "layer1"
+      ],
+      [
+        "layer1",
+        "guard"
+      ],
+      [
+        "layer1",
+        "llm"
+      ],
+      [
+        "llm",
+        "layer2"
+      ],
+      [
+        "layer2",
+        "guard"
+      ],
+      [
+        "layer2",
+        "answer"
+      ],
+      [
+        "gateway",
+        "audit"
+      ],
+      [
+        "guard",
+        "audit"
+      ],
+      [
+        "audit",
+        "api"
+      ],
+      [
+        "api",
+        "state"
+      ],
+      [
+        "certifier",
+        "route_cert"
+      ],
+      [
+        "certifier",
+        "source_cert"
+      ]
+    ]
+  }
+}
