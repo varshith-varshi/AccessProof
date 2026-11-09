@@ -62,16 +62,6 @@ Resources:
           DefaultRetention:
             Mode: GOVERNANCE
             Days: !Ref RetentionDays
-      LifecycleConfiguration:
-        Rules:
-          - Id: DatabaseBackupRetentionAndMultipartCleanup
-            Status: Enabled
-            Prefix: database/
-            ExpirationInDays: 32
-            NoncurrentVersionExpiration:
-              NoncurrentDays: 1
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 2
   BackupWriterRole:
     Type: AWS::IAM::Role
     Properties:

@@ -1,0 +1,20 @@
+{
+  "Rules": [
+    {
+      "ID": "DatabaseBackupRetentionAndMultipartCleanup",
+      "Filter": {
+        "Prefix": "database/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 32
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 1
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 2
+      }
+    }
+  ]
+}

@@ -1,13 +1,12 @@
-"""Guard rails for reviewed, *undeployed* encrypted production backups."""
+"""Guard rails for the deployed encrypted production-backup resources."""
+import json
 from pathlib import Path
 
 import yaml
 
 
-STACK = (
-    Path(__file__).resolve().parents[2]
-    / "deploy/backup/isolated-postgres-s3-stack.yaml"
-)
+ROOT = Path(__file__).resolve().parents[2]
+STACK = ROOT / "deploy/backup/isolated-postgres-s3-stack.yaml"
 
 
 class CloudFormationLoader(yaml.SafeLoader):
@@ -107,12 +106,16 @@ def test_backup_lifecycle_cleans_only_database_objects_after_object_lock():
     assert props["ObjectLockConfiguration"]["Rule"]["DefaultRetention"] == {
         "Mode": "GOVERNANCE", "Days": {"Ref": "RetentionDays"}
     }
-    lifecycle = props["LifecycleConfiguration"]["Rules"]
+    # Lifecycle was applied via the reviewed bucket-only S3 API to prevent
+    # CloudFormation from unexpectedly modifying the existing IAM/policy
+    # resources. The actual active config is committed separately.
+    assert "LifecycleConfiguration" not in props
+    path = ROOT / "deploy/backup/database-object-lifecycle.json"
+    lifecycle = json.loads(path.read_text())["Rules"]
     assert len(lifecycle) == 1
     rule = lifecycle[0]
     assert rule["Status"] == "Enabled"
-    assert rule["Prefix"] == "database/"
-    assert rule["ExpirationInDays"] >= 31
-    assert rule["NoncurrentVersionExpiration"]["NoncurrentDays"] >= 1
+    assert rule["Filter"] == {"Prefix": "database/"}
+    assert rule["Expiration"]["Days"] == 32
+    assert rule["NoncurrentVersionExpiration"]["NoncurrentDays"] == 1
     assert rule["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"] == 2
-    assert rule["ExpirationInDays"] == 32
