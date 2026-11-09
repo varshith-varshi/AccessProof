@@ -99,3 +99,20 @@ def test_bucket_policy_blocks_tls_bypass_wrong_encryption_and_unapproved_writes(
     assert all(statement["Effect"] == "Deny" for statement in statements)
     assert all(statement["Principal"] == "*" for statement in statements)
     assert "aws:PrincipalArn" in statements[-1]["Condition"]["StringNotEquals"]
+
+
+def test_backup_lifecycle_cleans_only_database_objects_after_object_lock():
+    resources = template()["Resources"]
+    props = resources["BackupBucket"]["Properties"]
+    assert props["ObjectLockConfiguration"]["Rule"]["DefaultRetention"] == {
+        "Mode": "GOVERNANCE", "Days": {"Ref": "RetentionDays"}
+    }
+    lifecycle = props["LifecycleConfiguration"]["Rules"]
+    assert len(lifecycle) == 1
+    rule = lifecycle[0]
+    assert rule["Status"] == "Enabled"
+    assert rule["Prefix"] == "database/"
+    assert rule["ExpirationInDays"] >= 31
+    assert rule["NoncurrentVersionExpiration"]["NoncurrentDays"] >= 1
+    assert rule["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"] == 2
+    assert rule["ExpirationInDays"] == 32

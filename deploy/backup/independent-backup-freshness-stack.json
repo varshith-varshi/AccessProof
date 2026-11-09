@@ -1,0 +1,175 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Independent metadata-only AWS monitor of live AccessProof PostgreSQL backup freshness. Billable IAM, Lambda, EventBridge, CloudWatch resources.",
+  "Resources": {
+    "FreshnessRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "AccessProofBackupFreshnessLambdaRole2026",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "BackupNamesOnlyAndExactMetric",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "ListBackupObjectMetadataOnly",
+                  "Effect": "Allow",
+                  "Action": "s3:ListBucket",
+                  "Resource": "arn:aws:s3:::accessproof-prod-db-backups-102076848988-eu-north-1",
+                  "Condition": {
+                    "StringLike": {
+                      "s3:prefix": "database/*"
+                    }
+                  }
+                },
+                {
+                  "Sid": "PublishExactMetricNamespace",
+                  "Effect": "Allow",
+                  "Action": "cloudwatch:PutMetricData",
+                  "Resource": "*",
+                  "Condition": {
+                    "StringEquals": {
+                      "cloudwatch:namespace": "AccessProof/ProductionBackup"
+                    }
+                  }
+                },
+                {
+                  "Sid": "WriteLambdaLogs",
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "arn:aws:logs:eu-north-1:102076848988:log-group:/aws/lambda/accessproof-prod-db-freshness:*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "FreshnessLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/accessproof-prod-db-freshness",
+        "RetentionInDays": 30
+      }
+    },
+    "FreshnessFunction": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": [
+        "FreshnessLogs"
+      ],
+      "Properties": {
+        "FunctionName": "accessproof-prod-db-freshness",
+        "Description": "Independent S3 backup-pair age metric. Does not read customer data.",
+        "Runtime": "python3.12",
+        "Handler": "index.lambda_handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "FreshnessRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "ZipFile": "\"\"\"Independent AWS Lambda monitor for AccessProof encrypted DB backup freshness.\n\nObserves only S3 object names, sizes, and timestamps. Does NOT read customer\ndatabase archives, decrypt backups, trust unverified backup content, or claim\nrestore certification. A missing/erroring monitor is alarmed by CloudWatch.\n\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom datetime import datetime, timedelta, timezone\nfrom typing import Any\n\nBUCKET = \"accessproof-prod-db-backups-102076848988-eu-north-1\"\nPREFIX = \"database/\"\nASSOCIATION_ID = \"9f6b4342-356e-4a4d-bf22-1bf316ff659f\"\nMETRIC_NAMESPACE = \"AccessProof/ProductionBackup\"\nMETRIC_NAME = \"LatestArchivePairAgeSeconds\"\nARCHIVE = re.compile(r\"^database/(\\d{8}T\\d{6}Z-[a-f0-9]{32})\\.dump$\")\nMANIFEST = re.compile(r\"^database/(\\d{8}T\\d{6}Z-[a-f0-9]{32})\\.manifest\\.json$\")\nNO_BACKUP_AGE_SECONDS = 86_400\n\n\ndef most_recent_pair_age(objects: list[dict[str, Any]], now: datetime) -> float:\n    \"\"\"Metadata availability check, NOT a dump-integrity or restore check.\"\"\"\n    archives: dict[str, dict[str, Any]] = {}\n    manifests: dict[str, dict[str, Any]] = {}\n    for item in objects:\n        key = item.get(\"Key\")\n        size = item.get(\"Size\")\n        last_modified = item.get(\"LastModified\")\n        if not isinstance(key, str) or not isinstance(size, int):\n            continue\n        if not isinstance(last_modified, datetime):\n            continue\n        if last_modified.tzinfo is None:\n            continue\n        match = ARCHIVE.fullmatch(key)\n        if match and size >= 5:\n            archives[match.group(1)] = item\n        match = MANIFEST.fullmatch(key)\n        if match and size >= 100:\n            manifests[match.group(1)] = item\n    stamps: list[datetime] = []\n    for stem in archives.keys() & manifests.keys():\n        a, m = archives[stem], manifests[stem]\n        stamps.append(min(a[\"LastModified\"], m[\"LastModified\"]))\n    if not stamps:\n        return float(NO_BACKUP_AGE_SECONDS)\n    return max(0.0, (now - max(stamps)).total_seconds())\n\n\ndef lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:\n    import boto3\n\n    now = datetime.now(timezone.utc)\n    cutoff = (now - timedelta(hours=4)).strftime(\"%Y%m%dT%H%M%SZ\")\n    s3 = boto3.client(\"s3\")\n    objects: list[dict[str, Any]] = []\n    pages = s3.get_paginator(\"list_objects_v2\").paginate(\n        Bucket=BUCKET, Prefix=PREFIX, StartAfter=f\"{PREFIX}{cutoff}\"\n    )\n    for page in pages:\n        objects.extend(page.get(\"Contents\", []))\n        # Abnormally high listing volume is a visibility failure, not a\n        # reason to silently declare the latest backup healthy.\n        if len(objects) > 2000:\n            raise RuntimeError(\"ABNORMAL_BACKUP_OBJECT_COUNT\")\n    age = most_recent_pair_age(objects, now)\n    cw = boto3.client(\"cloudwatch\")\n    cw.put_metric_data(\n        Namespace=METRIC_NAMESPACE,\n        MetricData=[{\n            \"MetricName\": METRIC_NAME,\n            \"Dimensions\": [{\"Name\": \"AssociationId\", \"Value\": ASSOCIATION_ID}],\n            \"Unit\": \"Seconds\",\n            \"Value\": age,\n            \"Timestamp\": now,\n        }],\n    )\n    # No customer content or backup object keys in CloudWatch logs.\n    return {\"status\": \"FRESHNESS_METADATA_REPORTED\", \"age_seconds\": round(age),\n            \"independent_of_production_ec2\": True, \"restore_verified\": False}\n"
+        },
+        "MemorySize": 128,
+        "Timeout": 30
+      }
+    },
+    "FreshnessSchedule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Name": "accessproof-prod-db-freshness-every-15min",
+        "ScheduleExpression": "rate(15 minutes)",
+        "State": "ENABLED",
+        "Description": "Always-on backup-freshness monitor, independent of production EC2/laptop",
+        "Targets": [
+          {
+            "Id": "BackupFreshnessMetric",
+            "Arn": {
+              "Fn::GetAtt": [
+                "FreshnessFunction",
+                "Arn"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "FreshnessInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "FreshnessFunction",
+            "Arn"
+          ]
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "FreshnessSchedule",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "FreshnessAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "accessproof-production-backup-stale-or-monitor-missing",
+        "AlarmDescription": "Backup pair age greater than 1 hour or independent watcher unavailable. SNS recipient requires confirmation.",
+        "ActionsEnabled": true,
+        "AlarmActions": [
+          "arn:aws:sns:eu-north-1:102076848988:accessproof-prod-db-backup-critical"
+        ],
+        "Namespace": "AccessProof/ProductionBackup",
+        "MetricName": "LatestArchivePairAgeSeconds",
+        "Dimensions": [
+          {
+            "Name": "AssociationId",
+            "Value": "9f6b4342-356e-4a4d-bf22-1bf316ff659f"
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 900,
+        "EvaluationPeriods": 2,
+        "DatapointsToAlarm": 2,
+        "Threshold": 3600,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "breaching"
+      }
+    }
+  },
+  "Outputs": {
+    "FunctionName": {
+      "Value": {
+        "Ref": "FreshnessFunction"
+      }
+    },
+    "AlarmName": {
+      "Value": {
+        "Ref": "FreshnessAlarm"
+      }
+    },
+    "Status": {
+      "Value": "METADATA_MONITOR_ONLY_NOT_CONTENT_VALIDATION_SUBSCRIPTION_REQUIRED"
+    }
+  }
+}

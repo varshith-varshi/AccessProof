@@ -1,8 +1,8 @@
 # AccessProof production disaster recovery — approval and deployment guide
 
-**Status (2026-11-08): AWS backup storage infrastructure DEPLOYED; database backup job NOT INSTALLED OR ENABLED; no production PostgreSQL archive/isolated restore has been verified. This is NOT production DR certification.**
+**Status (2026-11-09): AWS encrypted storage DEPLOYED, production PostgreSQL archive job SCHEDULED EVERY 30 MIN, and a real encrypted PostgreSQL 17 database restore VERIFIED on a temporary isolated EC2. Full application recovery/RTO and human alert delivery remain UNVERIFIED; no general disaster-recovery SLA is certified.**
 
-The CloudFormation stack for this package has been deployed following the owner's instruction and independently verified; it created billable S3, KMS and IAM resources. **It has not performed any PostgreSQL backup or transferred customer database contents.** Pilot/GA disaster-recovery readiness remains NO-GO until a live encrypted database recovery point and isolated production-data restoration are verified.
+The approved AWS storage foundation was deployed and verified. The separate live Systems Manager command `AccessProof-Backup-FixedManualArchive` **version 2** now executes under a dedicated backup-writer session every 30 minutes (association `9f6b4342-356e-4a4d-bf22-1bf316ff659f`). It has produced real encrypted, SHA-256-readback-verified PostgreSQL archives. A pinned isolated PostgreSQL 17 restore succeeded (SSM command `702f0c5b-e732-4df3-90c5-c7e61803a93c`), confirming 79 tables, 59 forced-RLS tables, and 118 policies. This proves database-level recovery, not full application recovery, tenant isolation by active user queries, or an RPO/RTO SLA. See `docs/production-readiness/PRODUCTION_BACKUP_STATUS_20261109.md` for live details and monitoring.
 
 ## Owner and infrastructure approvals required
 
