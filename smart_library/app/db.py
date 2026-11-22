@@ -80,6 +80,41 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
+# Additive, idempotent migrations. Existing tables and rows are never dropped or rewritten.
+# (table, column, definition) - a column is added only when it is missing.
+COLUMN_MIGRATIONS = [
+    ("books", "description", "TEXT NOT NULL DEFAULT ''"),
+    ("books", "cover_url", "TEXT"),
+    ("books", "added_at", "REAL"),
+    ("loans", "renewals", "INTEGER NOT NULL DEFAULT 0"),
+    ("reservations", "updated_at", "REAL"),
+]
+
+POST_MIGRATION_SQL = """
+CREATE TABLE IF NOT EXISTS app_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id, returned_at);
+CREATE INDEX IF NOT EXISTS idx_loans_book ON loans(book_id, returned_at);
+CREATE INDEX IF NOT EXISTS idx_reservations_book ON reservations(book_id, status);
+CREATE INDEX IF NOT EXISTS idx_audit_member ON audit_log(member_id);
+-- The audit log is append-only: no API and no SQL statement may rewrite history.
+CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+"""
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    for table, column, definition in COLUMN_MIGRATIONS:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    conn.executescript(POST_MIGRATION_SQL)
+
+
 class Database:
     """Thin thread-safe wrapper around sqlite3."""
 
@@ -90,6 +125,7 @@ class Database:
         self._lock = threading.RLock()
         with self._lock:
             self._conn.executescript(SCHEMA)
+            migrate(self._conn)
             self._conn.commit()
 
     @contextmanager

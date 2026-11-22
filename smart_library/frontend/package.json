@@ -1,0 +1,33 @@
+{
+  "name": "smart-library-web",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "preview": "vite preview",
+    "test:e2e": "playwright test --trace off"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.1.1",
+    "@tanstack/react-query": "5.62.8",
+    "clsx": "2.1.1",
+    "lucide-react": "0.468.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.28.1",
+    "recharts": "2.15.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.0",
+    "@tailwindcss/vite": "4.0.9",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "4.3.4",
+    "tailwindcss": "4.0.9",
+    "typescript": "5.7.2",
+    "vite": "6.0.7"
+  }
+}

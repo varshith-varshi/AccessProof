@@ -73,6 +73,10 @@ class PolicyStore:
             grants={k: frozenset(v) for k, v in grants.items()},
         )
 
+    def record_change(self, reason: str) -> int:
+        """Issue a new revision for a change made outside the mutation helpers (e.g. demo data)."""
+        return self._bump(reason)
+
     # --- mutations (each one issues a new revision) ----------------------------------
     def grant(self, collection_id: str, principal_type: str, principal_id: str) -> int:
         with self._db.tx() as c:

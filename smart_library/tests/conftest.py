@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 os.environ["SLMS_NO_AUTOAPP"] = "1"
+os.environ.setdefault("SLMS_DEMO_DATA", "0")  # the original suite runs on the 12-book base catalogue
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402

@@ -22,3 +22,7 @@ class Settings:
     max_active_loans: int = field(default_factory=lambda: int(os.getenv("SLMS_MAX_LOANS", "5")))
     fine_per_day: float = field(default_factory=lambda: float(os.getenv("SLMS_FINE_PER_DAY", "0.50")))
     attestation_ttl_seconds: int = field(default_factory=lambda: int(os.getenv("SLMS_ATTESTATION_TTL", "900")))
+    # Loads the extended demo catalogue and demo circulation history (safe to rerun).
+    demo_data: bool = field(default_factory=lambda: os.getenv("SLMS_DEMO_DATA", "1") == "1")
+    # A loan is flagged "due soon" when it is due within this many days.
+    due_soon_days: int = field(default_factory=lambda: int(os.getenv("SLMS_DUE_SOON_DAYS", "3")))

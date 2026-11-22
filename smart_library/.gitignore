@@ -1,0 +1,6 @@
+.venv/
+smart_library.db
+*.db-journal
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
